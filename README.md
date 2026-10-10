@@ -43,7 +43,7 @@ cannot play music through LWSpot.
 | **Winamp mini player** | Use classic `.wsz` skins with an equalizer, playlist, and animated sound displays. Switch with **Ctrl+M**. |
 | **Lyrics** | Follow synced lyrics in a side panel or full screen. |
 | **Equalizer** | Shape local playback with a ten-band equalizer, preamp, and balance. |
-| **MilkDrop** (optional) | Watch music-reactive visuals in a separate window or full screen, with more than 10,000 presets downloaded on first use. |
+| **MilkDrop** (optional) | Watch music-reactive visuals in a separate window or full screen, with more than 10,000 presets downloaded on first use. An optional add-on, downloaded the first time you turn it on (a few MB). |
 
 ## Install
 

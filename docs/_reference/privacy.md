@@ -38,9 +38,11 @@ LWSpot connects only to the services below.
   song, LWSpot sends its artist, title, album and length to
   [lrclib.net](https://lrclib.net). Nothing identifying you is included.
 - **GitHub.** Once a day, LWSpot asks GitHub for the latest release. You
-  can turn automatic checks off in Settings. Downloading an update, and the
-  first opening of MilkDrop, also fetch files from GitHub. No Spotify data is
-  sent.
+  can turn automatic checks off in Settings. Downloading an update also
+  fetches files from GitHub, and so does turning MilkDrop on: the first time,
+  and after an update, it downloads the MilkDrop add-on and the release's
+  checksums, and with an empty preset folder the preset packs. Nothing is
+  fetched for MilkDrop until you turn it on. No Spotify data is sent.
 - **Your local network.** LWSpot looks for Spotify Connect speakers over
   mDNS and talks to the ones you choose.
 

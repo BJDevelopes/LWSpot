@@ -18,6 +18,13 @@ path = "src/lib.rs"
 name = "lwspot"
 path = "src/lwspot.rs"
 
+# The MilkDrop add-on, `lwspot-milkdrop.exe`: the projectM window, kept out of
+# lwspot.exe and downloaded by the app the first time MilkDrop is turned on.
+[[bin]]
+name = "lwspot-milkdrop"
+path = "src/milkdrop_main.rs"
+required-features = ["milkdrop"]
+
 [dependencies]
 anyhow = "1"
 thiserror = "2"
@@ -93,13 +100,13 @@ flate2 = "1"
 # through egui_extras and resvg, so this adds no code to the build.
 tiny-skia = "0.11"
 # MilkDrop, as libprojectM reimplements it, for the MilkDrop window
-# (src/milkdrop.rs). Built into the binary, so it stays one file.
+# (src/milkdrop.rs). Only the lwspot-milkdrop add-on links it.
 projectm-sys = { version = "1.2.2", default-features = false, features = ["static"], optional = true }
-# The MilkDrop window runs as a child process with its own winit event loop
-# and OpenGL context (src/milkdrop/child.rs), because winit allows one event
-# loop per process and eframe owns the app's. These are the same versions
-# eframe already pulls in, so they add no build. Only compiled with the
-# milkdrop feature.
+# The MilkDrop window is the add-on's own process with its own winit event
+# loop and OpenGL context (src/milkdrop/child.rs), because winit allows one
+# event loop per process and eframe owns the app's. These are the same
+# versions eframe already pulls in, so they add no build. Only compiled with
+# the milkdrop feature.
 winit = { version = "0.30", optional = true }
 glutin = { version = "0.32", optional = true }
 glutin-winit = { version = "0.5", optional = true }
@@ -119,6 +126,8 @@ librespot-playback = { version = "0.8", default-features = false, features = ["r
 librespot-connect = { version = "0.8", default-features = false }
 librespot-metadata = { version = "0.8", default-features = false }
 librespot-protocol = { version = "0.8", default-features = false }
+# AudioFetchParams: how far ahead local playback downloads (src/player.rs).
+librespot-audio = { version = "0.8", default-features = false }
 # Parses the rootlist's playlist4 protobuf, the same crate librespot generates with.
 protobuf = "3"
 # Local playback's audio sink is this crate's own (src/sink.rs): librespot's
@@ -160,8 +169,11 @@ ctr = "0.9"
 windows-native-keyring-store = { version = "1.1", default-features = false }
 # Message loops, the taskbar thumbnail buttons and window styles. Power,
 # session and network state (src/power/windows.rs): power settings, sleep and
-# wake, the session lock, and the network's reach and cost.
-windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+# wake, the session lock, and the network's reach and cost. DPAPI
+# (Win32_Security_Cryptography, with LocalFree from Win32_Foundation) encrypts
+# the credential fallback file in src/credentials.rs. Win32_Graphics_Dwm
+# colours the Windows title bar to match the theme (src/window.rs).
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
 # Drops unfinished PO entries and compiles catalog text and gettext plural
@@ -179,12 +191,15 @@ tokio = { version = "1", features = ["test-util"] }
 winresource = "0.1"
 
 [features]
-default = ["milkdrop"]
+# lwspot.exe needs nothing beyond Rust and MSVC. It never contains projectM:
+# MilkDrop is the separate add-on below, which the app downloads on first use.
+default = []
 # Sample data and screenshot flags; never part of a release build.
 demo = []
-# MilkDrop, through libprojectM: a C++ library that CMake builds into the
-# binary at compile time, so building needs cmake, a C++ compiler, and
-# libclang. `--no-default-features` leaves it out.
+# The MilkDrop add-on, `cargo build --features milkdrop --bin
+# lwspot-milkdrop`, through libprojectM: a C++ library that CMake builds into
+# the add-on at compile time, so building it needs cmake, a C++ compiler,
+# libclang, and GLEW from vcpkg.
 milkdrop = ["dep:projectm-sys", "dep:winit", "dep:glutin", "dep:glutin-winit"]
 
 [profile.release]
@@ -195,9 +210,12 @@ panic = "abort"
 
 # Audio decoding and immediate-mode layout are too slow at opt-level 0 to
 # audition the app in development. Keep every dependency optimized while the
-# application crate itself stays incremental.
+# application crate itself stays incremental. Dependencies carry no debug
+# info: it roughly halves the size of target/, and backtraces still name
+# LWSpot's own frames.
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
 
 # projectm-sys names the library it links after Rust's profile (a `d` suffix
 # for dev) but CMake names what it builds after the optimisation level, so an

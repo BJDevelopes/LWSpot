@@ -708,6 +708,31 @@ msgstr "{folder} konnte nicht geöffnet werden: {error}"
 msgid "Added {skin} skin"
 msgstr "Skin {skin} hinzugefügt"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:3014
+#, rust-format
+msgid "Couldn't start MilkDrop: {error}"
+msgstr "MilkDrop konnte nicht gestartet werden: {error}"
+
+#: src/app.rs:3051 src/ui/settings.rs:1884 src/ui/topbar.rs:485
+#: src/ui/winamp/mod.rs:915
+msgid "Downloading the MilkDrop add-on"
+msgstr "MilkDrop-Add-on wird heruntergeladen"
+
+#: src/app.rs:3055
+msgid "MilkDrop add-on installed"
+msgstr "MilkDrop-Add-on installiert"
+
+#: src/app.rs:3067
+msgid "The MilkDrop add-on isn't available for this version."
+msgstr "Das MilkDrop-Add-on ist für diese Version nicht verfügbar."
+
+#. Translators: {error} is an error message.
+#: src/app.rs:3073
+#, rust-format
+msgid "Couldn't get the MilkDrop add-on: {error}"
+msgstr "MilkDrop-Add-on konnte nicht geladen werden: {error}"
+
 #: src/app.rs:3110
 msgid "Proxy applied. Restarting local playback."
 msgstr "Proxy angewendet. Lokale Wiedergabe wird neu gestartet."
@@ -1008,6 +1033,12 @@ msgstr "MilkDrop-Presetpakete werden heruntergeladen"
 msgid "Downloading {name} presets"
 msgstr "Presets von {name} werden heruntergeladen"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:9507
+#, rust-format
+msgid "Couldn't remove the MilkDrop add-on: {error}"
+msgstr "MilkDrop-Add-on konnte nicht entfernt werden: {error}"
+
 #: src/app.rs:10243
 msgid "Couldn't start playback"
 msgstr "Wiedergabe konnte nicht gestartet werden"
@@ -1047,6 +1078,53 @@ msgid ""
 msgstr ""
 "Kein Audioausgabegerät gefunden. Schließe eins an oder aktiviere eins und "
 "drücke dann erneut auf Wiedergabe."
+
+#: src/sink.rs:1138
+msgid ""
+"Another app is using your audio device exclusively. Close it, or turn off "
+"exclusive mode in Windows sound settings."
+msgstr ""
+"Eine andere App nutzt dein Audiogerät exklusiv. Schließe sie oder schalte "
+"den exklusiven Modus in den Windows-Soundeinstellungen aus."
+
+#: src/sink.rs:1142
+msgid ""
+"Windows couldn't open your audio device. Its driver may not be responding; "
+"try another output or restart Windows audio."
+msgstr ""
+"Windows konnte dein Audiogerät nicht öffnen. Der Treiber reagiert "
+"möglicherweise nicht; versuche eine andere Ausgabe oder starte Windows-Audio "
+"neu."
+
+#: src/sink.rs:1146
+msgid ""
+"The audio device was disconnected. Reconnect it or choose another output."
+msgstr ""
+"Das Audiogerät wurde getrennt. Schließe es wieder an oder wähle eine andere "
+"Ausgabe."
+
+#: src/sink.rs:1150
+msgid ""
+"Windows audio isn't running. Start the Windows Audio service, then press "
+"play again."
+msgstr ""
+"Windows-Audio läuft nicht. Starte den Dienst „Windows-Audio“ und drücke dann "
+"erneut auf Wiedergabe."
+
+#: src/sink.rs:1154
+msgid "Windows blocked access to your audio device. Try another output."
+msgstr ""
+"Windows hat den Zugriff auf dein Audiogerät blockiert. Versuche eine andere "
+"Ausgabe."
+
+#: src/sink.rs:1156
+msgid "Can't play on this audio device right now."
+msgstr "Auf diesem Audiogerät ist die Wiedergabe gerade nicht möglich."
+
+#. Translators: Keep {code} exactly as written. It becomes a Windows error code such as 0x8889000F, shown after an audio device error.
+#: src/sink.rs:1192
+msgid "(code {code})"
+msgstr "(Code {code})"
 
 #: src/app.rs:10304
 msgid ""
@@ -1174,7 +1252,8 @@ msgstr "Client ID"
 msgid "Setup guide"
 msgstr "Einrichtungsanleitung"
 
-#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/dialogs.rs:96
+#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/settings.rs:1440
+#: src/ui/dialogs.rs:96
 msgid "Remove"
 msgstr "Entfernen"
 
@@ -1597,6 +1676,10 @@ msgstr ""
 "Gerade zu sehen: {skin}. Bei jedem Öffnen des Miniplayers wird ein anderer "
 "gewählt."
 
+#: src/ui/settings.rs:1425
+msgid "Add-on"
+msgstr "Add-on"
+
 #: src/ui/settings.rs:1463
 msgid "MilkDrop window"
 msgstr "MilkDrop-Fenster"
@@ -1817,6 +1900,18 @@ msgstr "Tastenkürzel"
 #: src/ui/settings.rs:1857
 msgid "Source code"
 msgstr "Quellcode"
+
+#: src/ui/settings.rs:1888
+msgid "Not installed. Turning MilkDrop on downloads it from GitHub (a few MB)."
+msgstr ""
+"Nicht installiert. Wenn du MilkDrop einschaltest, wird es von GitHub "
+"heruntergeladen (einige MB)."
+
+#. Translators: {version} is a version number such as 1.2.0.
+#: src/ui/settings.rs:1893
+#, rust-format
+msgid "Installed, version {version}."
+msgstr "Installiert, Version {version}."
 
 #. Translators: {query} is the text typed into the settings search field.
 #: src/ui/settings.rs:1929
@@ -2400,6 +2495,10 @@ msgstr "Songtext anzeigen"
 msgid "Lyrics: leave full screen"
 msgstr "Songtext: Vollbild verlassen"
 
+#: src/ui/keys.rs:191
+msgid "Enter or leave full screen"
+msgstr "Vollbild ein- oder ausschalten"
+
 #: src/ui/keys.rs:218
 msgid "Song list: extend or shrink the selection"
 msgstr "Songliste: Auswahl erweitern oder verkleinern"
@@ -2757,7 +2856,7 @@ msgid "Checking download…"
 msgstr "Download wird geprüft…"
 
 #. Translators: {received} and {total} are sizes in megabytes, such as 12.5.
-#: src/ui/update.rs:90
+#: src/ui/settings.rs:1879 src/ui/update.rs:90
 #, rust-format
 msgid "{received} of {total} MB"
 msgstr "{received} von {total} MB"

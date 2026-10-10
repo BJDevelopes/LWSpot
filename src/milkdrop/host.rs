@@ -1,7 +1,8 @@
-//! The app's side of the MilkDrop child process.
+//! The app's side of the MilkDrop window.
 //!
-//! `Host` starts this binary with `--milkdrop-child`, connects the audio tap to
-//! shared memory, sends settings over stdin, and reads window state from stdout.
+//! `Host` starts the add-on, `lwspot-milkdrop.exe`, with the arguments in
+//! [`super::args`], connects the audio tap to shared memory, sends settings
+//! over stdin, and reads window state from stdout.
 
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -10,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
 
+use super::args::Args;
 use super::shm::Ring;
 use crate::vis::AudioTap;
 
@@ -83,10 +85,11 @@ impl Host {
         self.running.is_some()
     }
 
-    /// Starts the child window, pointing the tap at a fresh ring.
+    /// Starts the add-on's window, pointing the tap at a fresh ring.
     #[allow(clippy::too_many_arguments)]
     pub fn open(
         &mut self,
+        exe: &Path,
         presets: &Path,
         size: [f32; 2],
         pos: Option<[f32; 2]>,
@@ -94,9 +97,9 @@ impl Host {
         fps: u32,
         seconds: u32,
         scale: u32,
-    ) {
+    ) -> Result<(), String> {
         if self.running.is_some() {
-            return;
+            return Ok(());
         }
         // Old builds accidentally saved Retina physical pixels as logical
         // points. Do not reopen an enormous, unreachable window from that
@@ -107,47 +110,32 @@ impl Host {
             Ok(ring) => Arc::new(ring),
             Err(error) => {
                 log::warn!("MilkDrop: could not make the audio buffer: {error}");
-                return;
+                return Err(error.to_string());
             }
         };
-        let exe = match std::env::current_exe() {
-            Ok(exe) => exe,
-            Err(error) => {
-                log::warn!("MilkDrop: could not find the program to run: {error}");
-                return;
-            }
+        let args = Args {
+            shm: self.shm_path.clone(),
+            presets: presets.to_path_buf(),
+            size,
+            pos,
+            fullscreen,
+            fps,
+            seconds,
+            scale,
         };
         let mut command = Command::new(exe);
         command
-            .arg("--milkdrop-child")
-            .arg("--milkdrop-shm")
-            .arg(&self.shm_path)
-            .arg("--milkdrop-presets")
-            .arg(presets)
-            .arg("--milkdrop-size")
-            .arg(format!("{}x{}", size[0], size[1]))
-            .arg("--milkdrop-fps")
-            .arg(fps.to_string())
-            .arg("--milkdrop-seconds")
-            .arg(seconds.to_string())
-            .arg("--milkdrop-scale")
-            .arg(scale.to_string())
+            .args(args.command_line())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
-        if let Some(pos) = pos {
-            command
-                .arg("--milkdrop-pos")
-                .arg(format!("{},{}", pos[0], pos[1]));
-        }
-        if fullscreen {
-            command.arg("--milkdrop-fullscreen");
-        }
         let mut process = match command.spawn() {
             Ok(process) => process,
             Err(error) => {
-                log::warn!("MilkDrop: could not start its window: {error}");
-                return;
+                log::warn!("MilkDrop: could not start {}: {error}", exe.display());
+                drop(ring);
+                let _ = std::fs::remove_file(&self.shm_path);
+                return Err(error.to_string());
             }
         };
         let stdin = process.stdin.take().expect("child stdin was piped");
@@ -167,6 +155,7 @@ impl Host {
             scale,
             song: None,
         });
+        Ok(())
     }
 
     /// Sends new settings to the window, if they changed.

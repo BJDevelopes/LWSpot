@@ -59,6 +59,12 @@ impl AppDirs {
         self.config.join("milkdrop")
     }
 
+    /// Optional parts LWSpot downloads when they are first used, such as
+    /// the MilkDrop add-on. Nothing is here until then.
+    pub fn addons_dir(&self) -> PathBuf {
+        self.state.join("addons")
+    }
+
     pub fn session_file(&self) -> PathBuf {
         self.state.join("session.json")
     }

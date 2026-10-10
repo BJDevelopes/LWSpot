@@ -40,7 +40,11 @@ position once librespot confirms the seek. This also applies when another
 Spotify client controls playback on this computer. Natural track transitions
 retain their queue for gapless playback. The seek still waits for librespot to
 find and fetch the requested audio, and sound already handed to the device
-cannot be recalled. Seeking adds no Web API request or full-track download.
+cannot be recalled. After a seek into audio that is not downloaded yet,
+playback waits for 1.5 seconds of sound past the new position rather than
+librespot's default of 5. Sound from the new position comes up over 8 ms; a
+replaced track still fades in over 50 ms. Seeking adds no Web API request or
+full-track download.
 
 Explicit track replacements and confirmed seeks also clear the equalizer's
 filter history and the limiter's eight milliseconds of held audio. This keeps
@@ -50,9 +54,15 @@ track transitions and pause/resume retain that history.
 Requests that need a grant still being
 verified wait for it instead of showing "not signed in". Sign-out cancels
 pending requests, and their late results cannot undo a new sign-in. If Spotify
-rejects a saved refresh grant, LWSpot removes that grant and asks for a new
-browser approval. Upgrading to protected storage does not itself require
-signing in again.
+rejects a saved refresh grant as invalid (`invalid_grant` or `invalid_client`),
+LWSpot removes that grant and asks for a new browser approval. A rate limit,
+timeout, server error, or a page that is not Spotify's answer (a proxy or
+captive portal) keeps the grant and tries again later; a token endpoint
+`Retry-After` pauses refreshes for up to five minutes. When several requests
+are refused with the same expired access token, one refresh serves them all.
+A grant restored at startup saves each refreshed token right away, even while
+the account is still being verified. Upgrading to protected storage does not
+itself require signing in again.
 
 By default, LWSpot uses the public app shared with spotify-player, ncspot,
 and Omarchy Spotify. Spotify divides its quota among all users. A personal app adds a separate Development Mode quota. See
@@ -100,11 +110,22 @@ current-track pickup.
 ## What the client stores
 
 - Shared and personal Web API grants
-  and the reusable playback credential are kept in Windows Credential Manager.
+  and the reusable playback credential are kept in Windows Credential Manager,
+  with Local persistence. Where it cannot keep them across Windows sign-outs,
+  a DPAPI-encrypted file in `%LOCALAPPDATA%\LWSpot\data\credential-storage\`
+  holds them instead.
   Librespot retains its reusable credential in memory; LWSpot owns persistence.
   See [migration, sign-out, and storage protection](settings-and-files.md).
 - Downloaded audio and artwork, in the cache directory, within the budget
   you set.
+- The first time MilkDrop is turned on, and after an update, the MilkDrop
+  add-on for this version is downloaded from the LWSpot release on GitHub:
+  `checksums.txt`, then `lwspot-milkdrop-v<version>-<target>.zip` (a few MB).
+  The zip must match its line in `checksums.txt` before `lwspot-milkdrop.exe`
+  is unpacked into `%LOCALAPPDATA%\LWSpot\data\addons\`, and the add-on is
+  used only when its `--version` names this version. Nothing is requested
+  until MilkDrop is turned on. A release without the add-on is reported, and
+  MilkDrop stays off.
 - The first time MilkDrop opens with an empty preset folder, the two projectM
   preset packs are downloaded from GitHub (about 26 MB) and stored in the
   config directory.
@@ -287,6 +308,16 @@ Playback runs on a separate runtime. Librespot maintains the Spotify Connect
 session, exposes this computer as a device, receives transfers, and reports
 playback state. If the session drops, it reconnects with the stored credential.
 
+With the audio output set to the system default, LWSpot opens the device
+that is the default at that moment and checks every 1.5 seconds whether
+Windows has picked another, such as headphones that just connected. Playback
+then moves to the new default; the setting stays on the system default. A
+device that refuses to open is asked again up to five times, 150 ms apart,
+before playback stops with the device's own error, and Play then opens the
+output afresh. The log names each device opened with its sample rate and
+channel count. A one-channel output, such as a Bluetooth headset's hands-free
+mode, gets both sides of the music mixed together rather than the left alone.
+
 Selecting this computer in the device picker asks
 librespot to transfer playback from the active Connect device. Spotify supplies
 the current song, position, playing or paused state, context, and queue together.
@@ -337,8 +368,8 @@ The mode selects the protocol. Host and port are separate fields.
 These settings apply to LWSpot's requests. The external browser used
 for Spotify approval keeps its own network and proxy settings.
 
-The Web API, artwork, lyrics, update checks and downloads, and MilkDrop preset
-downloads follow that mode. Update downloads retain their release-host redirect
+The Web API, artwork, lyrics, update checks and downloads, and the MilkDrop
+add-on and preset downloads follow that mode. Update downloads retain their release-host redirect
 restrictions and checksum verification. Local receivers on the LAN are never sent through a proxy.
 
 Local playback can only use an unauthenticated, plaintext HTTP proxy: that is

@@ -27,16 +27,23 @@ The `build` job runs once per target, each on a native runner:
 
 For each target it:
 
-1. Installs GLEW through vcpkg for libprojectM, sets up the MSVC environment,
-   and runs `cargo build --release --locked --target <target>`. Both builds
-   include MilkDrop. Release builds never use a compiler cache.
-2. Checks that `lwspot.exe` does not import the MSVC runtime DLLs, that it is
-   built for the right processor, and that `lwspot.exe --version` prints
-   `lwspot X.Y.Z`.
+1. Builds the app with `cargo build --release --locked --target <target>
+   --no-default-features --bin lwspot`, which needs no vcpkg. Then installs
+   GLEW through vcpkg for libprojectM, sets up the MSVC environment, and builds
+   the MilkDrop add-on with `cargo build --release --locked --target <target>
+   --features milkdrop --bin lwspot-milkdrop`. Release builds never use a
+   compiler cache.
+2. Checks that neither `lwspot.exe` nor `lwspot-milkdrop.exe` imports the MSVC
+   runtime DLLs, that both are built for the right processor, and that their
+   `--version` prints `lwspot X.Y.Z` and `lwspot-milkdrop X.Y.Z`.
 3. Packs a portable ZIP containing `lwspot.exe`, `README.md`, `LICENSE`, and
    `lwspot-portable.txt`. The marker file tells the updater that this copy is
-   portable.
-4. Builds the installer with Inno Setup from
+   portable. MilkDrop is not in it.
+4. Packs `lwspot-milkdrop-<tag>-<target>.zip` with `lwspot-milkdrop.exe` and
+   `LICENSE`, deflated. The app downloads this the first time MilkDrop is
+   turned on and checks it against `checksums.txt`, so its name must keep
+   this form.
+5. Builds the installer with Inno Setup from
    [`packaging/windows/lwspot.iss`](packaging/windows/lwspot.iss). The
    installer is per-user: it installs to
    `%LOCALAPPDATA%\Programs\LWSpot\lwspot.exe` with a Start menu entry and
@@ -55,11 +62,16 @@ lwspot-vX.Y.Z-x86_64-pc-windows-msvc.zip
 lwspot-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe
 lwspot-vX.Y.Z-aarch64-pc-windows-msvc.zip
 lwspot-vX.Y.Z-aarch64-pc-windows-msvc-setup.exe
+lwspot-milkdrop-vX.Y.Z-x86_64-pc-windows-msvc.zip
+lwspot-milkdrop-vX.Y.Z-aarch64-pc-windows-msvc.zip
 checksums.txt
 ```
 
 The in-app updater picks the file for its own architecture and install type
-and verifies it against `checksums.txt` before installing. The releases are
+and verifies it against `checksums.txt` before installing. The app fetches
+the MilkDrop add-on of its own version and architecture the same way, from
+`releases/download/vX.Y.Z/`, so a release without it leaves MilkDrop
+unavailable to that version. The releases are
 not code-signed yet, so SmartScreen may warn on first run.
 
 ## Building the installer locally

@@ -35,9 +35,11 @@ const WAVE_ECHO_ALPHA: f32 = 0.18;
 const LIGHT_STRENGTH: f32 = 1.5;
 /// The gap between spectrum bars.
 const SPECTRUM_GAP: f32 = 2.0;
-/// How often a moving visualizer is drawn: sixty times a second, as the
-/// mini player's.
-const VIS_FRAME: std::time::Duration = std::time::Duration::from_micros(16_667);
+/// How often a moving visualizer is drawn: thirty times a second, half as
+/// often under a saving budget. Its bars fall by the clock, so a slower
+/// frame rate draws the same motion, and each of its frames redraws the
+/// whole window.
+const VIS_FRAME: std::time::Duration = std::time::Duration::from_micros(33_333);
 
 /// Forget this bar's animation session while the sign-in screen is shown.
 pub(crate) fn end_tint_session(ctx: &egui::Context) {
@@ -62,7 +64,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             // The whole bar, margins included, behind everything else.
             let behind = rect.expand2(vec2(16.0, 0.0));
             if visualizer(app, ui, behind, now.as_ref()) {
-                ui.ctx().request_repaint_after(VIS_FRAME);
+                // egui wakes a delayed repaint one predicted frame early, and
+                // a window drawn below the display's rate does not wait that
+                // frame out in its swap: ask for it that much later.
+                let early = ui.input(|input| input.predicted_dt);
+                ui.ctx().request_repaint_after(
+                    app.budget.frame(VIS_FRAME) + std::time::Duration::from_secs_f32(early),
+                );
             }
             // Its empty space is the visualizer's control, as Winamp's
             // visualizer was: a click moves to the next mode. The controls
@@ -737,6 +745,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     // the time text's line height).
     let row_cy = cy + 31.0;
     let slider_width = (region.width() - 120.0).clamp(120.0, 620.0);
+    app.progress_bar_px = slider_width * ui.ctx().pixels_per_point();
     let (position, duration) = now
         .map(|now| (now.position_ms, now.duration_ms))
         .unwrap_or((0, 0));

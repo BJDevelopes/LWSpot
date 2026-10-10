@@ -84,13 +84,15 @@ pub enum TokenProvider {
 impl TokenProvider {
     async fn access_token(&self) -> Result<String> {
         match self {
-            Self::Web(tokens) => tokens.access_token(false).await,
+            Self::Web(tokens) => tokens.access_token(None).await,
         }
     }
 
-    async fn invalidate(&self) {
+    /// `rejected` is the access token Spotify answered 401 to. Concurrent
+    /// requests that saw the same token share one refresh.
+    async fn invalidate(&self, rejected: &str) {
         let Self::Web(tokens) = self;
-        let _ = tokens.access_token(true).await;
+        let _ = tokens.access_token(Some(rejected)).await;
     }
 }
 
@@ -102,7 +104,15 @@ pub struct WebTokens {
     remember: std::sync::atomic::AtomicBool,
     storage_error: std::sync::Arc<dyn Fn(crate::credentials::Error) + Send + Sync>,
     source: ApiSource,
+    /// No token request before this, after Spotify's token endpoint asked
+    /// for a pause. Read and written only while `token` is locked.
+    refresh_after: Mutex<Option<Instant>>,
+    #[cfg(test)]
+    token_url: Option<String>,
 }
+
+/// The longest pause honored from the token endpoint's `Retry-After`.
+const MAX_REFRESH_PAUSE: Duration = Duration::from_secs(300);
 
 impl WebTokens {
     pub fn new(
@@ -119,7 +129,34 @@ impl WebTokens {
             remember: std::sync::atomic::AtomicBool::new(false),
             storage_error,
             source,
+            refresh_after: Mutex::new(None),
+            #[cfg(test)]
+            token_url: None,
         })
+    }
+
+    /// A grant restored from protected storage is already remembered. Save
+    /// rotated refresh tokens even while the account is being verified, or a
+    /// rotation during startup is lost and the stored grant is spent.
+    pub fn persist_rotations(&self) {
+        self.remember
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    async fn refresh(
+        &self,
+        client_id: &str,
+        refresh_token: &str,
+    ) -> std::result::Result<crate::auth::TokenResponse, crate::auth::TokenEndpointError> {
+        let http = self
+            .http
+            .client()
+            .map_err(crate::auth::TokenEndpointError::Unreachable)?;
+        #[cfg(test)]
+        if let Some(url) = &self.token_url {
+            return crate::auth::refresh_at(&http, url, client_id, refresh_token).await;
+        }
+        crate::auth::refresh(&http, client_id, refresh_token).await
     }
 
     /// Start persistence only after the Web API has verified the account.
@@ -135,24 +172,33 @@ impl WebTokens {
     }
 
     /// A valid access token, refreshing first when it is close to expiry or
-    /// `force` asks for a fresh one after a 401.
-    async fn access_token(&self, force: bool) -> Result<String> {
+    /// after Spotify answered 401 to `rejected`. A rejected token that is no
+    /// longer current was already replaced by another request's refresh.
+    async fn access_token(&self, rejected: Option<&str>) -> Result<String> {
         let mut guard = self.token.lock().await;
         if !self.lease.current() {
             return Err(ApiError::SignInExpired {
                 api_source: self.source,
             });
         }
+        let force = rejected.is_some_and(|rejected| rejected == guard.access_token);
         if force || guard.needs_refresh() {
+            let paused = {
+                let mut after = self.refresh_after.lock().unwrap_or_else(|p| p.into_inner());
+                if after.is_some_and(|after| Instant::now() >= after) {
+                    *after = None;
+                }
+                after.is_some()
+            };
+            if paused {
+                if force || guard.expired() {
+                    return Err(ApiError::RateLimited);
+                }
+                return Ok(guard.access_token.clone());
+            }
             let client_id = guard.client_id.clone();
             let refresh_token = guard.refresh_token.clone();
-            match crate::auth::refresh(
-                &self.http.client().map_err(ApiError::Network)?,
-                &client_id,
-                &refresh_token,
-            )
-            .await
-            {
+            match self.refresh(&client_id, &refresh_token).await {
                 Ok(response) => match crate::auth::StoredToken::from_response(
                     &client_id,
                     response,
@@ -188,6 +234,20 @@ impl WebTokens {
                     return Err(ApiError::SignInExpired {
                         api_source: self.source,
                     });
+                }
+                Err(crate::auth::TokenEndpointError::RateLimited { retry_after }) => {
+                    let pause = retry_after
+                        .unwrap_or(Duration::from_secs(5))
+                        .min(MAX_REFRESH_PAUSE);
+                    log::warn!(
+                        "Spotify token endpoint rate limit source={} wait={pause:?}",
+                        self.source
+                    );
+                    *self.refresh_after.lock().unwrap_or_else(|p| p.into_inner()) =
+                        Some(Instant::now() + pause);
+                    if force || guard.expired() {
+                        return Err(ApiError::RateLimited);
+                    }
                 }
                 Err(crate::auth::TokenEndpointError::Unreachable(detail)) => {
                     if force || guard.expired() {
@@ -469,7 +529,7 @@ impl ApiClient {
 
             if status == StatusCode::UNAUTHORIZED && attempt == 1 {
                 drop(permit);
-                provider.invalidate().await;
+                provider.invalidate(&token).await;
                 continue;
             }
             if status == StatusCode::TOO_MANY_REQUESTS {
@@ -1199,14 +1259,14 @@ mod tests {
             std::sync::Arc::new(|_| {}),
         );
         // Verification can use a token in memory without persisting it yet.
-        assert_eq!(tokens.access_token(false).await.unwrap(), "dummy-access");
+        assert_eq!(tokens.access_token(None).await.unwrap(), "dummy-access");
         assert!(store.lease(slot).load().await.unwrap().grant.is_none());
         tokens.remember().await.unwrap();
         assert!(store.lease(slot).load().await.unwrap().grant.is_some());
         store.revoke_spotify().unwrap();
         store.lease(slot).delete().await.unwrap();
         assert!(matches!(
-            tokens.access_token(false).await,
+            tokens.access_token(None).await,
             Err(ApiError::SignInExpired { .. })
         ));
         assert_eq!(
@@ -1215,6 +1275,114 @@ mod tests {
         );
         assert!(store.lease(slot).load().await.unwrap().grant.is_none());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A token endpoint that answers each request with the next response
+    /// and counts the requests.
+    async fn token_endpoint(
+        responses: Vec<&'static str>,
+    ) -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/api/token", listener.local_addr().unwrap());
+        let requests = Arc::new(AtomicUsize::new(0));
+        let count = requests.clone();
+        let server = tokio::spawn(async move {
+            for response in responses {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") {
+                    request.push(socket.read_u8().await.unwrap());
+                }
+                let headers = String::from_utf8(request).unwrap().to_lowercase();
+                let length: usize = headers
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length: "))
+                    .map_or(0, |length| length.trim().parse().unwrap());
+                let mut body = vec![0; length];
+                socket.read_exact(&mut body).await.unwrap();
+                count.fetch_add(1, Ordering::SeqCst);
+                // Hold the answer so concurrent callers overlap the refresh.
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        (url, requests, server)
+    }
+
+    fn tokens_at(url: String, access_token: &str) -> Arc<WebTokens> {
+        let mut tokens = WebTokens::new(
+            reqwest::Client::builder().no_proxy().build().unwrap(),
+            crate::auth::StoredToken {
+                client_id: "dummy-client".into(),
+                access_token: access_token.into(),
+                refresh_token: "dummy-refresh".into(),
+                expires_at: u64::MAX,
+                scope: String::new(),
+            },
+            crate::credentials::Store::in_memory(crate::paths::AppDirs {
+                config: std::env::temp_dir().join("unused-refresh-token/config"),
+                state: std::env::temp_dir().join("unused-refresh-token/state"),
+                cache: std::env::temp_dir().join("unused-refresh-token/cache"),
+            })
+            .lease(crate::credentials::Slot::Shared),
+            ApiSource::Shared,
+            Arc::new(|_| {}),
+        );
+        Arc::get_mut(&mut tokens).unwrap().token_url = Some(url);
+        tokens
+    }
+
+    const FRESH: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 72\r\nConnection: close\r\n\r\n{\"access_token\":\"dummy-fresh\",\"expires_in\":3600,\"refresh_token\":\"rot\"}  ";
+    const NEWER: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 72\r\nConnection: close\r\n\r\n{\"access_token\":\"dummy-newer\",\"expires_in\":3600,\"refresh_token\":\"rot\"}  ";
+
+    #[tokio::test]
+    async fn concurrent_401s_for_one_token_share_one_refresh() {
+        let (url, requests, server) = token_endpoint(vec![FRESH, NEWER]).await;
+        let tokens = tokens_at(url, "dummy-stale");
+        let (first, second) = tokio::join!(
+            tokens.access_token(Some("dummy-stale")),
+            tokens.access_token(Some("dummy-stale"))
+        );
+        assert_eq!(first.unwrap(), "dummy-fresh");
+        assert_eq!(second.unwrap(), "dummy-fresh");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        // A late 401 for the replaced token needs no refresh either.
+        assert_eq!(
+            tokens.access_token(Some("dummy-stale")).await.unwrap(),
+            "dummy-fresh"
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        // A 401 for the current token still refreshes.
+        assert_eq!(
+            tokens.access_token(Some("dummy-fresh")).await.unwrap(),
+            "dummy-newer"
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_token_endpoint_keeps_the_grant_and_pauses_refreshes() {
+        let (url, requests, server) = token_endpoint(vec![
+            "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        ])
+        .await;
+        let tokens = tokens_at(url, "dummy-stale");
+        assert!(matches!(
+            tokens.access_token(Some("dummy-stale")).await,
+            Err(ApiError::RateLimited)
+        ));
+        // The pause holds: no second request, and the grant is not expired.
+        assert!(matches!(
+            tokens.access_token(Some("dummy-stale")).await,
+            Err(ApiError::RateLimited)
+        ));
+        assert_eq!(tokens.access_token(None).await.unwrap(), "dummy-stale");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+        server.await.unwrap();
     }
 
     #[tokio::test]

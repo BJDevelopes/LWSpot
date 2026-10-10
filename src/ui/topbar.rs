@@ -475,13 +475,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     Icon::AudioLines,
                     ICON_BUTTON_ICON,
-                    if app.settings.milkdrop_open {
+                    if app.milkdrop_on() {
                         palette.accent
                     } else {
                         palette.secondary
                     },
                     palette.text,
-                    &gettext(locale, "MilkDrop visualiser (Ctrl+Shift+K)"),
+                    &if app.milkdrop_addon.fetching() {
+                        gettext(locale, "Downloading the MilkDrop add-on")
+                    } else {
+                        gettext(locale, "MilkDrop visualiser (Ctrl+Shift+K)")
+                    },
                 )
                 .clicked()
                 {

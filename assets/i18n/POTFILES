@@ -11,6 +11,7 @@ src/app/radio.rs
 src/milkdrop.rs
 src/model.rs
 src/settings.rs
+src/sink.rs
 src/theme.rs
 src/ui/artist.rs
 src/ui/collection.rs

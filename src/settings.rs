@@ -1485,6 +1485,12 @@ pub struct SessionState {
     /// start returns it to this mode instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics_fullscreen_from: Option<WindowMode>,
+    /// The window mode F11 full screen left, when the app closed in it.
+    /// eframe restores the window full screen, and this tells the next
+    /// start it is the listener's full screen, not one fullscreen lyrics
+    /// left behind.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_fullscreen_from: Option<WindowMode>,
 }
 
 /// Whether a window was full screen, and whether it was maximized.

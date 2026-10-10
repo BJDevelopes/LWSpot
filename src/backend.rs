@@ -1760,7 +1760,7 @@ impl Worker {
                         && self.authorizing_source == Some(source)
                         && self.authorization_attempt == attempt
                     {
-                        self.on_web_signed_in(source, *token);
+                        self.on_web_signed_in(source, *token, false);
                     } else if self.authorization_attempt == attempt {
                         self.finish_authorization(source);
                     }
@@ -2036,7 +2036,7 @@ impl Worker {
         let lease = self.credentials.lease(CredentialSlot::Proxy);
         let commands = self.commands.clone();
         tokio::spawn(async move {
-            let result = lease.load().await;
+            let result = lease.load_retrying().await;
             let _ = commands.send(Command::ProxyRestored { lease, result });
         });
     }
@@ -2056,7 +2056,7 @@ impl Worker {
             let lease = self.credentials.lease(slot);
             let commands = self.commands.clone();
             tokio::spawn(async move {
-                let result = lease.load().await;
+                let result = lease.load_retrying().await;
                 let _ = commands.send(Command::CredentialsRestored {
                     slot,
                     lease,
@@ -2109,7 +2109,7 @@ impl Worker {
                         if !self.signed_in {
                             self.emit(Event::Auth(AuthStatus::Connecting));
                         }
-                        self.on_web_signed_in(source, token);
+                        self.on_web_signed_in(source, token, true);
                     } else {
                         // Signing in renews only the shared app's grant, so a
                         // personal app has to be authorized again where it was
@@ -2155,7 +2155,14 @@ impl Worker {
         })
     }
 
-    fn on_web_signed_in(&mut self, source: ApiSource, token: crate::auth::StoredToken) {
+    /// `restored` grants came from protected storage and keep it current
+    /// from the start. A fresh browser grant is saved once it is verified.
+    fn on_web_signed_in(
+        &mut self,
+        source: ApiSource,
+        token: crate::auth::StoredToken,
+        restored: bool,
+    ) {
         let lease = self.credentials.lease(web_slot(source));
         let tokens = WebTokens::new(
             self.http.clone(),
@@ -2164,6 +2171,9 @@ impl Worker {
             source,
             self.storage_notice(lease.clone()),
         );
+        if restored {
+            tokens.persist_rotations();
+        }
         self.web_tokens[web_slot(source).index()] = Some(tokens.clone());
         self.api
             .begin_verification(source, TokenProvider::Web(tokens));
@@ -2498,7 +2508,7 @@ impl Worker {
         let Some(credentials) = playback_credentials(self.api.account(), access_token) else {
             self.engine_busy = false;
             self.emit(Event::Playback(LocalPlayback::Failed(
-                "Finish signing in to Spotify before enabling playback.".into(),
+                "Local playback can be set up once Spotify sign-in finishes.".into(),
             )));
             return;
         };
@@ -3316,7 +3326,7 @@ fn friendly_connect_error(error: &anyhow::Error) -> String {
     let text = format!("{error:#}");
     let lower = text.to_lowercase();
     if lower.contains("badcredentials") || lower.contains("bad credentials") {
-        "Spotify rejected the saved sign-in. Please sign in again.".to_string()
+        "Spotify no longer accepts the saved playback credential. Local playback needs to be set up again; the rest of LWSpot stays signed in.".to_string()
     } else if lower.contains("premium") {
         PREMIUM_NEEDED.to_string()
     } else if lower.contains("dns") || lower.contains("connect") || lower.contains("resolve") {

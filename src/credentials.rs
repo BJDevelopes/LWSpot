@@ -21,6 +21,9 @@ use crate::{auth::StoredToken, paths::AppDirs};
 
 const SERVICE: &str = "io.github.BJDevelopes.LWSpot";
 const TIMEOUT: Duration = Duration::from_secs(20);
+/// Startup reads retry a refusing store after 250 ms, 500 ms and 1 s.
+const STARTUP_RETRIES: u32 = 3;
+const STARTUP_RETRY: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -157,9 +160,77 @@ impl Error {
     }
 }
 
-fn native_error(error: keyring_core::Error) -> Error {
+/// Credential Manager refuses blobs over 2560 bytes. Larger records go
+/// straight to the protected fallback file with a clear log line instead.
+const NATIVE_LIMIT: usize = 2400;
+
+/// What a native store failure was, without anything it carried. Provider
+/// errors can hold the secret (`BadEncoding`, `BadDataFormat`) or arbitrary
+/// text, so only the variant, a Win32 code, or a length is kept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Cause {
+    variant: &'static str,
+    code: Option<u32>,
+    length: Option<u32>,
+}
+
+impl std::fmt::Display for Cause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.variant)?;
+        if let Some(code) = self.code {
+            write!(f, " (Win32 error {code})")?;
+        }
+        if let Some(length) = self.length {
+            write!(f, " (limit {length})")?;
+        }
+        Ok(())
+    }
+}
+
+/// The Win32 code inside a windows-native-keyring-store platform error. Its
+/// type is private, so the code is recovered from its fixed Display forms.
+fn platform_code(error: &(dyn std::error::Error + Send + Sync)) -> Option<u32> {
+    let text = error.to_string();
+    if let Some(code) = text.strip_prefix("Windows error code ") {
+        return code.trim().parse().ok();
+    }
+    Some(match text.as_str() {
+        "Windows ERROR_NO_SUCH_LOGON_SESSION" => 1312,
+        "Windows ERROR_NOT_FOUND" => 1168,
+        "Windows ERROR_BAD_USERNAME" => 2202,
+        "Windows ERROR_INVALID_FLAGS" => 1004,
+        "Windows ERROR_INVALID_PARAMETER" => 87,
+        _ => return None,
+    })
+}
+
+fn diagnose(error: &keyring_core::Error) -> Cause {
+    use keyring_core::Error as E;
+    let (variant, code, length) = match error {
+        E::PlatformFailure(inner) => ("PlatformFailure", platform_code(inner.as_ref()), None),
+        E::NoStorageAccess(inner) => ("NoStorageAccess", platform_code(inner.as_ref()), None),
+        E::NoEntry => ("NoEntry", None, None),
+        E::BadEncoding(_) => ("BadEncoding", None, None),
+        E::BadDataFormat(..) => ("BadDataFormat", None, None),
+        E::BadStoreFormat(_) => ("BadStoreFormat", None, None),
+        E::TooLong(_, limit) => ("TooLong", None, Some(*limit)),
+        E::Invalid(..) => ("Invalid", None, None),
+        E::Ambiguous(_) => ("Ambiguous", None, None),
+        E::NoDefaultStore => ("NoDefaultStore", None, None),
+        E::NotSupportedByStore(_) => ("NotSupportedByStore", None, None),
+        _ => ("Other", None, None),
+    };
+    Cause {
+        variant,
+        code,
+        length,
+    }
+}
+
+fn native_error(operation: &str, error: keyring_core::Error) -> Error {
     // Some provider errors contain the secret or arbitrary platform data.
     // Never propagate their Debug/Display text into application diagnostics.
+    log::warn!("credential store {operation} failed: {}", diagnose(&error));
     match error {
         keyring_core::Error::NoStorageAccess(_) => Error::Locked,
         _ => Error::Unavailable,
@@ -168,6 +239,25 @@ fn native_error(error: keyring_core::Error) -> Error {
 
 trait ProtectedStore: Send {
     fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error>;
+    fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error>;
+    fn delete(&mut self, key: &str) -> Result<(), Error>;
+}
+
+/// How long Credential Manager keeps an entry. `Session` entries end at
+/// sign-out of Windows, which is what a policy forbidding saved credentials
+/// turns every write into.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Persistence {
+    Session,
+    Local,
+    Enterprise,
+}
+
+/// The raw Credential Manager operations below the fallback layer.
+trait Native: Send {
+    fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error>;
+    fn persistence(&mut self, key: &str) -> Result<Option<Persistence>, Error>;
+    /// Writes with Local persistence: kept on this computer, never roamed.
     fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error>;
     fn delete(&mut self, key: &str) -> Result<(), Error>;
 }
@@ -181,32 +271,311 @@ impl NativeStore {
     fn entry(&mut self, key: &str) -> Result<keyring_core::Entry, Error> {
         if self.store.is_none() {
             let store = windows_native_keyring_store::Store::new();
-            self.store = Some(store.map_err(native_error)?);
+            self.store = Some(store.map_err(|error| native_error("open", error))?);
         }
+        let modifiers = std::collections::HashMap::from([("persistence", "Local")]);
         self.store
             .as_ref()
             .ok_or(Error::Unavailable)?
-            .build(SERVICE, key, None)
-            .map_err(native_error)
+            .build(SERVICE, key, Some(&modifiers))
+            .map_err(|error| native_error("entry", error))
     }
 }
 
-impl ProtectedStore for NativeStore {
+impl Native for NativeStore {
     fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         match self.entry(key)?.get_secret() {
             Ok(secret) => Ok(Some(secret)),
             Err(keyring_core::Error::NoEntry) => Ok(None),
-            Err(error) => Err(native_error(error)),
+            Err(error) => Err(native_error("read", error)),
+        }
+    }
+    fn persistence(&mut self, key: &str) -> Result<Option<Persistence>, Error> {
+        match self.entry(key)?.get_attributes() {
+            Ok(attributes) => Ok(Some(
+                match attributes.get("persistence").map(String::as_str) {
+                    Some("Session") => Persistence::Session,
+                    Some("Local") => Persistence::Local,
+                    _ => Persistence::Enterprise,
+                },
+            )),
+            Err(keyring_core::Error::NoEntry) => Ok(None),
+            Err(error) => Err(native_error("attribute read", error)),
         }
     }
     fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error> {
-        self.entry(key)?.set_secret(secret).map_err(native_error)
+        self.entry(key)?
+            .set_secret(secret)
+            .map_err(|error| native_error("write", error))
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
         match self.entry(key)?.delete_credential() {
             Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
-            Err(error) => Err(native_error(error)),
+            Err(error) => Err(native_error("delete", error)),
         }
+    }
+}
+
+/// Encrypts the fallback file for the signed-in Windows user with DPAPI.
+mod dpapi {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Cryptography::{
+        CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
+    };
+
+    fn blob(bytes: &[u8]) -> CRYPT_INTEGER_BLOB {
+        CRYPT_INTEGER_BLOB {
+            cbData: bytes.len() as u32,
+            pbData: bytes.as_ptr().cast_mut(),
+        }
+    }
+
+    /// Copies DPAPI's output and wipes and frees its allocation.
+    fn take(output: CRYPT_INTEGER_BLOB) -> Vec<u8> {
+        if output.pbData.is_null() {
+            return Vec::new();
+        }
+        // SAFETY: on success DPAPI returns `cbData` bytes allocated with
+        // LocalAlloc; they are copied, wiped, and freed exactly once.
+        unsafe {
+            let bytes = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+            std::ptr::write_bytes(output.pbData, 0, output.cbData as usize);
+            LocalFree(output.pbData.cast());
+            bytes
+        }
+    }
+
+    pub(super) fn protect(secret: &[u8], entropy: &[u8]) -> std::io::Result<Vec<u8>> {
+        let input = blob(secret);
+        let entropy = blob(entropy);
+        let mut output = CRYPT_INTEGER_BLOB {
+            cbData: 0,
+            pbData: std::ptr::null_mut(),
+        };
+        // SAFETY: every pointer refers to a live blob for the whole call.
+        let done = unsafe {
+            CryptProtectData(
+                &input,
+                std::ptr::null(),
+                &entropy,
+                std::ptr::null(),
+                std::ptr::null(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut output,
+            )
+        };
+        if done == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(take(output))
+    }
+
+    pub(super) fn unprotect(protected: &[u8], entropy: &[u8]) -> std::io::Result<Vec<u8>> {
+        let input = blob(protected);
+        let entropy = blob(entropy);
+        let mut output = CRYPT_INTEGER_BLOB {
+            cbData: 0,
+            pbData: std::ptr::null_mut(),
+        };
+        // SAFETY: every pointer refers to a live blob for the whole call.
+        let done = unsafe {
+            CryptUnprotectData(
+                &input,
+                std::ptr::null_mut(),
+                &entropy,
+                std::ptr::null(),
+                std::ptr::null(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut output,
+            )
+        };
+        if done == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(take(output))
+    }
+}
+
+/// Credential Manager first, then a DPAPI-encrypted file for the computers
+/// where it cannot keep an entry across Windows sign-outs.
+struct Durable<N> {
+    native: N,
+    /// `credential-storage` in the state directory, beside the markers.
+    folder: PathBuf,
+}
+
+impl<N: Native> Durable<N> {
+    fn slot_name(key: &str) -> Option<&'static str> {
+        Slot::ALL.into_iter().map(Slot::name).find(|name| {
+            key.strip_suffix(name)
+                .is_some_and(|rest| rest.ends_with(':'))
+        })
+    }
+
+    fn fallback_path(&self, name: &str) -> PathBuf {
+        self.folder.join(format!("{name}.bin"))
+    }
+
+    fn entropy(name: &str) -> Vec<u8> {
+        format!("{SERVICE}:{name}").into_bytes()
+    }
+
+    fn read_fallback(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+        let Some(name) = Self::slot_name(key) else {
+            return Ok(None);
+        };
+        let protected = match std::fs::read(self.fallback_path(name)) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(Error::Filesystem),
+        };
+        dpapi::unprotect(&protected, &Self::entropy(name))
+            .map(Some)
+            .map_err(|error| {
+                log::warn!(
+                    "credential fallback for {name} could not be decrypted: Win32 error {}",
+                    error.raw_os_error().unwrap_or_default()
+                );
+                Error::Invalid
+            })
+    }
+
+    fn write_fallback(&self, key: &str, secret: &[u8]) -> Result<(), Error> {
+        use std::io::Write;
+        let name = Self::slot_name(key).ok_or(Error::Unavailable)?;
+        let protected = dpapi::protect(secret, &Self::entropy(name)).map_err(|error| {
+            log::warn!(
+                "credential fallback for {name} could not be encrypted: Win32 error {}",
+                error.raw_os_error().unwrap_or_default()
+            );
+            Error::Unavailable
+        })?;
+        std::fs::create_dir_all(&self.folder).map_err(|_| Error::Filesystem)?;
+        let path = self.fallback_path(name);
+        let temporary = path.with_extension("bin.tmp");
+        let result = (|| {
+            let mut file = std::fs::File::create(&temporary)?;
+            file.write_all(&protected)?;
+            file.sync_all()?;
+            drop(file);
+            crate::util::replace_file(&temporary, &path)
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+            log::warn!("credential fallback for {name} could not be written");
+            return Err(Error::Filesystem);
+        }
+        log::info!("credential {name} is kept in the protected fallback file");
+        Ok(())
+    }
+
+    fn delete_fallback(&self, key: &str) -> Result<(), Error> {
+        let Some(name) = Self::slot_name(key) else {
+            return Ok(());
+        };
+        let path = self.fallback_path(name);
+        let temporary = remove_file(&path.with_extension("bin.tmp"));
+        remove_file(&path).and(temporary)
+    }
+
+    /// Keep a secret that Credential Manager will not hold durably. A stale
+    /// native entry would shadow the file, so it must be gone first.
+    fn fall_back(&mut self, key: &str, secret: &[u8], cause: Error) -> Result<(), Error> {
+        let _ = self.native.delete(key);
+        if matches!(self.native.read(key), Ok(Some(_))) {
+            log::warn!("credential store kept an older entry; the fallback cannot replace it");
+            return Err(cause);
+        }
+        self.write_fallback(key, secret).map_err(|_| cause)
+    }
+
+    /// Rewrite an entry Credential Manager would roam or drop at sign-out.
+    fn settle(&mut self, key: &str, secret: &[u8], persistence: Persistence) {
+        match persistence {
+            Persistence::Local => {}
+            Persistence::Enterprise => {
+                log::info!("moving a credential entry to local persistence");
+                let moved = self
+                    .native
+                    .delete(key)
+                    .and_then(|()| self.native.write(key, secret))
+                    .and_then(|()| self.native.persistence(key));
+                if !matches!(
+                    moved,
+                    Ok(Some(Persistence::Local | Persistence::Enterprise))
+                ) {
+                    log::warn!("credential entry could not be rewritten; using the fallback file");
+                    let _ = self.fall_back(key, secret, Error::Verification);
+                }
+            }
+            Persistence::Session => {
+                if self.read_fallback(key).ok().flatten().as_deref() != Some(secret) {
+                    log::warn!("credential entry is session-only; keeping the fallback file");
+                    let _ = self.write_fallback(key, secret);
+                }
+            }
+        }
+    }
+}
+
+impl<N: Native> ProtectedStore for Durable<N> {
+    fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+        match self.native.read(key) {
+            Ok(Some(secret)) => {
+                // A durable native save removes the file or makes it match,
+                // so a different file holds a newer secret the store refused.
+                if let Ok(Some(newer)) = self.read_fallback(key)
+                    && newer != secret
+                {
+                    log::warn!("credential fallback file is newer than the native entry");
+                    let _ = self.write(key, &newer);
+                    return Ok(Some(newer));
+                }
+                if let Ok(Some(persistence)) = self.native.persistence(key) {
+                    self.settle(key, &secret, persistence);
+                }
+                Ok(Some(secret))
+            }
+            Ok(None) => self.read_fallback(key),
+            Err(error) => match self.read_fallback(key) {
+                Ok(Some(secret)) => Ok(Some(secret)),
+                _ => Err(error),
+            },
+        }
+    }
+
+    fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error> {
+        if secret.len() > NATIVE_LIMIT {
+            log::warn!(
+                "credential record of {} bytes exceeds the {NATIVE_LIMIT}-byte Credential Manager limit; using the fallback file",
+                secret.len()
+            );
+            return self.fall_back(key, secret, Error::Unavailable);
+        }
+        if let Err(error) = self.native.write(key, secret) {
+            return self.fall_back(key, secret, error);
+        }
+        match self.native.persistence(key) {
+            Ok(Some(Persistence::Local | Persistence::Enterprise)) => {
+                if self.delete_fallback(key).is_err() {
+                    // A file that outlives a save must at least match it.
+                    log::warn!("an outdated credential fallback file could not be removed");
+                    return self.write_fallback(key, secret);
+                }
+                Ok(())
+            }
+            Ok(Some(Persistence::Session)) => {
+                log::warn!("credential store saved a session-only entry; using the fallback file");
+                self.fall_back(key, secret, Error::Verification)
+            }
+            Ok(None) => self.fall_back(key, secret, Error::Verification),
+            Err(error) => self.fall_back(key, secret, error),
+        }
+    }
+
+    fn delete(&mut self, key: &str) -> Result<(), Error> {
+        let fallback = self.delete_fallback(key);
+        self.native.delete(key).and(fallback)
     }
 }
 
@@ -247,7 +616,11 @@ pub struct Loaded {
 
 impl Store {
     pub fn new(dirs: AppDirs) -> Self {
-        Self::with_backend(dirs, Box::new(NativeStore::default()))
+        let backend = Durable {
+            native: NativeStore::default(),
+            folder: dirs.state.join("credential-storage"),
+        };
+        Self::with_backend(dirs, Box::new(backend))
     }
 
     #[cfg(test)]
@@ -577,6 +950,25 @@ impl Lease {
         .await
     }
 
+    /// `load` for startup. Credential Manager can refuse the first reads
+    /// while Windows is still signing in, so retry an unavailable or locked
+    /// store briefly before treating the grant as missing. A timeout is not
+    /// retried: the worker is still busy with the call that timed out.
+    pub async fn load_retrying(&self) -> Result<Loaded, Error> {
+        let mut wait = STARTUP_RETRY;
+        for _ in 0..STARTUP_RETRIES {
+            match self.load().await {
+                Err(error @ (Error::Unavailable | Error::Locked)) if self.current() => {
+                    log::warn!("credential store read failed, retrying: {error:?}");
+                    tokio::time::sleep(wait).await;
+                    wait *= 2;
+                }
+                result => return result,
+            }
+        }
+        self.load().await
+    }
+
     fn save_inner(&self, backend: &mut dyn ProtectedStore, grant: Grant) -> Result<(), Error> {
         self.check()?;
         if !grant.valid_for(self.slot) {
@@ -638,6 +1030,8 @@ mod tests {
     struct Fake {
         values: HashMap<String, Vec<u8>>,
         read_error: Option<Error>,
+        /// Fail this many reads as unavailable, then recover.
+        read_failures: usize,
         write_error: Option<Error>,
         delete_error: Option<Error>,
         discard_write: bool,
@@ -653,7 +1047,11 @@ mod tests {
     struct Backend(Arc<Mutex<Fake>>);
     impl ProtectedStore for Backend {
         fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error> {
-            let fake = self.0.lock().unwrap();
+            let mut fake = self.0.lock().unwrap();
+            if fake.read_failures > 0 {
+                fake.read_failures -= 1;
+                return Err(Error::Unavailable);
+            }
             if let Some(error) = fake.read_error {
                 return Err(error);
             }
@@ -923,6 +1321,7 @@ mod tests {
                 native.read(&key).unwrap().as_deref(),
                 Some(b"dummy-probe".as_slice())
             );
+            assert_eq!(native.persistence(&key).unwrap(), Some(Persistence::Local));
             native.delete(&key).unwrap();
             assert_eq!(native.read(&key).unwrap(), None);
         })
@@ -1231,5 +1630,278 @@ mod tests {
                 Err(Error::Invalid)
             ));
         }
+    }
+
+    #[tokio::test]
+    async fn startup_reads_retry_a_store_that_refuses_at_first() {
+        let f = Fixture::new();
+        let grant = web(crate::auth::DEFAULT_WEB_CLIENT_ID);
+        f.store
+            .lease(Slot::Shared)
+            .save(grant.clone())
+            .await
+            .unwrap();
+        f.fake.lock().unwrap().read_failures = 1;
+        assert!(matches!(
+            f.store.lease(Slot::Shared).load().await,
+            Err(Error::Unavailable)
+        ));
+        f.fake.lock().unwrap().read_failures = 2;
+        let loaded = f.store.lease(Slot::Shared).load_retrying().await.unwrap();
+        assert!(loaded.grant == Some(grant));
+        // A store that keeps refusing is reported, not mistaken for no grant.
+        f.fake.lock().unwrap().read_failures = 10;
+        assert!(matches!(
+            f.store.lease(Slot::Shared).load_retrying().await,
+            Err(Error::Unavailable)
+        ));
+    }
+
+    #[test]
+    fn native_errors_keep_only_their_variant_code_or_length() {
+        use keyring_core::Error as E;
+        let secret = b"dummy-native-secret".to_vec();
+        let platform =
+            |text: &str| -> keyring_core::error::PlatformError { text.to_string().into() };
+        let cases = [
+            (
+                E::PlatformFailure(platform("Windows error code 1783")),
+                "PlatformFailure (Win32 error 1783)",
+                Error::Unavailable,
+            ),
+            (
+                E::NoStorageAccess(platform("Windows ERROR_NO_SUCH_LOGON_SESSION")),
+                "NoStorageAccess (Win32 error 1312)",
+                Error::Locked,
+            ),
+            (
+                E::PlatformFailure(platform("dummy-native-secret")),
+                "PlatformFailure",
+                Error::Unavailable,
+            ),
+            (
+                E::BadEncoding(secret.clone()),
+                "BadEncoding",
+                Error::Unavailable,
+            ),
+            (
+                E::BadDataFormat(secret.clone(), platform("dummy-native-secret")),
+                "BadDataFormat",
+                Error::Unavailable,
+            ),
+            (
+                E::TooLong("dummy-native-secret".into(), 2560),
+                "TooLong (limit 2560)",
+                Error::Unavailable,
+            ),
+            (
+                E::Invalid("dummy-native-secret".into(), "dummy-native-secret".into()),
+                "Invalid",
+                Error::Unavailable,
+            ),
+        ];
+        for (error, expected, mapped) in cases {
+            let cause = diagnose(&error);
+            assert_eq!(cause.to_string(), expected);
+            assert!(!format!("{cause:?}").contains("dummy-native-secret"));
+            assert_eq!(native_error("test", error), mapped);
+        }
+    }
+
+    #[test]
+    fn dpapi_round_trips_only_for_its_purpose() {
+        let secret = b"dummy-dpapi-secret".to_vec();
+        let protected = dpapi::protect(&secret, b"purpose-a").unwrap();
+        assert!(!protected.windows(secret.len()).any(|part| part == secret));
+        assert_eq!(dpapi::unprotect(&protected, b"purpose-a").unwrap(), secret);
+        assert!(dpapi::unprotect(&protected, b"purpose-b").is_err());
+        assert!(dpapi::unprotect(b"not protected", b"purpose-a").is_err());
+    }
+
+    #[derive(Default)]
+    struct FakeNative {
+        values: HashMap<String, (Vec<u8>, Persistence)>,
+        error: Option<Error>,
+        write_error: Option<Error>,
+        /// What Credential Manager makes of a write; Local when unset.
+        saves_as: Option<Persistence>,
+        writes: usize,
+    }
+    struct NativeHandle(Arc<Mutex<FakeNative>>);
+    impl Native for NativeHandle {
+        fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+            let fake = self.0.lock().unwrap();
+            if let Some(error) = fake.error {
+                return Err(error);
+            }
+            Ok(fake.values.get(key).map(|(value, _)| value.clone()))
+        }
+        fn persistence(&mut self, key: &str) -> Result<Option<Persistence>, Error> {
+            let fake = self.0.lock().unwrap();
+            if let Some(error) = fake.error {
+                return Err(error);
+            }
+            Ok(fake.values.get(key).map(|(_, persistence)| *persistence))
+        }
+        fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error> {
+            let mut fake = self.0.lock().unwrap();
+            if let Some(error) = fake.error.or(fake.write_error) {
+                return Err(error);
+            }
+            fake.writes += 1;
+            let persistence = fake.saves_as.unwrap_or(Persistence::Local);
+            fake.values
+                .insert(key.to_owned(), (secret.to_vec(), persistence));
+            Ok(())
+        }
+        fn delete(&mut self, key: &str) -> Result<(), Error> {
+            let mut fake = self.0.lock().unwrap();
+            if let Some(error) = fake.error {
+                return Err(error);
+            }
+            fake.values.remove(key);
+            Ok(())
+        }
+    }
+
+    fn durable(f: &Fixture) -> (Arc<Mutex<FakeNative>>, Durable<NativeHandle>) {
+        let native = Arc::new(Mutex::new(FakeNative::default()));
+        let store = Durable {
+            native: NativeHandle(native.clone()),
+            folder: f.dirs.state.join("credential-storage"),
+        };
+        (native, store)
+    }
+
+    #[test]
+    fn the_fallback_file_is_read_after_the_native_store_and_encrypted() {
+        let f = Fixture::new();
+        let (native, mut store) = durable(&f);
+        let key = f.store.lease(Slot::Shared).key();
+        let file = f
+            .dirs
+            .state
+            .join("credential-storage")
+            .join("shared-web.bin");
+        let secret = b"dummy-fallback-secret".to_vec();
+
+        // A durable native save needs no file.
+        store.write(&key, &secret).unwrap();
+        assert!(!file.exists());
+        assert_eq!(store.read(&key).unwrap(), Some(secret.clone()));
+
+        // A failed native save lands in the encrypted file, never plaintext.
+        native.lock().unwrap().error = Some(Error::Locked);
+        let newer = b"dummy-fallback-newer".to_vec();
+        store.write(&key, &newer).unwrap();
+        let bytes = std::fs::read(&file).unwrap();
+        assert!(!bytes.windows(newer.len()).any(|part| part == newer));
+        assert_eq!(store.read(&key).unwrap(), Some(newer.clone()));
+
+        // The older native entry left behind cannot shadow the newer file,
+        // which moves back into the native store once that works again.
+        native.lock().unwrap().error = None;
+        assert_eq!(store.read(&key).unwrap(), Some(newer.clone()));
+        assert!(!file.exists());
+        assert_eq!(
+            native.lock().unwrap().values.get(&key),
+            Some(&(newer.clone(), Persistence::Local))
+        );
+        // An unreadable file never hides the native entry, and is reported
+        // only when it is the sole copy.
+        std::fs::write(&file, b"dummy unreadable").unwrap();
+        assert_eq!(store.read(&key).unwrap(), Some(newer.clone()));
+        native.lock().unwrap().values.clear();
+        assert_eq!(store.read(&key), Err(Error::Invalid));
+        std::fs::remove_file(&file).unwrap();
+
+        // A later durable native save retires the file.
+        store.write(&key, &secret).unwrap();
+        assert!(!file.exists());
+
+        // Forgetting removes both copies.
+        native.lock().unwrap().write_error = Some(Error::Unavailable);
+        store.write(&key, &newer).unwrap();
+        assert!(file.exists());
+        native.lock().unwrap().write_error = None;
+        store.delete(&key).unwrap();
+        assert!(!file.exists());
+        assert_eq!(store.read(&key).unwrap(), None);
+        // With neither copy, a failing native store is reported.
+        native.lock().unwrap().error = Some(Error::Unavailable);
+        assert_eq!(store.read(&key), Err(Error::Unavailable));
+    }
+
+    #[test]
+    fn session_only_and_oversized_saves_use_the_fallback_file() {
+        let f = Fixture::new();
+        let (native, mut store) = durable(&f);
+        let key = f.store.lease(Slot::Playback).key();
+        let file = f.dirs.state.join("credential-storage").join("playback.bin");
+
+        native.lock().unwrap().saves_as = Some(Persistence::Session);
+        store.write(&key, b"dummy-session-secret").unwrap();
+        assert!(file.exists());
+        assert!(native.lock().unwrap().values.is_empty());
+        assert_eq!(
+            store.read(&key).unwrap().as_deref(),
+            Some(b"dummy-session-secret".as_slice())
+        );
+
+        native.lock().unwrap().saves_as = None;
+        let writes = native.lock().unwrap().writes;
+        let large = vec![b'x'; NATIVE_LIMIT + 1];
+        store.write(&key, &large).unwrap();
+        assert_eq!(native.lock().unwrap().writes, writes, "never sent natively");
+        assert_eq!(store.read(&key).unwrap(), Some(large));
+    }
+
+    #[test]
+    fn roaming_entries_move_to_local_persistence_when_read() {
+        let f = Fixture::new();
+        let (native, mut store) = durable(&f);
+        let key = f.store.lease(Slot::Personal).key();
+        native.lock().unwrap().values.insert(
+            key.clone(),
+            (b"dummy-roaming".to_vec(), Persistence::Enterprise),
+        );
+        assert_eq!(
+            store.read(&key).unwrap().as_deref(),
+            Some(b"dummy-roaming".as_slice())
+        );
+        let fake = native.lock().unwrap();
+        assert_eq!(
+            fake.values.get(&key),
+            Some(&(b"dummy-roaming".to_vec(), Persistence::Local))
+        );
+        assert!(
+            !f.dirs
+                .state
+                .join("credential-storage")
+                .join("personal-web.bin")
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_locked_native_store_still_remembers_the_grant_across_restart() {
+        let f = Fixture::new();
+        let (native, backend) = durable(&f);
+        native.lock().unwrap().error = Some(Error::Locked);
+        let store = Store::with_backend(f.dirs.clone(), Box::new(backend));
+        let grant = web(crate::auth::DEFAULT_WEB_CLIENT_ID);
+        store.lease(Slot::Shared).save(grant.clone()).await.unwrap();
+        let (_, backend) = durable(&f);
+        let restarted = Store::with_backend(f.dirs.clone(), Box::new(backend));
+        assert!(restarted.lease(Slot::Shared).load().await.unwrap().grant == Some(grant));
+        restarted.revoke_spotify().unwrap();
+        restarted.lease(Slot::Shared).delete().await.unwrap();
+        assert!(
+            !f.dirs
+                .state
+                .join("credential-storage")
+                .join("shared-web.bin")
+                .exists()
+        );
     }
 }

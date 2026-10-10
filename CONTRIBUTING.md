@@ -112,18 +112,22 @@ version; rustup installs it) and Visual Studio 2022 or its Build Tools with
 the C++ workload.
 
 ```powershell
-# Without MilkDrop: needs nothing else
-cargo build --release --no-default-features
-
-# Default build, with MilkDrop
-vcpkg install glew:x64-windows-static
+# lwspot.exe: needs nothing else
 cargo build --release
+
+# The MilkDrop add-on, lwspot-milkdrop.exe
+vcpkg install glew:x64-windows-static
+cargo build --release --features milkdrop --bin lwspot-milkdrop
 ```
 
-The default build compiles libprojectM from source for MilkDrop, so it also
-needs CMake, libclang (from LLVM), and vcpkg with `glew:x64-windows-static`
-installed and `VCPKG_INSTALLATION_ROOT` pointing at the vcpkg folder.
-`--no-default-features` leaves MilkDrop out and needs none of that.
+`lwspot.exe` never contains projectM. MilkDrop is the add-on, which the app
+downloads from the release of its own version the first time MilkDrop is
+turned on, and uses from next to `lwspot.exe` first when one of the same
+version is there. Building it compiles libprojectM from source, so it needs
+CMake, libclang (from LLVM), and vcpkg with `glew:x64-windows-static`
+installed and `VCPKG_INSTALLATION_ROOT` pointing at the vcpkg folder. The app
+and the add-on talk over the protocol in `src/milkdrop/args.rs`; raise
+`milkdrop::PROTOCOL` with any change to it.
 
 To look at the interface without a Spotify account:
 
@@ -138,14 +142,14 @@ Run the same checks CI runs before submitting:
 ```powershell
 cargo fmt --all --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo test --locked --all-targets
-cargo test --locked --all-targets --all-features
 cargo test --locked --all-targets --no-default-features
+cargo test --locked --all-targets --no-default-features --features demo
+cargo test --locked --all-targets --all-features
 cargo test --locked --all-features --doc
 ```
 
-CI runs these on Windows x64 and ARM64 runners, checks that the executable
-does not depend on the MSVC runtime DLLs, and compiles the Inno Setup
+CI runs these on Windows x64 and ARM64 runners, checks that the app and the
+MilkDrop add-on do not depend on the MSVC runtime DLLs, and compiles the Inno Setup
 installer script. Passing CI is required, but does not replace review for
 correctness, product fit, maintainability, or security.
 

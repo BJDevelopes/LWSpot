@@ -87,15 +87,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 }
 
 /// The main window's narrowest width with these panels open: their least
-/// widths and the page's.
-fn main_min_width(page: f32, sidebar: bool, right_panel: bool) -> f32 {
+/// widths and the page's, but never wider than the monitor, which a
+/// portrait one can be narrower than (#783).
+fn main_min_width(page: f32, sidebar: bool, right_panel: bool, monitor: Option<f32>) -> f32 {
     let sidebar = if sidebar { SIDEBAR_MIN_WIDTH } else { 0.0 };
     let right = if right_panel {
         theme::SIDE_PANEL_MIN_WIDTH
     } else {
         0.0
     };
-    (sidebar + right + page).max(crate::window::MAIN_MIN_SIZE[0])
+    let width = (sidebar + right + page).max(crate::window::MAIN_MIN_SIZE[0]);
+    match monitor {
+        Some(monitor) if monitor.is_finite() && monitor > 0.0 => width.min(monitor),
+        _ => width,
+    }
 }
 
 /// The sidebar's narrowest width.
@@ -106,21 +111,31 @@ pub(crate) const SIDEBAR_MIN_WIDTH: f32 = 210.0;
 /// top bar needs (#624), and lower it again once they close. Window managers
 /// that tile ignore the minimum; the panels still give way there.
 fn keep_room_for_panels(app: &App, ctx: &Context) {
-    if crate::window::fixed_size() {
+    // A full-screen window has no minimum; it comes back on leaving.
+    if crate::window::fixed_size()
+        || app.window_fullscreen()
+        || ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
+    {
         return;
     }
     let width = main_min_width(
         topbar::least_width(ctx),
         app.settings.sidebar_visible,
         app.show_queue_panel || app.show_lyrics_panel,
+        ctx.input(|input| input.viewport().monitor_size.map(|size| size.x)),
     )
     .round();
-    let id = Id::new("main-min-width");
-    let sent = ctx.data(|data| data.get_temp::<f32>(id));
-    // The window starts at MAIN_MIN_SIZE, so there is nothing to send until
-    // the panels need more.
-    if sent.unwrap_or(crate::window::MAIN_MIN_SIZE[0]) != width {
-        ctx.data_mut(|data| data.insert_temp(id, width));
+    // The minimum goes to winit in pixels, so a new scale needs it again.
+    let scale = ctx.pixels_per_point();
+    let sent = crate::window::sent_min_width(ctx);
+    // The window starts at MAIN_MIN_SIZE, which winit rescales itself, so
+    // there is nothing to send until the panels need more.
+    let stale = match sent {
+        Some(sent) => sent != [width, scale],
+        None => width != crate::window::MAIN_MIN_SIZE[0],
+    };
+    if stale {
+        crate::window::record_min_width(ctx, width, scale);
         ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(vec2(
             width,
             crate::window::MAIN_MIN_SIZE[1],
@@ -760,6 +775,74 @@ mod window_chrome_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With the sidebar and the Lyrics panel open the minimum is wider than
+    /// a portrait monitor; it stops at the monitor's width (#783).
+    #[test]
+    fn the_minimum_width_never_exceeds_the_monitor() {
+        let page = 560.0;
+        let wide = main_min_width(page, true, true, None);
+        assert_eq!(wide, SIDEBAR_MIN_WIDTH + theme::SIDE_PANEL_MIN_WIDTH + page);
+        assert!(wide > 800.0, "{wide}");
+        assert_eq!(main_min_width(page, true, true, Some(800.0)), 800.0);
+        assert_eq!(main_min_width(page, true, true, Some(2560.0)), wide);
+        // The usual minimum holds on any monitor wide enough for it.
+        assert_eq!(
+            main_min_width(page, false, false, Some(1080.0)),
+            crate::window::MAIN_MIN_SIZE[0]
+        );
+        assert_eq!(main_min_width(page, true, true, Some(0.0)), wide);
+        assert_eq!(main_min_width(page, true, true, Some(f32::NAN)), wide);
+    }
+
+    /// The minimum goes to winit in pixels, so a new scale sends it again,
+    /// and so does a window that left full screen with none.
+    #[test]
+    fn the_minimum_is_sent_again_for_a_new_scale_and_after_full_screen() {
+        let root =
+            std::env::temp_dir().join(format!("lwspot-min-width-test-{}", std::process::id()));
+        let mut app = App::new(
+            &crate::backend::Waker::default(),
+            crate::paths::AppDirs {
+                config: root.join("config"),
+                state: root.join("state"),
+                cache: root.join("cache"),
+            },
+            crate::settings::Settings::default(),
+            crate::app::AppOptions {
+                media_controls: false,
+                restore_sign_in: false,
+                tray: false,
+            },
+        );
+        app.show_lyrics_panel = true;
+        let ctx = Context::default();
+        let frame = |app: &App, scale: f32, monitor: f32| {
+            let mut input = egui::RawInput::default();
+            let viewport = input.viewports.entry(egui::ViewportId::ROOT).or_default();
+            viewport.native_pixels_per_point = Some(scale);
+            viewport.monitor_size = Some(vec2(monitor, 1920.0));
+            let mut output = ctx.run_ui(input, |ui| keep_room_for_panels(app, ui.ctx()));
+            output.textures_delta.clear();
+            output.viewport_output[&egui::ViewportId::ROOT]
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    egui::ViewportCommand::MinInnerSize(size) => Some(size.x),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let first = frame(&app, 1.0, 1080.0);
+        assert_eq!(first.len(), 1, "{first:?}");
+        assert!(frame(&app, 1.0, 1080.0).is_empty());
+        assert_eq!(frame(&app, 1.5, 720.0), vec![720.0]);
+        assert!(frame(&app, 1.5, 720.0).is_empty());
+        crate::window::forget_min_size(&ctx);
+        assert_eq!(frame(&app, 1.5, 720.0), vec![720.0]);
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     /// The header casts a shadow only on a page scrolled under it, and it
     /// is black in both themes, never the page's own colour.

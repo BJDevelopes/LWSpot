@@ -70,8 +70,9 @@ sharp. [See the mini player in detail](_guide/winamp.md).
 
 ## MilkDrop with more than 10,000 presets
 
-On first use, LWSpot automatically downloads the original MilkDrop 2
-presets and projectM's Cream of the Crop collection. These visual designs
+MilkDrop is a small add-on LWSpot downloads the first time you turn it on,
+along with the original MilkDrop 2 presets and projectM's Cream of the Crop
+collection. These visual designs
 react to music playing on your computer, in a resizable window or full screen.
 [See the controls and preset details](_guide/milkdrop.md).
 

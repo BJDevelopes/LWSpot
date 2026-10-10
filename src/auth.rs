@@ -283,6 +283,9 @@ pub enum TokenEndpointError {
     /// Spotify refused the grant itself; only the browser can mint a new one.
     #[error("Spotify rejected the token request ({status}): {detail}")]
     Rejected { status: u16, detail: String },
+    /// Spotify asked for fewer token requests. The grant is still valid.
+    #[error("Spotify is rate limiting token requests")]
+    RateLimited { retry_after: Option<Duration> },
     /// The endpoint could not answer; the grant may still be valid.
     #[error("token request failed: {0}")]
     Unreachable(String),
@@ -292,45 +295,91 @@ async fn token_request(
     http: &reqwest::Client,
     form: &[(&str, &str)],
 ) -> std::result::Result<TokenResponse, TokenEndpointError> {
+    token_request_at(http, TOKEN_URL, form).await
+}
+
+async fn token_request_at(
+    http: &reqwest::Client,
+    url: &str,
+    form: &[(&str, &str)],
+) -> std::result::Result<TokenResponse, TokenEndpointError> {
     let response = http
-        .post(TOKEN_URL)
+        .post(url)
         .form(form)
         .send()
         .await
         .map_err(|error| TokenEndpointError::Unreachable(error.to_string()))?;
     let status = response.status();
+    let retry_after = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(Duration::from_secs);
     let text = response.text().await.unwrap_or_default();
-    decode_token_response(status, &text)
+    decode_token_response(status, retry_after, &text)
 }
 
+/// `refresh` against another token endpoint, for tests with a local server.
+#[cfg(test)]
+pub(crate) async fn refresh_at(
+    http: &reqwest::Client,
+    url: &str,
+    client_id: &str,
+    refresh_token: &str,
+) -> std::result::Result<TokenResponse, TokenEndpointError> {
+    token_request_at(
+        http,
+        url,
+        &[
+            ("client_id", client_id),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+        ],
+    )
+    .await
+}
+
+/// Only an OAuth answer that names the grant or client as invalid ends a
+/// grant. Rate limits, timeouts, server errors, and pages that are not
+/// Spotify's JSON (a proxy or captive portal) leave it for a later retry.
 fn decode_token_response(
     status: reqwest::StatusCode,
+    retry_after: Option<Duration>,
     text: &str,
 ) -> std::result::Result<TokenResponse, TokenEndpointError> {
-    if status.is_client_error() {
-        let value = serde_json::from_str::<serde_json::Value>(text).ok();
-        // OAuth descriptions and malformed bodies may contain usable grants.
-        // Report only known classifications, never authorization response text.
-        let detail = match value.as_ref().and_then(|value| value["error"].as_str()) {
-            Some("invalid_grant") => "The grant expired or was revoked. Sign in again.",
-            Some("invalid_client") => "Check the Spotify application's Client ID.",
-            Some("invalid_scope") => "Spotify did not accept the requested permissions.",
-            Some("access_denied") => "Spotify authorization was declined.",
-            _ => "Sign in again and check the Spotify application settings.",
-        };
+    if status.is_success() {
+        return serde_json::from_str(text).map_err(|_| {
+            TokenEndpointError::Unreachable("Spotify returned an unreadable token response".into())
+        });
+    }
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(TokenEndpointError::RateLimited { retry_after });
+    }
+    let value = serde_json::from_str::<serde_json::Value>(text).ok();
+    // OAuth descriptions and malformed bodies may contain usable grants.
+    // Report only known classifications, never authorization response text.
+    let code = value.as_ref().and_then(|value| value["error"].as_str());
+    let detail = match code {
+        Some("invalid_grant") => "The grant expired or was revoked. Sign in again.",
+        Some("invalid_client") => "Check the Spotify application's Client ID.",
+        Some("invalid_scope") => "Spotify did not accept the requested permissions.",
+        Some("access_denied") => "Spotify authorization was declined.",
+        Some(_) => "Spotify refused the token request.",
+        None => "Spotify's answer was not a token response.",
+    };
+    if matches!(status.as_u16(), 400 | 401)
+        && matches!(code, Some("invalid_grant" | "invalid_client"))
+    {
         return Err(TokenEndpointError::Rejected {
             status: status.as_u16(),
             detail: detail.into(),
         });
     }
-    if !status.is_success() {
-        return Err(TokenEndpointError::Unreachable(format!(
-            "Spotify answered {status}"
-        )));
-    }
-    serde_json::from_str(text).map_err(|_| {
-        TokenEndpointError::Unreachable("Spotify returned an unreadable token response".into())
-    })
+    Err(TokenEndpointError::Unreachable(format!(
+        "Spotify answered {}: {detail}",
+        status.as_u16()
+    )))
 }
 
 /// The Web API grant, serialized only inside protected credential storage.
@@ -489,9 +538,12 @@ mod tests {
                 r#"{"access_token":"dummy-refresh-secret","expires_in":"dummy-refresh-secret"}"#,
             ),
         ] {
-            let error =
-                super::decode_token_response(reqwest::StatusCode::from_u16(status).unwrap(), body)
-                    .unwrap_err();
+            let error = super::decode_token_response(
+                reqwest::StatusCode::from_u16(status).unwrap(),
+                None,
+                body,
+            )
+            .unwrap_err();
             assert!(!format!("{error:?} {error}").contains("dummy-refresh-secret"));
         }
         for request in [
@@ -504,6 +556,47 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn only_an_invalid_grant_or_client_ends_a_grant() {
+        let html = "<html><body>Sign in to the network</body></html>";
+        for (status, body, rejected) in [
+            (400, r#"{"error":"invalid_grant"}"#, true),
+            (401, r#"{"error":"invalid_client"}"#, true),
+            (400, r#"{"error":"invalid_request"}"#, false),
+            (400, html, false),
+            (403, html, false),
+            (403, r#"{"error":"invalid_grant"}"#, false),
+            (404, "", false),
+            (408, "", false),
+            (429, r#"{"error":"rate_limited"}"#, false),
+            (500, r#"{"error":"invalid_grant"}"#, false),
+            (502, html, false),
+            (503, "", false),
+        ] {
+            let result = decode_token_response(
+                reqwest::StatusCode::from_u16(status).unwrap(),
+                Some(Duration::from_secs(7)),
+                body,
+            );
+            match result {
+                Err(TokenEndpointError::Rejected { status: code, .. }) => {
+                    assert!(rejected, "{status} {body} must keep the grant");
+                    assert_eq!(code, status);
+                }
+                Err(TokenEndpointError::RateLimited { retry_after }) => {
+                    assert!(!rejected);
+                    assert_eq!(status, 429);
+                    assert_eq!(retry_after, Some(Duration::from_secs(7)));
+                }
+                Err(TokenEndpointError::Unreachable(detail)) => {
+                    assert!(!rejected, "{status} {body} must end the grant");
+                    assert!(!detail.contains("network"), "body text is never reported");
+                }
+                Ok(_) => panic!("{status} is not a token"),
+            }
+        }
+    }
 
     #[test]
     fn old_web_grants_require_image_upload_consent() {

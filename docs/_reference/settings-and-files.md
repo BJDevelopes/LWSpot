@@ -17,9 +17,11 @@ LWSpot keeps its files in three folders:
 | Settings | `%APPDATA%\LWSpot\config\settings.json` | Yes, you lose preferences |
 | Winamp skins | `%APPDATA%\LWSpot\config\skins\` | Yes, you add them again |
 | MilkDrop presets | `%APPDATA%\LWSpot\config\milkdrop\` | Yes, you fetch them again |
+| MilkDrop add-on | `%LOCALAPPDATA%\LWSpot\data\addons\lwspot-milkdrop.exe` | Yes, it downloads again the next time you turn MilkDrop on |
 | Custom themes | `%APPDATA%\LWSpot\config\themes\` | Yes, you lose your palettes |
 | Spotify grants | Windows Credential Manager | Use Sign out in Settings |
 | Credential revocation markers | `%LOCALAPPDATA%\LWSpot\data\credential-storage\` | Keep after a failed sign-out deletion |
+| Encrypted grant fallback | `%LOCALAPPDATA%\LWSpot\data\credential-storage\<slot>.bin` | Use Sign out in Settings |
 | Proxy password | Windows Credential Manager | Clear the password and apply the manual proxy settings |
 | Last session | `%LOCALAPPDATA%\LWSpot\data\session.json` | Yes |
 | Play history | `%LOCALAPPDATA%\LWSpot\data\history.json` | Yes |
@@ -30,12 +32,19 @@ LWSpot keeps its files in three folders:
 | Last run's log | `%LOCALAPPDATA%\LWSpot\data\lwspot.log` | Always |
 | Crash log | `%LOCALAPPDATA%\LWSpot\data\panic.log` | Always |
 
+The add-ons folder holds only what LWSpot downloads on first use: today the
+MilkDrop add-on. **Remove** under Settings > MilkDrop deletes it, and
+uninstalling LWSpot deletes the folder.
+
 Clearing caches never signs you out. Sign-out from Settings covers the shared
 and personal Web API grants and the independent playback credential.
 
 ## Credentials
 
-Durable grants are kept in **Windows Credential Manager**. Entries are
+Durable grants are kept in **Windows Credential Manager** with Local
+persistence: they stay on this computer and never roam with a domain profile.
+Entries saved by earlier versions with roaming persistence are rewritten as
+Local the next time they are read. Entries are
 separated by application state location and grant type; Web grants carry their
 Client ID and must verify as the same account. Playback and receiver
 activation require that account too. Non-secret settings and session data
@@ -43,8 +52,21 @@ remain readable JSON. Native credential protection reduces exposure from
 copying ordinary application files. It does not protect a usable session from
 arbitrary code running as the same user.
 
+Some computers cannot keep a Credential Manager entry: the store refuses the
+write, a policy makes every entry last only until Windows sign-out, or the
+record is too large for it. LWSpot then keeps that grant in
+`credential-storage\<slot>.bin` (`shared-web`, `personal-web`, `playback`, or
+`proxy-password`), encrypted with Windows DPAPI for the signed-in Windows user,
+and reads it after Credential Manager. A file left by a save the store
+refused holds the newer grant, so it wins over an older entry and moves back
+into Credential Manager; a successful save there removes the file. Sign-out and forgetting a grant delete both copies.
+Nothing is ever written in plaintext. A failure is logged by kind and Windows
+error code only, never with the grant.
+
 An unavailable store produces an error without blocking the interface. A new
-sign-in can still be used for this session, with no plaintext fallback file.
+sign-in can still be used for this session. At startup, a store that refuses
+to answer is asked again a few times within about two seconds before a saved
+grant is treated as missing.
 If Spotify rejects a saved refresh grant, only that grant is forgotten so the
 next launch cannot keep restoring it. Librespot's reusable grant stays in
 memory until LWSpot saves it through this same store. Volume and disposable

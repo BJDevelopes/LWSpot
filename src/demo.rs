@@ -5598,7 +5598,6 @@ mod tests {
     /// The frame rate is a dial with detents: it stops at the rates
     /// worth having, names the one it is on, and moving it one notch
     /// lands on the next of them rather than somewhere in between.
-    #[cfg(feature = "milkdrop")]
     #[test]
     fn the_frame_rate_dial_steps_between_its_stops() {
         let root =

@@ -53,7 +53,6 @@ const SPEC_SCALE: f32 = 0.5;
 pub struct AudioTap {
     samples: Mutex<VecDeque<f32>>,
     /// The ring the MilkDrop child reads, attached while its window is open.
-    #[cfg(feature = "milkdrop")]
     shm: Mutex<Option<std::sync::Arc<crate::milkdrop::shm::Ring>>>,
 }
 
@@ -67,7 +66,6 @@ impl Default for AudioTap {
     fn default() -> Self {
         Self {
             samples: Mutex::new(VecDeque::with_capacity(KEPT)),
-            #[cfg(feature = "milkdrop")]
             shm: Mutex::new(None),
         }
     }
@@ -79,7 +77,6 @@ impl AudioTap {
     }
 
     /// Connects the tap to MilkDrop's shared-memory ring. `None` detaches it.
-    #[cfg(feature = "milkdrop")]
     pub fn set_shm(&self, ring: Option<std::sync::Arc<crate::milkdrop::shm::Ring>>) {
         *self.shm.lock().unwrap_or_else(|p| p.into_inner()) = ring;
     }
@@ -89,9 +86,7 @@ impl AudioTap {
     pub fn push(&self, interleaved: &[f64], gain: f32) {
         let mut samples = self.samples.lock().unwrap_or_else(|p| p.into_inner());
         let (frames, _) = interleaved.as_chunks::<{ NUM_CHANNELS as usize }>();
-        #[cfg(feature = "milkdrop")]
         let shm = self.shm.lock().unwrap_or_else(|p| p.into_inner()).clone();
-        #[cfg(feature = "milkdrop")]
         let mut stereo: Vec<f32> = if shm.is_some() {
             Vec::with_capacity(frames.len() * 2)
         } else {
@@ -103,13 +98,11 @@ impl AudioTap {
                 samples.pop_front();
             }
             samples.push_back(mono);
-            #[cfg(feature = "milkdrop")]
             if shm.is_some() {
                 stereo.push(frame[0] as f32 * gain);
                 stereo.push(frame[1] as f32 * gain);
             }
         }
-        #[cfg(feature = "milkdrop")]
         if let Some(ring) = &shm {
             ring.push(&stereo);
         }

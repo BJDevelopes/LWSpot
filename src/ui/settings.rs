@@ -1342,6 +1342,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let count = app.winamp.presets.count();
     let screen_hz = app.settings.milkdrop_screen_hz;
     let milkdrop_window = gettext(locale, "MilkDrop window");
+    let addon_status = app.milkdrop_addon.status().clone();
     let folder = presets_folder.display().to_string();
     let milkdrop_rows = [
         RowText::new(
@@ -1420,14 +1421,25 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 .collect::<Vec<_>>()
                 .join(" "),
         ),
+        RowText::new(
+            gettext(locale, "Add-on"),
+            addon_text(locale, &addon_status),
+        ),
     ];
     if section_matches(&needle, "MilkDrop", &milkdrop_rows) {
         any_visible = true;
         section(ui, &palette, "MilkDrop", |ui| {
             filtered_row(ui, &palette, &needle, "MilkDrop", &milkdrop_rows[0], |ui| {
-                let mut open = app.settings.milkdrop_open;
+                let mut open = app.milkdrop_on();
                 if widgets::switch(ui, &palette, &milkdrop_window, &mut open).changed() {
                     app.actions.push(Action::ToggleWinampMilkdrop);
+                }
+            });
+            filtered_row(ui, &palette, &needle, "MilkDrop", &milkdrop_rows[6], |ui| {
+                if app.milkdrop_addon.removable()
+                    && theme::pill_button(ui, &palette, &gettext(locale, "Remove"), false).clicked()
+                {
+                    app.actions.push(Action::RemoveMilkdropAddon);
                 }
             });
             let downloading = app.winamp.presets.downloading();
@@ -1851,6 +1863,36 @@ fn language_picker(app: &mut App, ui: &mut egui::Ui) {
         info.current_text_value = Some(selected.to_string());
         info
     });
+}
+
+/// What the MilkDrop add-on row says about it.
+fn addon_text(locale: crate::i18n::Locale, status: &crate::milkdrop::addon::Status) -> String {
+    use crate::milkdrop::addon::{Status, VERSION};
+    let megabytes = |bytes: u64| format!("{:.1}", bytes as f64 / 1_000_000.0);
+    match status {
+        Status::Unknown | Status::Checking => gettext(locale, "Checking…").into_owned(),
+        Status::Downloading {
+            received,
+            total: Some(total),
+        } => {
+            // Translators: {received} and {total} are sizes in megabytes, such as 12.5.
+            gettext(locale, "{received} of {total} MB")
+                .replace("{received}", &megabytes(*received))
+                .replace("{total}", &megabytes(*total))
+        }
+        Status::Downloading { total: None, .. } => {
+            gettext(locale, "Downloading the MilkDrop add-on").into_owned()
+        }
+        Status::Missing => gettext(
+            locale,
+            "Not installed. Turning MilkDrop on downloads it from GitHub (a few MB).",
+        )
+        .into_owned(),
+        Status::Ready(_) => {
+            // Translators: {version} is a version number such as 1.2.0.
+            gettext(locale, "Installed, version {version}.").replace("{version}", VERSION)
+        }
+    }
 }
 
 fn hertz(hz: f32) -> String {

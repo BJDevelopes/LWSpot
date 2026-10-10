@@ -25,8 +25,8 @@ jobs:
             vcpkg-triplet: x64-windows-static
             msvc-arch: x64
             pe-machine: 8664 machine \(x64\)
-          # A native arm64 runner: the binary is built, checked and started on
-          # the processor it ships for, MilkDrop included.
+          # A native arm64 runner: the binaries are built, checked and started
+          # on the processor they ship for, the MilkDrop add-on included.
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             vcpkg-triplet: arm64-windows-static
@@ -40,34 +40,44 @@ jobs:
       # The repository pins its toolchain; add the target's standard library to
       # the toolchain the pin actually resolves to.
       - run: rustup target add ${{ matrix.target }}
-      # libprojectM reads OpenGL through GLEW; projectm-sys builds against
-      # vcpkg's static-CRT triplet, matching .cargo/config.toml.
+      # No compiler cache: published binaries never build from outputs
+      # restored from an Actions cache.
+      # lwspot.exe has no projectM, so it needs nothing beyond Rust and MSVC.
+      - name: Build LWSpot
+        run: cargo build --release --locked --target ${{ matrix.target }} --no-default-features --bin lwspot
+      # The MilkDrop add-on, which the app downloads the first time MilkDrop
+      # is turned on. libprojectM reads OpenGL through GLEW; projectm-sys
+      # builds against vcpkg's static-CRT triplet, matching
+      # .cargo/config.toml.
       - name: GLEW for libprojectM
         run: vcpkg install glew:${{ matrix.vcpkg-triplet }}
       - name: MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.msvc-arch }}
-      # No compiler cache: published binaries never build from outputs
-      # restored from an Actions cache.
-      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Build the MilkDrop add-on
+        run: cargo build --release --locked --target ${{ matrix.target }} --features milkdrop --bin lwspot-milkdrop
 
-      # The zip and installer must run on a clean Windows machine without a
-      # separately installed Visual C++ redistributable.
+      # The zip, the installer and the add-on must run on a clean Windows
+      # machine without a separately installed Visual C++ redistributable.
       - name: Verify standalone Windows runtime
         shell: pwsh
         run: |
-          $binary = "target\${{ matrix.target }}\release\lwspot.exe"
-          $imports = & dumpbin /dependents $binary | Out-String
-          $runtime = $imports | Select-String -Pattern 'MSVCP[0-9_]*\.dll|VCRUNTIME[0-9_]*\.dll'
-          if ($runtime) { throw "LWSpot imports an MSVC runtime:`n$runtime" }
-          # The updater picks its download by the running executable's
-          # architecture, so a binary of the wrong one under this name would
-          # keep every copy installed from it on the wrong architecture.
-          $headers = & dumpbin /headers $binary | Out-String
-          if ($headers -notmatch '${{ matrix.pe-machine }}') { throw "$binary is not built for ${{ matrix.target }}:`n$headers" }
-          $version = (& $binary --version | Out-String).Trim()
-          if ($version -notmatch '^lwspot \d+\.\d+\.\d+') { throw "Unexpected --version output: $version" }
+          foreach ($name in 'lwspot', 'lwspot-milkdrop') {
+            $binary = "target\${{ matrix.target }}\release\$name.exe"
+            $imports = & dumpbin /dependents $binary | Out-String
+            $runtime = $imports | Select-String -Pattern 'MSVCP[0-9_]*\.dll|VCRUNTIME[0-9_]*\.dll'
+            if ($runtime) { throw "$name imports an MSVC runtime:`n$runtime" }
+            # The updater picks its download by the running executable's
+            # architecture, so a binary of the wrong one under this name would
+            # keep every copy installed from it on the wrong architecture. The
+            # app picks the add-on's download the same way.
+            $headers = & dumpbin /headers $binary | Out-String
+            if ($headers -notmatch '${{ matrix.pe-machine }}') { throw "$binary is not built for ${{ matrix.target }}:`n$headers" }
+            # The app uses an add-on only when this names its own version.
+            $version = (& $binary --version | Out-String).Trim()
+            if ($version -notmatch "^$name \d+\.\d+\.\d+") { throw "Unexpected --version output: $version" }
+          }
 
       # Asset names follow fastframe-update's release contract:
       # lwspot-<tag>-<target>.zip and lwspot-<tag>-<target>-setup.exe.
@@ -79,6 +89,17 @@ jobs:
           cp "target/${{ matrix.target }}/release/lwspot.exe" README.md LICENSE \
             packaging/lwspot-portable.txt "dist/$name/"
           cd dist && 7z a "$name.zip" "$name"
+
+      # The MilkDrop add-on on its own, as the app downloads it:
+      # lwspot-milkdrop-<tag>-<target>.zip, listed in checksums.txt with the
+      # rest. Deflate, which the app's zip reader inflates.
+      - name: MilkDrop add-on zip
+        shell: bash
+        run: |
+          name="lwspot-milkdrop-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/lwspot-milkdrop.exe" LICENSE "dist/$name/"
+          cd "dist/$name" && 7z a -tzip -mm=Deflate "../$name.zip" lwspot-milkdrop.exe LICENSE
 
       # Inno Setup ships with the runner image. PowerShell, because bash on
       # Windows rewrites /D... arguments as paths.

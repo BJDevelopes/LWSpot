@@ -22,7 +22,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CMAKE_GENERATOR: Ninja
-    # A cold cache (projectM through CMake) takes about 30 minutes.
+    # A cold cache (projectM through CMake, for the MilkDrop add-on) takes
+    # about 30 minutes.
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -33,8 +34,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      # libprojectM reads OpenGL through GLEW; projectm-sys builds against
-      # vcpkg's static-CRT triplet, matching .cargo/config.toml.
+      # Only the MilkDrop add-on (the milkdrop feature) needs these: libprojectM
+      # reads OpenGL through GLEW, and projectm-sys builds against vcpkg's
+      # static-CRT triplet, matching .cargo/config.toml.
       - name: GLEW for libprojectM
         run: vcpkg install glew:${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-windows-static
       # Native tools on each runner: the action's default is x64, which on the
@@ -52,31 +54,42 @@ jobs:
       - name: Clippy (all features)
         if: runner.arch != 'ARM64'
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
-      # The demo feature carries the headless render test that lays out every
-      # page, panel, and dialog without a display.
-      - name: Tests (default features)
-        run: cargo test --locked --all-targets
-      - name: Tests (all features)
-        run: cargo test --locked --all-targets --all-features
-      - name: Tests (without MilkDrop)
+      - name: Clippy (MilkDrop add-on)
+        if: runner.arch != 'ARM64'
+        run: cargo clippy --locked --features milkdrop --bin lwspot-milkdrop -- -D warnings
+      # lwspot.exe is built without the milkdrop feature; that is what these
+      # test. The demo feature carries the headless render test that lays out
+      # every page, panel, and dialog without a display.
+      - name: Tests (app)
         run: cargo test --locked --all-targets --no-default-features
+      - name: Tests (app, demo)
+        run: cargo test --locked --all-targets --no-default-features --features demo
+      # The MilkDrop window's own tests, which only the add-on compiles.
+      - name: Tests (all features, with the MilkDrop add-on)
+        run: cargo test --locked --all-targets --all-features
       - name: Native credential store (dummy grants)
         timeout-minutes: 2
         run: cargo test --locked --lib credentials::tests::native_store_round_trip -- --ignored --exact
       - name: Documentation tests
         run: cargo test --locked --all-features --doc
       # A build can pass while importing Microsoft's C++ runtime, then fail on
-      # a clean user's machine. Inspect the executable CI actually produced.
+      # a clean user's machine. Inspect the executables CI actually produced:
+      # the app, and the MilkDrop add-on it downloads.
       - name: Standalone Windows runtime
         shell: pwsh
         run: |
-          cargo build --locked
-          $imports = & dumpbin /dependents target\debug\lwspot.exe | Out-String
-          $runtime = $imports | Select-String -Pattern 'MSVCP[0-9_]*\.dll|VCRUNTIME[0-9_]*\.dll'
-          if ($runtime) { throw "LWSpot imports an MSVC runtime:`n$runtime" }
+          cargo build --locked --bin lwspot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --locked --features milkdrop --bin lwspot-milkdrop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $machine = if ($env:RUNNER_ARCH -eq 'ARM64') { 'AA64 machine \(ARM64\)' } else { '8664 machine \(x64\)' }
-          $headers = & dumpbin /headers target\debug\lwspot.exe | Out-String
-          if ($headers -notmatch $machine) { throw "lwspot.exe is not built for $env:RUNNER_ARCH`:`n$headers" }
+          foreach ($binary in 'target\debug\lwspot.exe', 'target\debug\lwspot-milkdrop.exe') {
+            $imports = & dumpbin /dependents $binary | Out-String
+            $runtime = $imports | Select-String -Pattern 'MSVCP[0-9_]*\.dll|VCRUNTIME[0-9_]*\.dll'
+            if ($runtime) { throw "$binary imports an MSVC runtime:`n$runtime" }
+            $headers = & dumpbin /headers $binary | Out-String
+            if ($headers -notmatch $machine) { throw "$binary is not built for $env:RUNNER_ARCH`:`n$headers" }
+          }
       - name: Windows installer syntax
         shell: pwsh
         run: |

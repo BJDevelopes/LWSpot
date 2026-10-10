@@ -44,6 +44,13 @@ const HEADLESS_SLEEP: Duration = Duration::from_secs(2);
 /// How far into a song Previous restarts it rather than stepping back,
 /// matching what librespot does during playback.
 const RESTART_BEFORE_PREVIOUS: u32 = 3_000;
+/// How often the logic of a hidden window runs while music plays, and the
+/// most often a drawn window redraws the progress bar's moving fill.
+const PROGRESS_FRAME: Duration = Duration::from_millis(250);
+/// egui wakes a delayed repaint one predicted frame, a sixtieth of a
+/// second, early. A redraw for a change due at a known time is asked for
+/// this much after it, so it does not land just before the change.
+const PROGRESS_LATE: Duration = Duration::from_millis(20);
 
 const TOAST_LIFETIME: Duration = Duration::from_millis(3200);
 /// Match other interface animations. egui subtracts the predicted frame time
@@ -255,6 +262,9 @@ pub struct App {
     /// What the app may spend on drawing and polling, from the power state
     /// and the window's; worked out in each logic pass.
     pub budget: crate::power::Budget,
+    /// How wide the player bar last drew its progress bar, in physical
+    /// pixels, so the logic knows when the fill next moves.
+    pub progress_bar_px: f32,
     pub window_hidden: bool,
     /// The window should close but the process should stay in the tray.
     pub hide_intent: bool,
@@ -412,6 +422,13 @@ pub struct App {
     pub lyrics_fullscreen_seen: bool,
     lyrics_fullscreen_restoring: Option<bool>,
     lyrics_restore_maximized: bool,
+    /// While F11 has the main window full screen, whether it was maximized
+    /// before, to maximize it again on leaving.
+    window_fullscreen: Option<bool>,
+    window_fullscreen_seen: bool,
+    /// Keeps the window on a screen and at a usable size as displays come,
+    /// go and change scale (#704).
+    window_watch: crate::window::Watch,
     pub lyrics_backdrop: crate::images::LyricsBackdrop,
     pub softened_covers: crate::images::SoftenedCovers,
     /// The track the lyrics below are for.
@@ -449,6 +466,9 @@ pub struct App {
     /// The mode to return the window to when the app closed in
     /// fullscreen lyrics.
     session_lyrics_fullscreen_from: Option<crate::settings::WindowMode>,
+    /// The mode to return the window to when the app closed in F11 full
+    /// screen.
+    session_window_fullscreen_from: Option<crate::settings::WindowMode>,
     session_window_pos: Option<[f32; 2]>,
     /// Last observed window geometry, updated each frame for saving.
     last_window_size: Option<[f32; 2]>,
@@ -458,10 +478,11 @@ pub struct App {
     last_window_pos: Option<[f32; 2]>,
     /// Where the MilkDrop window last was, as it reported, for restoring it.
     pub milkdrop_pos: Option<[f32; 2]>,
-    /// The MilkDrop child process; `None` until it is first opened. Its
-    /// `Drop` stops the child when the app does.
-    #[cfg(feature = "milkdrop")]
+    /// The MilkDrop window's process; `None` until it is first opened. Its
+    /// `Drop` stops the window when the app does.
     milkdrop_host: Option<crate::milkdrop::host::Host>,
+    /// The MilkDrop add-on the window runs from, and its download.
+    pub milkdrop_addon: crate::milkdrop::addon::Addon,
     last_eviction: Instant,
     /// Playback snapshot for the current frame, built once per redraw.
     frame_now: Option<NowPlaying>,
@@ -722,6 +743,8 @@ impl App {
             .unwrap_or(Page::Home);
 
         let palette = settings.cached_palette().unwrap_or_else(Palette::dark);
+        let milkdrop_addon =
+            crate::milkdrop::addon::Addon::new(crate::milkdrop::addon::Places::new(&dirs));
         let mut app = Self {
             custom_themes: theme::Catalog::default(),
             dirs,
@@ -741,6 +764,7 @@ impl App {
             tray_playing: false,
             power,
             budget: crate::power::Budget::default(),
+            progress_bar_px: 0.0,
             window_hidden: false,
             hide_intent: false,
             wants_show: false,
@@ -847,6 +871,9 @@ impl App {
             lyrics_fullscreen_seen: false,
             lyrics_fullscreen_restoring: None,
             lyrics_restore_maximized: false,
+            window_fullscreen: None,
+            window_fullscreen_seen: false,
+            window_watch: Default::default(),
             lyrics_backdrop: Default::default(),
             softened_covers: Default::default(),
             lyrics_uri: None,
@@ -867,13 +894,14 @@ impl App {
             volume_preview: None,
             session_window_size: session.window_size,
             session_lyrics_fullscreen_from: session.lyrics_fullscreen_from,
+            session_window_fullscreen_from: session.window_fullscreen_from,
             session_window_pos: session.window_pos,
             last_window_size: None,
             dialog_rect: None,
             last_window_pos: None,
             milkdrop_pos: session.milkdrop_pos,
-            #[cfg(feature = "milkdrop")]
             milkdrop_host: None,
+            milkdrop_addon,
             last_eviction: Instant::now(),
             frame_now: None,
             sign_in_url: None,
@@ -969,11 +997,12 @@ impl App {
         if let Some(tray) = &mut self.tray {
             tray.attach();
         }
+        self.window_watch = crate::window::Watch::attached();
         // eframe restores the full screen fullscreen lyrics left behind when
         // the app closed in them, without the lyrics. The mode they came
-        // from is known, or on Windows, where only fullscreen lyrics make
-        // the frameless main window full screen and nothing else could
-        // leave it, it was an ordinary window.
+        // from is known, or on Windows, where only fullscreen lyrics and F11
+        // make the frameless main window full screen and the session records
+        // F11, it was an ordinary window.
         let lyrics_left = self.session_lyrics_fullscreen_from.take();
         if self.settings.winamp_window {
             // The mini player sizes itself; the big window's geometry
@@ -996,9 +1025,18 @@ impl App {
             }
             return;
         }
+        // The full screen F11 chose stays, from the last session or from
+        // before the mini player replaced this window.
+        let window_left = self
+            .session_window_fullscreen_from
+            .take()
+            .map(|mode| mode.maximized)
+            .or(self.window_fullscreen.take());
         let restored_full_screen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
-        let lyrics_left =
-            lyrics_left.or_else(|| restored_full_screen.then(crate::settings::WindowMode::default));
+        let lyrics_left = lyrics_left.or_else(|| {
+            (restored_full_screen && window_left.is_none())
+                .then(crate::settings::WindowMode::default)
+        });
         if let Some(mode) = lyrics_left
             && restored_full_screen
         {
@@ -1006,6 +1044,11 @@ impl App {
             if mode.maximized {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
             }
+        }
+        self.window_fullscreen_seen = false;
+        if restored_full_screen && lyrics_left.is_none_or(|mode| mode.fullscreen) {
+            self.window_fullscreen = Some(window_left.unwrap_or(false));
+            crate::window::lift_min_size(ctx);
         }
         // The session's geometry describes an ordinary window; applying it to
         // one eframe restored maximized or full screen would restore it down.
@@ -1018,10 +1061,17 @@ impl App {
             && !self.offline
         {
             // Clamp to a sane range so a stale session never creates an
-            // unusable window; the OS will further clamp to the monitor.
-            if (400.0..=3000.0).contains(&size[0]) && (300.0..=2000.0).contains(&size[1]) {
+            // unusable window; the OS will further clamp to the monitor. One
+            // smaller than the minimum, as a lost display can leave it
+            // (#704), grows to the minimum.
+            if size.iter().all(|side| side.is_finite() && *side > 0.0)
+                && size[0] <= 3000.0
+                && size[1] <= 2000.0
+            {
+                let least = crate::window::MAIN_MIN_SIZE;
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                    size[0], size[1],
+                    size[0].max(least[0]),
+                    size[1].max(least[1]),
                 )));
             }
         }
@@ -2872,8 +2922,7 @@ impl App {
                         )
                         .replace("{count}", &count.to_string()),
                     );
-                    // Restart the child so it loads the new preset list.
-                    #[cfg(feature = "milkdrop")]
+                    // Restart the window so it loads the new preset list.
                     if let Some(host) = self.milkdrop_host.as_mut()
                         && host.is_running()
                     {
@@ -2890,8 +2939,33 @@ impl App {
     }
 
     /// Syncs MilkDrop settings and receives window state and commands.
-    #[cfg(feature = "milkdrop")]
     fn sync_milkdrop(&mut self, ctx: &egui::Context) {
+        if let Some(outcome) = self.milkdrop_addon.poll() {
+            self.milkdrop_addon_outcome(outcome, ctx);
+        }
+        // A window left open last time needs an add-on that reports this
+        // version. Look for one; finding none closes the window rather than
+        // downloading anything nobody asked for this run, and turning
+        // MilkDrop on again fetches it.
+        if self.settings.milkdrop_open
+            && self.milkdrop_addon.ready().is_none()
+            && !self.milkdrop_addon.busy()
+        {
+            if *self.milkdrop_addon.status() == crate::milkdrop::addon::Status::Unknown {
+                self.milkdrop_addon.look(ctx);
+            } else {
+                self.settings.milkdrop_open = false;
+                self.mark_settings_dirty();
+            }
+        }
+        // Settings says whether the add-on is installed; it looks once a run.
+        if self.page() == &Page::Settings {
+            self.milkdrop_addon.look(ctx);
+        }
+        let exe = self
+            .milkdrop_addon
+            .ready()
+            .map(std::path::Path::to_path_buf);
         let presets = self.dirs.milkdrop_dir();
         let open = self.settings.milkdrop_open;
         let size = self.settings.milkdrop_size;
@@ -2913,19 +2987,33 @@ impl App {
             let tap = std::sync::Arc::clone(&self.winamp.tap);
             self.milkdrop_host = Some(crate::milkdrop::host::Host::new(tap));
         }
+        let mut failed = None;
         let poll = {
             let host = self.milkdrop_host.as_mut().expect("the host was just made");
-            if open {
-                if !host.is_running() {
-                    host.open(&presets, size, pos, fullscreen, fps, seconds, scale);
+            if open && let Some(exe) = &exe {
+                if !host.is_running()
+                    && let Err(error) =
+                        host.open(exe, &presets, size, pos, fullscreen, fps, seconds, scale)
+                {
+                    failed = Some(error);
                 }
                 host.update(fps, seconds, scale);
                 host.song(song);
-            } else if host.is_running() {
+            } else if !open && host.is_running() {
                 host.close();
             }
             host.poll()
         };
+        if let Some(error) = failed {
+            // The add-on went missing or will not run: look again next time.
+            self.settings.milkdrop_open = false;
+            self.mark_settings_dirty();
+            self.milkdrop_addon.forget();
+            self.toast_error(
+                // Translators: {error} is an error message.
+                gettext(self.locale, "Couldn't start MilkDrop: {error}").replace("{error}", &error),
+            );
+        }
         if poll.closed {
             self.settings.milkdrop_open = false;
             self.mark_settings_dirty();
@@ -2951,9 +3039,71 @@ impl App {
         }
     }
 
+    /// Acts on a finished look for, or download of, the MilkDrop add-on.
+    fn milkdrop_addon_outcome(
+        &mut self,
+        outcome: crate::milkdrop::addon::Outcome,
+        ctx: &egui::Context,
+    ) {
+        use crate::milkdrop::addon::{Failure, Outcome};
+        match outcome {
+            Outcome::Downloading => {
+                self.toast(gettext(self.locale, "Downloading the MilkDrop add-on"));
+            }
+            Outcome::Ready { downloaded } => {
+                if downloaded {
+                    self.toast(gettext(self.locale, "MilkDrop add-on installed"));
+                }
+                if std::mem::take(&mut self.milkdrop_addon.open_when_ready) {
+                    self.open_milkdrop(ctx);
+                }
+            }
+            Outcome::Missing => self.milkdrop_addon.open_when_ready = false,
+            Outcome::Failed(failure) => {
+                self.milkdrop_addon.open_when_ready = false;
+                let message = match failure {
+                    Failure::Unavailable => gettext(
+                        self.locale,
+                        "The MilkDrop add-on isn't available for this version.",
+                    )
+                    .into_owned(),
+                    failure => gettext(
+                        self.locale,
+                        // Translators: {error} is an error message.
+                        "Couldn't get the MilkDrop add-on: {error}",
+                    )
+                    .replace("{error}", &failure.to_string()),
+                };
+                self.toast_error(message);
+            }
+        }
+    }
+
+    /// Opens the MilkDrop window, once the add-on is there.
+    fn open_milkdrop(&mut self, ctx: &egui::Context) {
+        self.settings.milkdrop_open = true;
+        self.settings_dirty = true;
+        // A first open has nothing to draw but the idle preset, which
+        // hardly answers the music; fetch the packs in the background and
+        // the window fills up on its own.
+        let folder = self.dirs.milkdrop_dir();
+        self.winamp.presets.refresh(&folder);
+        if self.winamp.presets.count() == 0 && self.winamp.presets.downloading().is_none() {
+            self.winamp
+                .presets
+                .download_missing(folder, ctx.clone(), self.applied_proxy.clone());
+            self.toast(gettext(self.locale, "Downloading MilkDrop preset packs"));
+        }
+    }
+
+    /// Whether MilkDrop shows as on: its window is open, or will be once
+    /// the add-on arrives.
+    pub fn milkdrop_on(&self) -> bool {
+        self.settings.milkdrop_open || self.milkdrop_addon.open_when_ready
+    }
+
     /// Records the MilkDrop screen refresh rate and uses it as the initial FPS.
     /// Later screen changes do not override a configured FPS.
-    #[cfg(feature = "milkdrop")]
     fn learn_screen_hz(&mut self, hz: u32) {
         if hz == 0 || self.settings.milkdrop_screen_hz == hz {
             return;
@@ -2968,7 +3118,6 @@ impl App {
     }
 
     /// Applies playback commands received from the MilkDrop window.
-    #[cfg(feature = "milkdrop")]
     fn milkdrop_command(&mut self, command: &str) {
         match command {
             "previous" => self.actions.push(Action::Previous),
@@ -3218,6 +3367,7 @@ impl App {
             }
             self.palette = palette;
             theme::apply(ctx, &self.palette);
+            crate::window::tint_title_bar(&self.palette);
             self.applied_dark = Some(dark);
             self.accents.clear();
             self.accent_pending.clear();
@@ -8138,6 +8288,25 @@ impl App {
             self.lyrics_fullscreen_restoring = Some(was_fullscreen);
             self.lyrics_fullscreen_seen = false;
             self.lyrics_line_shown = None;
+            // The panels send the window's minimum again (#783).
+            crate::window::forget_min_size(ctx);
+        }
+    }
+
+    /// Whether F11 has the main window full screen.
+    pub(crate) fn window_fullscreen(&self) -> bool {
+        self.window_fullscreen.is_some() && !self.settings.winamp_window
+    }
+
+    /// Leaves the full screen F11 chose, for the window it came from.
+    fn leave_window_fullscreen(&mut self, ctx: &egui::Context) {
+        if let Some(maximized) = self.window_fullscreen.take() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+            if maximized {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+            }
+            self.window_fullscreen_seen = false;
+            crate::window::forget_min_size(ctx);
         }
     }
 
@@ -8876,9 +9045,33 @@ impl App {
                     self.lyrics_following = true;
                     self.lyrics_line_shown = None;
                     self.request_lyrics();
+                    // winit holds a full-screen window to its minimum, which
+                    // the panels can make wider than the monitor (#783).
+                    crate::window::lift_min_size(ctx);
                     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                 } else if !fullscreen {
                     self.leave_lyrics_fullscreen(ctx);
+                }
+            }
+            Action::ToggleWindowFullscreen => {
+                if self.settings.winamp_window {
+                    // The mini player keeps its skin's size.
+                } else if self.lyrics_fullscreen.is_some() {
+                    // F11 in fullscreen lyrics leaves them, as Esc does.
+                    self.leave_lyrics_fullscreen(ctx);
+                } else if self.window_fullscreen.is_some() {
+                    self.leave_window_fullscreen(ctx);
+                } else {
+                    // As for fullscreen lyrics: a maximized window stays in
+                    // the work area even in full screen.
+                    let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
+                    if maximized {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                    }
+                    crate::window::lift_min_size(ctx);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+                    self.window_fullscreen = Some(maximized);
+                    self.window_fullscreen_seen = false;
                 }
             }
             Action::LyricsLineShown(line) => {
@@ -9282,25 +9475,38 @@ impl App {
             }
             Action::OpenSkinsFolder => self.open_folder(self.dirs.skins_dir()),
             Action::ToggleWinampMilkdrop => {
-                self.settings.milkdrop_open = !self.settings.milkdrop_open;
-                self.settings_dirty = true;
-                #[cfg(feature = "milkdrop")]
                 if self.settings.milkdrop_open {
-                    // A first open has nothing to draw but the idle preset,
-                    // which hardly answers the music; fetch the packs in the
-                    // background and the window fills up on its own.
-                    let folder = self.dirs.milkdrop_dir();
-                    self.winamp.presets.refresh(&folder);
-                    if self.winamp.presets.count() == 0
-                        && self.winamp.presets.downloading().is_none()
-                    {
-                        self.winamp.presets.download_missing(
-                            folder,
-                            ctx.clone(),
-                            self.applied_proxy.clone(),
-                        );
-                        self.toast(gettext(self.locale, "Downloading MilkDrop preset packs"));
-                    }
+                    self.settings.milkdrop_open = false;
+                    self.settings_dirty = true;
+                } else if self.milkdrop_addon.open_when_ready {
+                    // Turned off again before the add-on arrived: it still
+                    // lands, but the window stays shut.
+                    self.milkdrop_addon.open_when_ready = false;
+                } else if self.milkdrop_addon.ready().is_some() {
+                    self.open_milkdrop(ctx);
+                } else {
+                    // No add-on for this version yet: fetch it, and open
+                    // the window when it is in place.
+                    self.milkdrop_addon.open_when_ready = true;
+                    self.milkdrop_addon.fetch(self.applied_proxy.clone(), ctx);
+                }
+            }
+            Action::RemoveMilkdropAddon => {
+                // The window runs from the add-on, which cannot be deleted
+                // while it does.
+                if let Some(host) = self.milkdrop_host.as_mut() {
+                    host.close();
+                }
+                if self.settings.milkdrop_open {
+                    self.settings.milkdrop_open = false;
+                    self.settings_dirty = true;
+                }
+                if let Err(error) = self.milkdrop_addon.remove() {
+                    self.toast_error(
+                        // Translators: {error} is an error message.
+                        gettext(self.locale, "Couldn't remove the MilkDrop add-on: {error}")
+                            .replace("{error}", &error.to_string()),
+                    );
                 }
             }
             Action::SetMilkdropSeconds(seconds) => {
@@ -9599,7 +9805,6 @@ impl App {
         self.note_listening();
         // MilkDrop runs in a child process and can outlive the main window.
         // Poll it before applying actions because its keys produce actions.
-        #[cfg(feature = "milkdrop")]
         self.sync_milkdrop(ctx);
         self.apply_actions(ctx);
         self.sync_media_controls(ctx);
@@ -9653,18 +9858,26 @@ impl App {
     /// hidden, minimised or occluded window but still runs its logic, so
     /// a hidden window keeps polling and keeps media controls current.
     fn schedule_next_pass(&self, ctx: &egui::Context) {
-        if let Some(due) = self.next_pass() {
+        let drawn = self.budget != crate::power::Budget::Background;
+        if let Some(due) = self.next_pass(drawn) {
             ctx.request_repaint_after(due);
         }
     }
 
     /// The soonest that playback, a pending play or polling needs the logic
     /// to run again, if any of them does.
-    fn next_pass(&self) -> Option<Duration> {
-        let playing = self
-            .now_playing()
-            .is_some_and(|now| now.playing)
-            .then_some(Duration::from_millis(250));
+    ///
+    /// While music plays, logic with no window drawn runs every
+    /// `PROGRESS_FRAME`. A `drawn` window draws a whole frame with each
+    /// pass, so it waits until the player bar shows something new.
+    fn next_pass(&self, drawn: bool) -> Option<Duration> {
+        let playing = self.now_playing().filter(|now| now.playing).map(|now| {
+            if drawn {
+                progress_due(now.position_ms, now.duration_ms, self.progress_bar_px)
+            } else {
+                PROGRESS_FRAME
+            }
+        });
         let pending = self
             .any_play_pending()
             .then_some(Duration::from_millis(120));
@@ -9685,7 +9898,7 @@ impl App {
             return Headless::Wait;
         }
         let wait = self
-            .next_pass()
+            .next_pass(false)
             .map_or(HEADLESS_SLEEP, |due| due.min(HEADLESS_SLEEP));
         if wait <= HEADLESS_TICK {
             Headless::Wait
@@ -9787,6 +10000,13 @@ impl App {
             } else if self.lyrics_fullscreen_seen {
                 self.leave_lyrics_fullscreen(ctx);
             }
+        } else if self.window_fullscreen() {
+            if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
+                self.window_fullscreen_seen = true;
+            } else if self.window_fullscreen_seen {
+                // Something other than F11 ended the full screen.
+                self.leave_window_fullscreen(ctx);
+            }
         }
         // Switch to the main window when sign-in is required.
         let needs_sign_in = !(self.is_connected() && self.user.is_some())
@@ -9814,10 +10034,18 @@ impl App {
         self.refresh_frame_now();
         self.sync_media_controls(ctx);
 
+        if !self.switch_intent {
+            let least = (!self.settings.winamp_window).then(|| crate::window::main_min_size(ctx));
+            self.window_watch.check(ctx, least);
+        }
+        // A full-screen window's size is the monitor's, not the one to
+        // return to.
         if !self.settings.winamp_window
             && !self.switch_intent
             && self.lyrics_fullscreen.is_none()
             && self.lyrics_fullscreen_restoring.is_none()
+            && self.window_fullscreen.is_none()
+            && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
         {
             if let Some(rect) = ctx.input(|input| input.viewport().inner_rect) {
                 self.last_window_size = Some([rect.width(), rect.height()]);
@@ -9837,8 +10065,8 @@ impl App {
     /// How soon the window asks for another frame while signed in.
     ///
     /// API polling already uses 20s during local playback. This only changes
-    /// the UI deadline. While a track is playing, the 250ms progress refresh
-    /// still wins, so the saving is idle-local frames: 4s -> 20s, 80% fewer
+    /// the UI deadline. While a track is playing, the progress refresh (at
+    /// most a second) still wins, so the saving is idle-local frames: 4s -> 20s, 80% fewer
     /// wakeups when paused on this device.
     ///
     /// With nobody able to see the window and nothing playing anywhere, the
@@ -9906,6 +10134,15 @@ impl App {
                         maximized: self.lyrics_restore_maximized,
                     }
                 }),
+                window_fullscreen_from: self
+                    .window_fullscreen
+                    .or(self
+                        .session_window_fullscreen_from
+                        .map(|mode| mode.maximized))
+                    .map(|maximized| crate::settings::WindowMode {
+                        fullscreen: false,
+                        maximized,
+                    }),
             }
             .save(&self.dirs.session_file());
         }
@@ -10156,6 +10393,24 @@ pub fn on_top_window_level(on_top: bool) -> egui::WindowLevel {
 /// Winamp window opens.
 fn winamp_on_top_level(winamp_window: bool, on_top: bool) -> Option<egui::WindowLevel> {
     winamp_window.then_some(on_top_window_level(on_top))
+}
+
+/// How long until the player bar shows something new for a song playing at
+/// `position_ms` of `duration_ms`: the elapsed time reaching its next whole
+/// second, or the fill of a progress bar `bar_px` physical pixels wide
+/// reaching its next pixel, but the fill no more often than
+/// `PROGRESS_FRAME`. A bar not drawn yet (`bar_px` under a pixel) waits for
+/// the time alone.
+fn progress_due(position_ms: u32, duration_ms: u32, bar_px: f32) -> Duration {
+    let second = u64::from(1000 - position_ms % 1000);
+    let pixel = (duration_ms > 0 && bar_px >= 1.0 && position_ms < duration_ms).then(|| {
+        let per_pixel = f64::from(duration_ms) / f64::from(bar_px);
+        let next = ((f64::from(position_ms) / per_pixel).floor() + 1.0) * per_pixel;
+        let wait = (next - f64::from(position_ms)).ceil() as u64;
+        wait.max(PROGRESS_FRAME.as_millis() as u64)
+    });
+    let wait = pixel.map_or(second, |pixel| pixel.min(second));
+    Duration::from_millis(wait) + PROGRESS_LATE
 }
 
 fn page_related_needs_load(pages: &HashMap<String, ArtistPage>, id: &str) -> bool {
@@ -16552,7 +16807,6 @@ mod tests {
     }
 
     /// MilkDrop playback keys produce the same actions as the main window.
-    #[cfg(feature = "milkdrop")]
     #[test]
     fn the_milkdrop_window_drives_playback() {
         let mut app = headless_app();
@@ -16602,7 +16856,6 @@ mod tests {
 
     /// The first reported screen rate sets the default FPS, but later reports
     /// do not override a configured value.
-    #[cfg(feature = "milkdrop")]
     #[test]
     fn the_frame_rate_matches_the_screen_the_first_time_it_is_known() {
         let mut app = headless_app();
@@ -16621,6 +16874,129 @@ mod tests {
             "the new screen is noted"
         );
         assert_eq!(app.settings.milkdrop_fps, 30, "their number stands");
+    }
+
+    /// An app whose MilkDrop folder already has a preset, so opening the
+    /// window fetches no packs.
+    fn milkdrop_app(name: &str) -> (App, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("lwspot-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dirs = AppDirs {
+            config: root.join("config"),
+            state: root.join("state"),
+            cache: root.join("cache"),
+        };
+        std::fs::create_dir_all(dirs.milkdrop_dir()).unwrap();
+        std::fs::write(dirs.milkdrop_dir().join("idle.milk"), b"[preset00]").unwrap();
+        let app = App::new(
+            &Waker::default(),
+            dirs,
+            Settings::default(),
+            AppOptions {
+                media_controls: false,
+                restore_sign_in: false,
+                tray: false,
+            },
+        );
+        (app, root)
+    }
+
+    /// Without the add-on, a MilkDrop control (the top bar, the menus,
+    /// Ctrl+Shift+K and Settings all send the same action) fetches it and
+    /// shows as on; the window opens once the add-on is in place. Pressed
+    /// again before then, it stays shut.
+    #[test]
+    fn turning_milkdrop_on_without_the_add_on_downloads_it_first() {
+        let (mut app, root) = milkdrop_app("milkdrop-addon-download");
+        let ctx = egui::Context::default();
+        assert!(app.milkdrop_addon.ready().is_none());
+
+        app.actions.push(Action::ToggleWinampMilkdrop);
+        app.apply_actions(&ctx);
+        assert!(app.milkdrop_addon.fetching(), "the add-on is on its way");
+        assert!(!app.settings.milkdrop_open, "no window without the add-on");
+        assert!(app.milkdrop_on(), "the controls show it coming");
+
+        let installed = app.milkdrop_addon.places().installed();
+        app.milkdrop_addon
+            .finish(Ok(Some((installed.clone(), true))));
+        let outcome = app.milkdrop_addon.poll().unwrap();
+        app.milkdrop_addon_outcome(outcome, &ctx);
+        assert!(app.settings.milkdrop_open, "it opens when it lands");
+        assert_eq!(app.milkdrop_addon.ready(), Some(installed.as_path()));
+
+        // Off, and on again: the add-on is there, so nothing is fetched.
+        app.actions.push(Action::ToggleWinampMilkdrop);
+        app.actions.push(Action::ToggleWinampMilkdrop);
+        app.apply_actions(&ctx);
+        assert!(app.settings.milkdrop_open);
+        assert!(!app.milkdrop_addon.busy());
+
+        // Removing it closes the window and forgets it.
+        app.actions.push(Action::RemoveMilkdropAddon);
+        app.apply_actions(&ctx);
+        assert!(!app.settings.milkdrop_open);
+        assert!(app.milkdrop_addon.ready().is_none());
+
+        // Pressed twice before the add-on arrives, the window stays shut.
+        app.actions.push(Action::ToggleWinampMilkdrop);
+        app.apply_actions(&ctx);
+        app.actions.push(Action::ToggleWinampMilkdrop);
+        app.apply_actions(&ctx);
+        assert!(!app.milkdrop_on());
+        assert!(app.milkdrop_addon.fetching(), "the download goes on");
+        app.milkdrop_addon.finish(Ok(Some((installed, true))));
+        let outcome = app.milkdrop_addon.poll().unwrap();
+        app.milkdrop_addon_outcome(outcome, &ctx);
+        assert!(!app.settings.milkdrop_open);
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A release without the add-on says so, and MilkDrop goes back off.
+    #[test]
+    fn an_add_on_that_is_not_published_is_reported() {
+        let (mut app, root) = milkdrop_app("milkdrop-addon-missing");
+        let ctx = egui::Context::default();
+        app.actions.push(Action::ToggleWinampMilkdrop);
+        app.apply_actions(&ctx);
+        app.milkdrop_addon
+            .finish(Err(crate::milkdrop::addon::Failure::Unavailable));
+        app.sync_milkdrop(&ctx);
+        assert!(!app.milkdrop_on());
+        assert!(!app.settings.milkdrop_open);
+        assert!(
+            app.toasts
+                .iter()
+                .any(|toast| toast.message
+                    == "The MilkDrop add-on isn't available for this version."),
+            "{:?}",
+            app.toasts
+                .iter()
+                .map(|toast| &toast.message)
+                .collect::<Vec<_>>()
+        );
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A window left open last time looks for the add-on and, finding none
+    /// for this version, closes rather than download unasked.
+    #[test]
+    fn a_window_left_open_without_its_add_on_closes() {
+        let (mut app, root) = milkdrop_app("milkdrop-addon-restore");
+        let ctx = egui::Context::default();
+        app.settings.milkdrop_open = true;
+        app.sync_milkdrop(&ctx);
+        assert!(app.milkdrop_addon.busy(), "it looks");
+        assert!(!app.milkdrop_addon.fetching(), "it fetches nothing");
+        app.milkdrop_addon.finish(Ok(None));
+        app.sync_milkdrop(&ctx);
+        app.sync_milkdrop(&ctx);
+        assert!(!app.settings.milkdrop_open);
+        assert!(!app.milkdrop_addon.busy());
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(root);
     }
 
     /// A minimized window is drawn no frames, so the one frame a Show
@@ -16926,6 +17302,390 @@ mod tests {
         output.textures_delta.clear();
         assert_eq!(app.last_window_size, Some([940.0, 680.0]));
         assert_eq!(app.last_window_pos, Some([120.0, 100.0]));
+        app.backend.shutdown();
+    }
+
+    /// Runs one frame that applies `actions`, with the window as `viewport`
+    /// describes it, and returns the commands it sent about the window's
+    /// size, place and mode.
+    fn window_commands(
+        app: &mut App,
+        ctx: &egui::Context,
+        viewport: egui::ViewportInfo,
+        actions: Vec<Action>,
+    ) -> Vec<egui::ViewportCommand> {
+        let mut input = egui::RawInput::default();
+        input.viewports.insert(egui::ViewportId::ROOT, viewport);
+        let mut actions = Some(actions);
+        let mut output = ctx.run_ui(input, |ui| {
+            for action in actions.take().into_iter().flatten() {
+                app.apply(action, ui.ctx());
+            }
+        });
+        output.textures_delta.clear();
+        output
+            .viewport_output
+            .remove(&egui::ViewportId::ROOT)
+            .map(|viewport| viewport.commands)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|command| {
+                use egui::ViewportCommand::*;
+                matches!(
+                    command,
+                    Fullscreen(_)
+                        | Maximized(_)
+                        | MinInnerSize(_)
+                        | InnerSize(_)
+                        | OuterPosition(_)
+                )
+            })
+            .collect()
+    }
+
+    /// F11 fills the screen with the main window, lifting its minimum and
+    /// a maximized window's work-area bounds first, and F11 again returns it
+    /// to the window it came from, minimum and all (#675).
+    #[test]
+    fn f11_fills_the_screen_and_returns_to_the_window_it_came_from() {
+        use egui::ViewportCommand::{Fullscreen, Maximized, MinInnerSize};
+        for was_maximized in [false, true] {
+            let mut app = headless_app();
+            let ctx = egui::Context::default();
+            let viewport = egui::ViewportInfo {
+                maximized: Some(was_maximized),
+                fullscreen: Some(false),
+                ..Default::default()
+            };
+            let commands = window_commands(
+                &mut app,
+                &ctx,
+                viewport,
+                vec![Action::ToggleWindowFullscreen],
+            );
+            let mut expected = Vec::new();
+            if was_maximized {
+                expected.push(Maximized(false));
+            }
+            expected.extend([MinInnerSize(egui::Vec2::ZERO), Fullscreen(true)]);
+            assert_eq!(commands, expected, "maximized: {was_maximized}");
+            assert!(app.window_fullscreen());
+
+            let viewport = egui::ViewportInfo {
+                maximized: Some(false),
+                fullscreen: Some(true),
+                ..Default::default()
+            };
+            let commands = window_commands(
+                &mut app,
+                &ctx,
+                viewport,
+                vec![Action::ToggleWindowFullscreen],
+            );
+            let mut expected = vec![Fullscreen(false)];
+            if was_maximized {
+                expected.push(Maximized(true));
+            }
+            assert_eq!(commands, expected, "maximized: {was_maximized}");
+            assert!(!app.window_fullscreen());
+            // The panels send the window's minimum again.
+            assert_eq!(crate::window::sent_min_width(&ctx), Some([0.0, 0.0]));
+            app.backend.shutdown();
+        }
+    }
+
+    /// In fullscreen lyrics F11 leaves the lyrics, as Esc does, rather than
+    /// taking the window out of a full screen it was never put in.
+    #[test]
+    fn f11_in_fullscreen_lyrics_leaves_the_lyrics() {
+        let mut app = headless_app();
+        let ctx = egui::Context::default();
+        app.lyrics_fullscreen = Some(false);
+        let viewport = egui::ViewportInfo {
+            fullscreen: Some(true),
+            ..Default::default()
+        };
+        let commands = window_commands(
+            &mut app,
+            &ctx,
+            viewport,
+            vec![Action::ToggleWindowFullscreen],
+        );
+        assert_eq!(app.lyrics_fullscreen, None);
+        assert!(!app.window_fullscreen());
+        assert_eq!(commands, vec![egui::ViewportCommand::Fullscreen(false)]);
+        app.backend.shutdown();
+    }
+
+    /// Fullscreen lyrics opened over F11 full screen return to it, and the
+    /// window stays full screen until F11 or Esc.
+    #[test]
+    fn lyrics_over_f11_full_screen_return_to_it() {
+        let mut app = headless_app();
+        let ctx = egui::Context::default();
+        let full = egui::ViewportInfo {
+            fullscreen: Some(true),
+            maximized: Some(false),
+            ..Default::default()
+        };
+        window_commands(
+            &mut app,
+            &ctx,
+            egui::ViewportInfo::default(),
+            vec![Action::ToggleWindowFullscreen],
+        );
+        window_commands(
+            &mut app,
+            &ctx,
+            full.clone(),
+            vec![Action::SetLyricsFullscreen(true)],
+        );
+        assert_eq!(app.lyrics_fullscreen, Some(true));
+        let commands = window_commands(&mut app, &ctx, full, vec![Action::ToggleWindowFullscreen]);
+        assert_eq!(app.lyrics_fullscreen, None);
+        assert!(app.window_fullscreen(), "still full screen");
+        assert_eq!(commands, vec![egui::ViewportCommand::Fullscreen(true)]);
+        app.backend.shutdown();
+    }
+
+    /// Going to another page leaves fullscreen lyrics but never the full
+    /// screen F11 chose.
+    #[test]
+    fn navigation_keeps_f11_full_screen() {
+        let mut app = headless_app();
+        crate::demo::populate(&mut app);
+        let ctx = egui::Context::default();
+        window_commands(
+            &mut app,
+            &ctx,
+            egui::ViewportInfo::default(),
+            vec![Action::ToggleWindowFullscreen],
+        );
+        let full = egui::ViewportInfo {
+            fullscreen: Some(true),
+            ..Default::default()
+        };
+        let commands = window_commands(
+            &mut app,
+            &ctx,
+            full,
+            vec![
+                Action::Open(Page::LikedSongs),
+                Action::Back,
+                Action::Forward,
+                Action::FocusSearch,
+                Action::ToggleQueuePanel,
+                Action::ToggleLyricsPanel,
+            ],
+        );
+        assert!(app.window_fullscreen());
+        assert!(
+            !commands
+                .iter()
+                .any(|command| matches!(command, egui::ViewportCommand::Fullscreen(false))),
+            "{commands:?}"
+        );
+        app.backend.shutdown();
+    }
+
+    /// The mini player keeps its skin's size: F11 does nothing there.
+    #[test]
+    fn f11_leaves_the_mini_player_alone() {
+        let mut app = headless_app();
+        app.settings.winamp_window = true;
+        let ctx = egui::Context::default();
+        let commands = window_commands(
+            &mut app,
+            &ctx,
+            egui::ViewportInfo::default(),
+            vec![Action::ToggleWindowFullscreen],
+        );
+        assert!(commands.is_empty(), "{commands:?}");
+        assert!(!app.window_fullscreen());
+        app.backend.shutdown();
+    }
+
+    /// Fullscreen lyrics lift the window's minimum before filling the
+    /// screen, since winit holds even a full-screen window to it (#783).
+    #[test]
+    fn fullscreen_lyrics_lift_the_window_minimum() {
+        use egui::ViewportCommand::{Fullscreen, MinInnerSize};
+        let mut app = headless_app();
+        let ctx = egui::Context::default();
+        let commands = window_commands(
+            &mut app,
+            &ctx,
+            egui::ViewportInfo {
+                fullscreen: Some(false),
+                ..Default::default()
+            },
+            vec![Action::SetLyricsFullscreen(true)],
+        );
+        let lifted = commands
+            .iter()
+            .position(|command| *command == MinInnerSize(egui::Vec2::ZERO))
+            .expect("the minimum is lifted");
+        let filled = commands
+            .iter()
+            .position(|command| *command == Fullscreen(true))
+            .expect("the window fills the screen");
+        assert!(lifted < filled, "{commands:?}");
+        window_commands(
+            &mut app,
+            &ctx,
+            egui::ViewportInfo {
+                fullscreen: Some(true),
+                ..Default::default()
+            },
+            vec![Action::SetLyricsFullscreen(false)],
+        );
+        assert_eq!(crate::window::sent_min_width(&ctx), Some([0.0, 0.0]));
+        app.backend.shutdown();
+    }
+
+    /// The full screen the window is in keeps the size it had before out of
+    /// the session.
+    #[test]
+    fn f11_full_screen_keeps_the_window_bounds() {
+        let mut app = headless_app();
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        app.window_fullscreen = Some(false);
+        app.last_window_size = Some([900.0, 650.0]);
+        app.last_window_pos = Some([100.0, 80.0]);
+        let mut input = egui::RawInput::default();
+        let viewport = input.viewports.get_mut(&egui::ViewportId::ROOT).unwrap();
+        viewport.fullscreen = Some(true);
+        viewport.inner_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1920.0, 1080.0),
+        ));
+        viewport.outer_rect = viewport.inner_rect;
+        let mut output = ctx.run_ui(input, |ui| app.frame_ui(ui));
+        output.textures_delta.clear();
+        assert!(app.window_fullscreen());
+        assert_eq!(app.last_window_size, Some([900.0, 650.0]));
+        assert_eq!(app.last_window_pos, Some([100.0, 80.0]));
+        app.backend.shutdown();
+    }
+
+    /// A window closed in F11 full screen opens full screen again, unlike
+    /// one fullscreen lyrics left behind, and the session says which.
+    #[test]
+    fn a_window_closed_in_f11_full_screen_opens_full_screen_again() {
+        use crate::settings::WindowMode;
+        use egui::ViewportCommand::{Fullscreen, InnerSize, Maximized, MinInnerSize};
+        let mut app = test_app("f11-session");
+        app.window_fullscreen = Some(true);
+        app.save_session();
+        let session = SessionState::load(&app.dirs.session_file());
+        assert_eq!(
+            session.window_fullscreen_from,
+            Some(WindowMode {
+                fullscreen: false,
+                maximized: true,
+            })
+        );
+        app.window_fullscreen = None;
+        app.save_session();
+        let text = std::fs::read_to_string(app.dirs.session_file()).unwrap();
+        assert!(!text.contains("window_fullscreen_from"));
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(app.dirs.config.parent().unwrap());
+
+        let mut app = headless_app();
+        app.session_window_size = Some([1024.0, 768.0]);
+        app.session_window_fullscreen_from = session.window_fullscreen_from;
+        let ctx = egui::Context::default();
+        let mut raw_input = egui::RawInput::default();
+        raw_input
+            .viewports
+            .entry(egui::ViewportId::ROOT)
+            .or_default()
+            .fullscreen = Some(true);
+        let mut output = ctx.run_ui(raw_input, |_ui| app.attach(&ctx));
+        output.textures_delta.clear();
+        let commands = &output.viewport_output[&egui::ViewportId::ROOT].commands;
+        assert!(
+            !commands
+                .iter()
+                .any(|command| matches!(command, Fullscreen(_) | Maximized(_) | InnerSize(_))),
+            "the window stays full screen: {commands:?}"
+        );
+        assert!(commands.contains(&MinInnerSize(egui::Vec2::ZERO)));
+        assert!(app.window_fullscreen());
+        assert_eq!(app.session_window_fullscreen_from, None);
+
+        // Leaving it maximizes the window again, as it was before F11.
+        let commands = window_commands(
+            &mut app,
+            &ctx,
+            egui::ViewportInfo {
+                fullscreen: Some(true),
+                ..Default::default()
+            },
+            vec![Action::ToggleWindowFullscreen],
+        );
+        assert_eq!(commands, vec![Fullscreen(false), Maximized(true)]);
+        app.backend.shutdown();
+    }
+
+    /// The mini player can replace a full-screen main window and give it
+    /// back full screen.
+    #[test]
+    fn f11_full_screen_survives_a_visit_to_the_mini_player() {
+        let mut app = headless_app();
+        let ctx = egui::Context::default();
+        window_commands(
+            &mut app,
+            &ctx,
+            egui::ViewportInfo::default(),
+            vec![Action::ToggleWindowFullscreen],
+        );
+        app.apply(Action::ToggleWinampWindow, &ctx);
+        let mini = egui::Context::default();
+        let mut output = mini.run_ui(Default::default(), |_ui| app.attach(&mini));
+        output.textures_delta.clear();
+        assert!(
+            !app.window_fullscreen(),
+            "the mini player is never full screen"
+        );
+        app.apply(Action::ToggleWinampWindow, &mini);
+
+        let main = egui::Context::default();
+        let mut raw_input = egui::RawInput::default();
+        raw_input
+            .viewports
+            .entry(egui::ViewportId::ROOT)
+            .or_default()
+            .fullscreen = Some(true);
+        let mut output = main.run_ui(raw_input, |_ui| app.attach(&main));
+        output.textures_delta.clear();
+        assert!(
+            !output.viewport_output[&egui::ViewportId::ROOT]
+                .commands
+                .contains(&egui::ViewportCommand::Fullscreen(false))
+        );
+        assert!(app.window_fullscreen());
+        app.backend.shutdown();
+    }
+
+    /// A session size below the minimum, as a lost display can leave it
+    /// (#704), comes back at the minimum instead of being dropped.
+    #[test]
+    fn a_session_size_below_the_minimum_grows_to_it() {
+        let mut app = headless_app();
+        app.session_window_size = Some([247.0, 261.0]);
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(Default::default(), |_ui| app.attach(&ctx));
+        output.textures_delta.clear();
+        assert!(
+            output.viewport_output[&egui::ViewportId::ROOT]
+                .commands
+                .contains(&egui::ViewportCommand::InnerSize(egui::Vec2::from(
+                    crate::window::MAIN_MIN_SIZE
+                )))
+        );
         app.backend.shutdown();
     }
 
@@ -17660,6 +18420,27 @@ mod tests {
         );
     }
 
+    /// The soonest repaint the logic asks for once start-up has settled,
+    /// with the window as `input` describes it.
+    fn steady_logic_wake(app: &mut App, input: &egui::RawInput) -> Option<Duration> {
+        let ctx = egui::Context::default();
+        let delays = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = std::sync::Arc::clone(&delays);
+        ctx.set_request_repaint_callback(move |info| {
+            seen.lock().unwrap().push(info.delay);
+        });
+        // The first pass settles start-up work (zoom, fonts) that asks for an
+        // immediate pass of its own; the steady state is what matters.
+        for _ in 0..3 {
+            delays.lock().unwrap().clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| {
+                app.background_frame(ui.ctx());
+            });
+            output.textures_delta.clear();
+        }
+        delays.lock().unwrap().iter().copied().min()
+    }
+
     /// eframe runs only the logic of a hidden, minimised or occluded window,
     /// so the logic pass alone must ask for the next one. Otherwise a window
     /// on another workspace sleeps until something else wakes it, and stops
@@ -17674,29 +18455,51 @@ mod tests {
         app.local.playback = Playback::Playing;
         assert!(app.now_playing().is_some_and(|now| now.playing));
 
-        let ctx = egui::Context::default();
-        let delays = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let seen = std::sync::Arc::clone(&delays);
-        ctx.set_request_repaint_callback(move |info| {
-            seen.lock().unwrap().push(info.delay);
-        });
-        // The first pass settles start-up work (zoom, fonts) that asks for an
-        // immediate pass of its own; the steady state is what matters.
-        for _ in 0..3 {
-            delays.lock().unwrap().clear();
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-                app.background_frame(ui.ctx());
-            });
-            output.textures_delta.clear();
-        }
-
-        let soonest = delays.lock().unwrap().iter().copied().min();
+        let mut minimised = egui::RawInput::default();
+        minimised
+            .viewports
+            .entry(egui::ViewportId::ROOT)
+            .or_default()
+            .minimized = Some(true);
+        let soonest = steady_logic_wake(&mut app, &minimised);
         assert!(
             soonest
                 .is_some_and(|delay| delay > Duration::ZERO && delay <= Duration::from_millis(250)),
-            "a hidden window's logic must wake again within 250 ms while playing, \
-             without spinning; asked for {soonest:?}"
+            "a hidden window's logic must wake again within 250 ms while playing,              without spinning; asked for {soonest:?}"
         );
+
+        // A window that is drawn wakes when the player bar changes, at the
+        // next whole second here, and every wake draws a frame.
+        let soonest = steady_logic_wake(&mut app, &egui::RawInput::default());
+        assert!(
+            soonest.is_some_and(|delay| delay > Duration::from_millis(500)
+                && delay <= Duration::from_secs(1) + PROGRESS_LATE),
+            "a drawn window waits for the next second; asked for {soonest:?}"
+        );
+    }
+
+    /// The player bar is redrawn when the elapsed time reaches a new second
+    /// or the fill reaches a new pixel, the fill at most every
+    /// `PROGRESS_FRAME`, and each a little after the change.
+    #[test]
+    fn progress_is_redrawn_when_the_time_or_the_fill_changes() {
+        let ms = |wait: u64| Duration::from_millis(wait) + PROGRESS_LATE;
+        // No bar drawn yet: the time alone.
+        assert_eq!(progress_due(83_400, 210_000, 0.0), ms(600));
+        // Three minutes over 500 pixels: a pixel every 360 ms.
+        assert_eq!(progress_due(0, 180_000, 500.0), ms(360));
+        assert_eq!(progress_due(400, 180_000, 500.0), ms(320));
+        // The second comes before the next pixel.
+        assert_eq!(progress_due(900, 180_000, 500.0), ms(100));
+        // A minute over 1000 pixels moves every 60 ms, but the fill is
+        // redrawn no more often than every 250 ms.
+        assert_eq!(progress_due(100, 60_000, 1000.0), ms(250));
+        assert_eq!(progress_due(850, 60_000, 1000.0), ms(150));
+        // An hour-long episode moves a pixel every 7.2 s: the time rules.
+        assert_eq!(progress_due(1_000, 3_600_000, 500.0), ms(1000));
+        // A finished song's fill no longer moves.
+        assert_eq!(progress_due(180_000, 180_000, 500.0), ms(1000));
+        assert_eq!(progress_due(5_250, 0, 500.0), ms(750));
     }
 
     #[test]

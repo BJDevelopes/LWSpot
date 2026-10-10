@@ -369,6 +369,8 @@ impl Engine {
             volume: config.initial_volume,
             ..LocalState::default()
         }));
+        // Before the first session: librespot reads these once (#343).
+        let _ = librespot_audio::AudioFetchParams::set(audio_fetch_params());
         let session = Session::new(session_config, Some(cache));
         let audio = AudioControl::new(config.buffer_ms);
         let (sink_builder, volume) = sink_builder(
@@ -609,7 +611,10 @@ impl Engine {
             PlayerCommand::Previous => spirc.prev()?,
             PlayerCommand::ClearQueue => spirc.clear_queue()?,
             PlayerCommand::AddToQueue(uri) => spirc.add_to_queue(uri)?,
-            PlayerCommand::Seek(position_ms) => spirc.set_position_ms(position_ms)?,
+            PlayerCommand::Seek(position_ms) => {
+                self.audio.seek_requested();
+                spirc.set_position_ms(position_ms)?;
+            }
             PlayerCommand::Volume(volume) => self.note_volume(volume, false)?,
             PlayerCommand::VolumePreview(volume) => self.note_volume(volume, true)?,
             PlayerCommand::Shuffle(enabled) => spirc.shuffle(enabled)?,
@@ -1123,6 +1128,17 @@ fn decode_folder_name(encoded: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// How far ahead local playback downloads. After a seek, librespot waits
+/// until this much audio past the new position has arrived; its 5 s default
+/// made seeks into uncached audio slow (#343). The rest stays librespot's.
+/// Set once per process: a reconnect keeps the first value.
+fn audio_fetch_params() -> librespot_audio::AudioFetchParams {
+    librespot_audio::AudioFetchParams {
+        read_ahead_during_playback: Duration::from_millis(1_500),
+        ..librespot_audio::AudioFetchParams::default()
+    }
 }
 
 #[cfg(test)]

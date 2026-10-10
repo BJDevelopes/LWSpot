@@ -103,6 +103,11 @@ Root: HKCU; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueN
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
+[UninstallDelete]
+; The MilkDrop add-on the app downloads the first time MilkDrop is turned
+; on. Settings, history and caches stay, as they always have.
+Type: filesandordirs; Name: "{localappdata}\LWSpot\data\addons"
+
 [Code]
 #if Arch == "x86_64"
 // x64compatible lets this installer run on an ARM PC under emulation, and a
@@ -122,15 +127,20 @@ end;
 
 // A running copy holds lwspot.exe open, so uninstalling would delete
 // everything but the executable and leave the app running (spotifast#753).
-// Stop only the copy installed here, never a portable one elsewhere.
+// Stop only the copy installed here, never a portable one elsewhere. Its
+// MilkDrop window runs from the downloaded add-on, which would hold that
+// file open in turn: stop the add-on started from this user's add-ons folder.
 function InitializeUninstall(): Boolean;
 var
   ResultCode: Integer;
 begin
   Result := True;
-  Exec(ExpandConstant('{sys}\WindowsPowerShell1.0\powershell.exe'),
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
     '-NoProfile -NonInteractive -Command "Get-Process lwspot -ErrorAction SilentlyContinue | ' +
     'Where-Object { $_.Path -eq ''' + ExpandConstant('{app}\{#AppExeName}') + ''' } | ' +
+    'Stop-Process -Force; ' +
+    'Get-Process lwspot-milkdrop -ErrorAction SilentlyContinue | ' +
+    'Where-Object { $_.Path -eq ''' + ExpandConstant('{localappdata}\LWSpot\data\addons\lwspot-milkdrop.exe') + ''' } | ' +
     'Stop-Process -Force; Start-Sleep -Milliseconds 500"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;

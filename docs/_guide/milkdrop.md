@@ -12,8 +12,29 @@ the top-bar visualiser button, Ctrl+Shift+K, Settings, or the mini player's
   <source src="../assets/images/milkdrop.mp4" type="video/mp4">
 </video>
 
-MilkDrop is included in the Windows downloads for both Intel and AMD PCs and ARM
-PCs. Builds made with `--no-default-features` leave it out.
+## The add-on
+
+MilkDrop is an optional add-on, `lwspot-milkdrop.exe`, so LWSpot itself stays
+small and nothing of it is on your computer until you use it. The first time
+you turn MilkDrop on, LWSpot downloads the add-on for its own version from the
+LWSpot release on GitHub (a few MB), checks it against the release's
+`checksums.txt`, and opens the window as soon as it is in place. The button
+and menus show MilkDrop as on while it downloads; turning it off again before
+then keeps the window shut. Add-ons exist for both Intel and AMD PCs and ARM
+PCs.
+
+**Settings > MilkDrop > Add-on** shows whether it is installed. **Remove**
+deletes it; turning MilkDrop on again downloads it again. After LWSpot
+updates, the add-on of the old version is no longer used, and the next time you
+turn MilkDrop on LWSpot downloads the one for the new version. A MilkDrop window
+that was open when LWSpot closed opens again only if the right add-on is
+already there.
+
+The add-on lives in `%LOCALAPPDATA%\LWSpot\data\addons`; see
+[file locations](../_reference/settings-and-files.md). A copy of
+`lwspot-milkdrop.exe` next to `lwspot.exe` is used first, as long as it is
+from the same version: that is where a build of your own goes (see
+[Getting started](getting-started.md)).
 
 ## The window
 

@@ -696,6 +696,31 @@ msgstr "无法打开 {folder}：{error}"
 msgid "Added {skin} skin"
 msgstr "已添加皮肤“{skin}”"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:3014
+#, rust-format
+msgid "Couldn't start MilkDrop: {error}"
+msgstr "无法启动 MilkDrop：{error}"
+
+#: src/app.rs:3051 src/ui/settings.rs:1884 src/ui/topbar.rs:485
+#: src/ui/winamp/mod.rs:915
+msgid "Downloading the MilkDrop add-on"
+msgstr "正在下载 MilkDrop 附加组件"
+
+#: src/app.rs:3055
+msgid "MilkDrop add-on installed"
+msgstr "已安装 MilkDrop 附加组件"
+
+#: src/app.rs:3067
+msgid "The MilkDrop add-on isn't available for this version."
+msgstr "此版本没有可用的 MilkDrop 附加组件。"
+
+#. Translators: {error} is an error message.
+#: src/app.rs:3073
+#, rust-format
+msgid "Couldn't get the MilkDrop add-on: {error}"
+msgstr "无法获取 MilkDrop 附加组件：{error}"
+
 #: src/app.rs:3110
 msgid "Proxy applied. Restarting local playback."
 msgstr "代理已应用，正在重启本地播放。"
@@ -981,6 +1006,12 @@ msgstr "正在下载 MilkDrop 预设包"
 msgid "Downloading {name} presets"
 msgstr "正在下载 {name} 预设"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:9507
+#, rust-format
+msgid "Couldn't remove the MilkDrop add-on: {error}"
+msgstr "无法移除 MilkDrop 附加组件：{error}"
+
 #: src/app.rs:10243
 msgid "Couldn't start playback"
 msgstr "无法开始播放"
@@ -1018,6 +1049,47 @@ msgid ""
 "No audio output device was found. Connect or enable one, then press play "
 "again."
 msgstr "未找到音频输出设备。请连接或启用一个设备，然后再次点击播放。"
+
+#: src/sink.rs:1138
+msgid ""
+"Another app is using your audio device exclusively. Close it, or turn off "
+"exclusive mode in Windows sound settings."
+msgstr ""
+"另一个应用正在独占使用你的音频设备。请关闭该应用，或在 Windows "
+"声音设置中关闭独占模式。"
+
+#: src/sink.rs:1142
+msgid ""
+"Windows couldn't open your audio device. Its driver may not be responding; "
+"try another output or restart Windows audio."
+msgstr ""
+"Windows "
+"无法打开你的音频设备。其驱动程序可能没有响应；请尝试其他音频输出，或重新启动 "
+"Windows 音频。"
+
+#: src/sink.rs:1146
+msgid ""
+"The audio device was disconnected. Reconnect it or choose another output."
+msgstr "音频设备已断开连接。请重新连接，或选择其他音频输出。"
+
+#: src/sink.rs:1150
+msgid ""
+"Windows audio isn't running. Start the Windows Audio service, then press "
+"play again."
+msgstr "Windows 音频未运行。请启动 Windows Audio 服务，然后再次点击播放。"
+
+#: src/sink.rs:1154
+msgid "Windows blocked access to your audio device. Try another output."
+msgstr "Windows 阻止了对你的音频设备的访问。请尝试其他音频输出。"
+
+#: src/sink.rs:1156
+msgid "Can't play on this audio device right now."
+msgstr "目前无法在此音频设备上播放。"
+
+#. Translators: Keep {code} exactly as written. It becomes a Windows error code such as 0x8889000F, shown after an audio device error.
+#: src/sink.rs:1192
+msgid "(code {code})"
+msgstr "（代码 {code}）"
 
 #: src/app.rs:10304
 msgid ""
@@ -1135,7 +1207,8 @@ msgstr "客户端 ID"
 msgid "Setup guide"
 msgstr "设置指南"
 
-#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/dialogs.rs:96
+#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/settings.rs:1440
+#: src/ui/dialogs.rs:96
 msgid "Remove"
 msgstr "移除"
 
@@ -1536,6 +1609,10 @@ msgid ""
 "Now showing {skin}. Another one is picked each time the mini player opens."
 msgstr "当前皮肤：{skin}。每次打开迷你播放器都会换一个。"
 
+#: src/ui/settings.rs:1425
+msgid "Add-on"
+msgstr "附加组件"
+
 #: src/ui/settings.rs:1463
 msgid "MilkDrop window"
 msgstr "MilkDrop 窗口"
@@ -1740,6 +1817,16 @@ msgstr "键盘快捷键"
 #: src/ui/settings.rs:1857
 msgid "Source code"
 msgstr "源代码"
+
+#: src/ui/settings.rs:1888
+msgid "Not installed. Turning MilkDrop on downloads it from GitHub (a few MB)."
+msgstr "未安装。开启 MilkDrop 时会从 GitHub 下载（几 MB）。"
+
+#. Translators: {version} is a version number such as 1.2.0.
+#: src/ui/settings.rs:1893
+#, rust-format
+msgid "Installed, version {version}."
+msgstr "已安装，版本 {version}。"
 
 #. Translators: {query} is the text typed into the settings search field.
 #: src/ui/settings.rs:1929
@@ -2299,6 +2386,10 @@ msgstr "显示歌词"
 msgid "Lyrics: leave full screen"
 msgstr "歌词：退出全屏"
 
+#: src/ui/keys.rs:191
+msgid "Enter or leave full screen"
+msgstr "进入或退出全屏"
+
 #: src/ui/keys.rs:218
 msgid "Song list: extend or shrink the selection"
 msgstr "歌曲列表：扩大或缩小选择范围"
@@ -2653,7 +2744,7 @@ msgid "Checking download…"
 msgstr "正在检查下载…"
 
 #. Translators: {received} and {total} are sizes in megabytes, such as 12.5.
-#: src/ui/update.rs:90
+#: src/ui/settings.rs:1879 src/ui/update.rs:90
 #, rust-format
 msgid "{received} of {total} MB"
 msgstr "{received} / {total} MB"

@@ -1,9 +1,12 @@
 //! MilkDrop visualization through libprojectM.
 //!
-//! projectM reads MilkDrop `.milk` presets and renders them with OpenGL.
-//! MilkDrop runs as this binary with `--milkdrop-child` because winit permits
-//! one event loop per process and eframe owns the main one. Audio reaches the
-//! child through a shared-memory ring.
+//! projectM reads MilkDrop `.milk` presets and renders them with OpenGL. It
+//! is not part of `lwspot.exe`: the window is a separate program,
+//! `lwspot-milkdrop.exe`, built with the `milkdrop` feature and downloaded
+//! the first time someone turns MilkDrop on (see [`addon`]). It is a
+//! process of its own anyway, because winit permits one event loop per
+//! process and eframe owns the app's. Audio reaches it through a
+//! shared-memory ring.
 //!
 //! [`Presets`] lists the config directory's `milkdrop` folder and downloads
 //! optional projectM preset packs. No presets are bundled.
@@ -12,19 +15,29 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-/// The MilkDrop child process: its own window, context, and event loop.
+/// Finding, downloading, and removing `lwspot-milkdrop.exe`.
+pub mod addon;
+/// The command line the app starts the add-on with.
+pub mod args;
+/// The MilkDrop window: its own window, context, and event loop. Only the
+/// add-on is built with it.
 #[cfg(feature = "milkdrop")]
 pub mod child;
 #[cfg(feature = "milkdrop")]
 pub mod engine;
-/// The app's side of the child process: spawning it and talking to it.
-#[cfg(feature = "milkdrop")]
+/// The app's side of the add-on: starting it and talking to it.
 pub mod host;
-/// Fading text over the picture: the keys, the playing song.
+/// Fading text over the picture: the keys, the playing song. Only the
+/// window draws it; tests run everywhere.
+#[cfg(any(feature = "milkdrop", test))]
 pub mod overlay;
-/// The shared-memory audio ring between the app and the MilkDrop child.
-#[cfg(feature = "milkdrop")]
+/// The shared-memory audio ring between the app and the MilkDrop window.
 pub mod shm;
+
+/// What the app and the add-on agree on: the command line, the stdin and
+/// stdout lines, and the shared-memory ring. Raise it with any change to
+/// them; an add-on refuses an app of another protocol.
+pub const PROTOCOL: u32 = 1;
 
 /// How long a preset plays before the next fades in.
 pub const DEFAULT_SECONDS: u32 = 10;

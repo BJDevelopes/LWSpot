@@ -303,14 +303,6 @@ pub(crate) fn run() -> eframe::Result<()> {
     // helper, which installs and exits; otherwise the receipt and error an
     // update relaunch carries are taken out of the arguments.
     let launch = fastframe_update::intercept(&lwspot::updates::CONFIG);
-    // A MilkDrop child launch is a bare visualiser window, not the app: it has
-    // its own event loop and OpenGL context, reads the sound from a shared
-    // buffer, and never touches the app's state. Handle it before anything
-    // else, including the argument parser, which does not know its flags.
-    #[cfg(feature = "milkdrop")]
-    if let Some(args) = lwspot::milkdrop::child::Args::parse() {
-        std::process::exit(lwspot::milkdrop::child::run(args));
-    }
 
     let cli = Cli::from_arg_matches(&Cli::command().get_matches_from(&launch.arguments))
         .unwrap_or_else(|error| error.exit());
@@ -374,7 +366,7 @@ pub(crate) fn run() -> eframe::Result<()> {
     } else {
         // Which system face draws each script the interface font lacks,
         // one line per script at startup, for reports of odd-looking text.
-        "warn,lwspot=info,fastframe_fonts=info"
+        "warn,lwspot=info,fastframe_fonts=info,fastframe_audio=info"
     };
     let dirs = paths::AppDirs::discover();
     #[cfg(feature = "demo")]
@@ -549,15 +541,24 @@ pub(crate) fn run() -> eframe::Result<()> {
                 let thumbbar = {
                     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
                     let mut toolbar = lwspot::thumbbar::ThumbBar::new();
-                    if thumbbar_enabled
-                        && let Ok(handle) = cc.window_handle()
-                        && let RawWindowHandle::Win32(window) = handle.as_raw()
-                    {
+                    let hwnd = cc
+                        .window_handle()
+                        .ok()
+                        .and_then(|handle| match handle.as_raw() {
+                            RawWindowHandle::Win32(window) => Some(window.hwnd.get()),
+                            _ => None,
+                        });
+                    // Before the first frame, which applies the theme and
+                    // with it the title bar's colours.
+                    if let Some(hwnd) = hwnd {
+                        lwspot::window::set_main_window(hwnd);
+                    }
+                    if thumbbar_enabled && let Some(hwnd) = hwnd {
                         let wake = creator_waker.clone();
                         // The shell and toolbar share this window's thread
                         // and lifetime; the toolbar is detached on shell
                         // drop.
-                        unsafe { toolbar.attach(window.hwnd.get(), move || wake.wake()) };
+                        unsafe { toolbar.attach(hwnd, move || wake.wake()) };
                     }
                     toolbar
                 };
@@ -1112,12 +1113,13 @@ impl eframe::App for Shell {
     }
 
     /// The mini player's window is see-through where the skin leaves it
-    /// out; the big window paints itself over eframe's own ground.
+    /// out; the big window paints itself over eframe's own ground, which is
+    /// opaque because the window is not transparent (#656).
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         if self.app.settings.winamp_window {
             [0.0; 4]
         } else {
-            egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
+            egui::Color32::from_rgb(12, 12, 12).to_normalized_gamma_f32()
         }
     }
 

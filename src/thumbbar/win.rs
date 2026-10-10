@@ -44,8 +44,8 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateIconIndirect, DefWindowProcW, DestroyIcon, GWLP_WNDPROC, GetPropW,
     HICON, ICONINFO, RegisterWindowMessageW, RemovePropW, SM_CXSMICON, SPI_GETHIGHCONTRAST,
-    SetPropW, SetWindowLongPtrW, SystemParametersInfoW, WM_COMMAND, WM_NCDESTROY, WM_SETTINGCHANGE,
-    WM_THEMECHANGED, WNDPROC,
+    SetPropW, SetWindowLongPtrW, SystemParametersInfoW, WM_COMMAND, WM_DISPLAYCHANGE, WM_NCDESTROY,
+    WM_SETTINGCHANGE, WM_THEMECHANGED, WNDPROC,
 };
 use windows_sys::core::{GUID, HRESULT};
 
@@ -619,7 +619,8 @@ fn wide(text: &str) -> Vec<u16> {
 
 /// Sits in front of the window's own procedure, for the two messages the
 /// toolbar needs: the taskbar button appearing, and a button being pressed.
-/// Everything else goes straight on to the procedure this one replaced.
+/// It also notes theme and display changes for the next frame. Everything
+/// else goes straight on to the procedure this one replaced.
 unsafe extern "system" fn procedure(
     hwnd: HWND,
     message: u32,
@@ -650,6 +651,12 @@ unsafe extern "system" fn procedure(
     }
     if message == WM_SETTINGCHANGE || message == WM_THEMECHANGED {
         hook.appearance_changed.store(true, Ordering::Relaxed);
+        (hook.wake)();
+    }
+    // winit sizes nothing on its own when a display comes or goes, so the
+    // next frame checks the window is still on one and still usable (#704).
+    if message == WM_DISPLAYCHANGE {
+        crate::window::note_display_change();
         (hook.wake)();
     }
     // A press arrives as a command from the toolbar, the button's own

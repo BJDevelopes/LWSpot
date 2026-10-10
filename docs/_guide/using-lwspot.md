@@ -227,6 +227,7 @@ Winamp skins do not yet have equivalent accessibility coverage.
 | `Ctrl+X` | Copy the selected songs' links and remove the songs from your playlist |
 | `Ctrl+M` | Winamp mini player |
 | `Ctrl+Shift+K` | MilkDrop |
+| `F11` | Full screen; `F11` or `Esc` leaves it |
 | `Ctrl+,` | Settings |
 | `Ctrl+/` or `?` | All shortcuts |
 | `Ctrl+Q` | Quit |
@@ -454,6 +455,11 @@ song's cover beside the lyrics, the two centred together, and a song without
 words, such as an instrumental, shows just its cover in the middle of the
 screen. Quitting while lyrics are full screen does not leave the next launch
 stuck in full screen: the window returns to its previous size.
+
+**F11** fills the screen with the whole window, and **F11** or **Esc** returns
+it to its previous size. Pressed during full-screen lyrics, **F11** leaves the
+lyrics instead. A window that was full screen when you quit opens full screen
+again.
 
 | Dark theme | Light theme |
 | --- | --- |

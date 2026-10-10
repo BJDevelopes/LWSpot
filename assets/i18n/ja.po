@@ -701,6 +701,31 @@ msgstr "{folder}を開けませんでした：{error}"
 msgid "Added {skin} skin"
 msgstr "スキン「{skin}」を追加しました"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:3014
+#, rust-format
+msgid "Couldn't start MilkDrop: {error}"
+msgstr "MilkDropを起動できませんでした：{error}"
+
+#: src/app.rs:3051 src/ui/settings.rs:1884 src/ui/topbar.rs:485
+#: src/ui/winamp/mod.rs:915
+msgid "Downloading the MilkDrop add-on"
+msgstr "MilkDropアドオンをダウンロード中"
+
+#: src/app.rs:3055
+msgid "MilkDrop add-on installed"
+msgstr "MilkDropアドオンをインストールしました"
+
+#: src/app.rs:3067
+msgid "The MilkDrop add-on isn't available for this version."
+msgstr "このバージョン用のMilkDropアドオンは提供されていません。"
+
+#. Translators: {error} is an error message.
+#: src/app.rs:3073
+#, rust-format
+msgid "Couldn't get the MilkDrop add-on: {error}"
+msgstr "MilkDropアドオンを取得できませんでした：{error}"
+
 #: src/app.rs:3110
 msgid "Proxy applied. Restarting local playback."
 msgstr "プロキシを適用しました。ローカル再生を再起動しています。"
@@ -996,6 +1021,12 @@ msgstr "MilkDropのプリセットパックをダウンロード中"
 msgid "Downloading {name} presets"
 msgstr "{name}のプリセットをダウンロード中"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:9507
+#, rust-format
+msgid "Couldn't remove the MilkDrop add-on: {error}"
+msgstr "MilkDropアドオンを削除できませんでした：{error}"
+
 #: src/app.rs:10243
 msgid "Couldn't start playback"
 msgstr "再生を開始できませんでした"
@@ -1035,6 +1066,52 @@ msgid ""
 msgstr ""
 "音声出力デバイスが見つかりません。デバイスを接続するか有効にしてから、もう一"
 "度再生してください。"
+
+#: src/sink.rs:1138
+msgid ""
+"Another app is using your audio device exclusively. Close it, or turn off "
+"exclusive mode in Windows sound settings."
+msgstr ""
+"別のアプリが音声デバイスを排他的に使用しています。そのアプリを閉じるか、Windo"
+"ws のサウンド設定で排他モードをオフにしてください。"
+
+#: src/sink.rs:1142
+msgid ""
+"Windows couldn't open your audio device. Its driver may not be responding; "
+"try another output or restart Windows audio."
+msgstr ""
+"Windows "
+"で音声デバイスを開けませんでした。ドライバーが応答していない可能性があります"
+"。別の出力を試すか、Windows オーディオを再起動してください。"
+
+#: src/sink.rs:1146
+msgid ""
+"The audio device was disconnected. Reconnect it or choose another output."
+msgstr "音声デバイスが切断されました。再接続するか、別の出力を選んでください。"
+
+#: src/sink.rs:1150
+msgid ""
+"Windows audio isn't running. Start the Windows Audio service, then press "
+"play again."
+msgstr ""
+"Windows オーディオが実行されていません。Windows Audio "
+"サービスを開始してから、もう一度再生してください。"
+
+#: src/sink.rs:1154
+msgid "Windows blocked access to your audio device. Try another output."
+msgstr ""
+"Windows "
+"によって音声デバイスへのアクセスがブロックされました。別の出力を試してくださ"
+"い。"
+
+#: src/sink.rs:1156
+msgid "Can't play on this audio device right now."
+msgstr "現在、この音声デバイスでは再生できません。"
+
+#. Translators: Keep {code} exactly as written. It becomes a Windows error code such as 0x8889000F, shown after an audio device error.
+#: src/sink.rs:1192
+msgid "(code {code})"
+msgstr "（コード {code}）"
 
 #: src/app.rs:10304
 msgid ""
@@ -1161,7 +1238,8 @@ msgstr "クライアントID"
 msgid "Setup guide"
 msgstr "設定ガイド"
 
-#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/dialogs.rs:96
+#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/settings.rs:1440
+#: src/ui/dialogs.rs:96
 msgid "Remove"
 msgstr "削除"
 
@@ -1579,6 +1657,10 @@ msgid ""
 msgstr ""
 "現在のスキン: {skin}。ミニプレイヤーを開くたびに別のスキンが選ばれます。"
 
+#: src/ui/settings.rs:1425
+msgid "Add-on"
+msgstr "アドオン"
+
 #: src/ui/settings.rs:1463
 msgid "MilkDrop window"
 msgstr "MilkDropウインドウ"
@@ -1793,6 +1875,16 @@ msgstr "キーボードショートカット"
 #: src/ui/settings.rs:1857
 msgid "Source code"
 msgstr "ソースコード"
+
+#: src/ui/settings.rs:1888
+msgid "Not installed. Turning MilkDrop on downloads it from GitHub (a few MB)."
+msgstr "未インストールです。MilkDropをオンにするとGitHubからダウンロードされます（数MB）。"
+
+#. Translators: {version} is a version number such as 1.2.0.
+#: src/ui/settings.rs:1893
+#, rust-format
+msgid "Installed, version {version}."
+msgstr "インストール済み、バージョン{version}。"
 
 #. Translators: {query} is the text typed into the settings search field.
 #: src/ui/settings.rs:1929
@@ -2365,6 +2457,10 @@ msgstr "歌詞を表示"
 msgid "Lyrics: leave full screen"
 msgstr "歌詞：全画面表示を終了"
 
+#: src/ui/keys.rs:191
+msgid "Enter or leave full screen"
+msgstr "全画面表示の切り替え"
+
 #: src/ui/keys.rs:218
 msgid "Song list: extend or shrink the selection"
 msgstr "曲一覧：選択範囲を広げる／狭める"
@@ -2720,7 +2816,7 @@ msgid "Checking download…"
 msgstr "ダウンロードを確認中…"
 
 #. Translators: {received} and {total} are sizes in megabytes, such as 12.5.
-#: src/ui/update.rs:90
+#: src/ui/settings.rs:1879 src/ui/update.rs:90
 #, rust-format
 msgid "{received} of {total} MB"
 msgstr "{received} / {total} MB"

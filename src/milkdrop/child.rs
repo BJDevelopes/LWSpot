@@ -1,13 +1,13 @@
 //! MilkDrop child process with its own window, OpenGL context, and event loop.
 //!
-//! The app starts this binary with `--milkdrop-child` because winit permits one
-//! event loop per process. The child reads audio from shared memory, receives
-//! JSON-line commands on stdin, and reports window state on stdout. projectM
-//! resources stay isolated from the app's windows.
+//! This is the add-on, `lwspot-milkdrop.exe`, which the app starts with the
+//! arguments in [`super::args`] because winit permits one event loop per
+//! process. The child reads audio from shared memory, receives JSON-line
+//! commands on stdin, and reports window state on stdout. projectM resources
+//! stay isolated from the app's windows.
 
 use std::io::{BufRead, Write};
 use std::num::NonZeroU32;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -26,10 +26,11 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, ResizeDirection, Window, WindowId};
 
+pub use super::args::Args;
 use super::engine::Engine;
 use super::overlay::{Backing, Overlay, Place, Row, Span};
 use super::shm::Ring;
-use super::{DEFAULT_FPS, DEFAULT_SECONDS, LAG, MIN_SIZE, Presets, Request};
+use super::{LAG, MIN_SIZE, Presets, Request};
 
 /// What the child is told to do, on stdin, as one JSON object per line.
 #[derive(Debug, Default, Deserialize)]
@@ -57,73 +58,6 @@ struct Event {
     pos: Option<[f32; 2]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     size: Option<[f32; 2]>,
-}
-
-/// How the child was started, from the command line.
-pub struct Args {
-    pub shm: PathBuf,
-    pub presets: PathBuf,
-    pub size: [f32; 2],
-    pub pos: Option<[f32; 2]>,
-    pub fullscreen: bool,
-    pub fps: u32,
-    pub seconds: u32,
-    pub scale: u32,
-}
-
-impl Args {
-    /// Reads the child's arguments from the command line; `None` when this is
-    /// not a child process.
-    pub fn parse() -> Option<Self> {
-        let mut all = std::env::args().skip(1);
-        if !std::env::args().any(|arg| arg == "--milkdrop-child") {
-            return None;
-        }
-        let mut shm = None;
-        let mut presets = None;
-        let mut size = super::DEFAULT_SIZE;
-        let mut pos = None;
-        let mut fullscreen = false;
-        let mut fps = DEFAULT_FPS;
-        let mut seconds = DEFAULT_SECONDS;
-        let mut scale = 1u32;
-        while let Some(arg) = all.next() {
-            match arg.as_str() {
-                "--milkdrop-shm" => shm = all.next().map(PathBuf::from),
-                "--milkdrop-presets" => presets = all.next().map(PathBuf::from),
-                "--milkdrop-size" => {
-                    if let Some(pair) = all.next().and_then(|value| parse_pair(&value)) {
-                        size = pair;
-                    }
-                }
-                "--milkdrop-pos" => pos = all.next().and_then(|value| parse_pair(&value)),
-                "--milkdrop-fullscreen" => fullscreen = true,
-                "--milkdrop-fps" => fps = all.next().and_then(|v| v.parse().ok()).unwrap_or(fps),
-                "--milkdrop-seconds" => {
-                    seconds = all.next().and_then(|v| v.parse().ok()).unwrap_or(seconds);
-                }
-                "--milkdrop-scale" => {
-                    scale = all.next().and_then(|v| v.parse().ok()).unwrap_or(scale);
-                }
-                _ => {}
-            }
-        }
-        Some(Self {
-            shm: shm?,
-            presets: presets?,
-            size,
-            pos,
-            fullscreen,
-            fps,
-            seconds,
-            scale,
-        })
-    }
-}
-
-fn parse_pair(value: &str) -> Option<[f32; 2]> {
-    let (a, b) = value.split_once([',', 'x'])?;
-    Some([a.trim().parse().ok()?, b.trim().parse().ok()?])
 }
 
 /// Runs the child process to the end; returns its exit code.
@@ -997,6 +931,7 @@ fn build(event_loop: &ActiveEventLoop, args: &Args, seconds: u32) -> Result<Live
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_RING: AtomicU64 = AtomicU64::new(0);

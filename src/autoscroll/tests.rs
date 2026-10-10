@@ -354,6 +354,83 @@ fn a_nested_horizontal_shelf_keeps_its_axis_and_never_scrolls_the_outer_page() {
     assert_eq!(offsets[1], Vec2::ZERO);
 }
 
+/// Home stacks its shelves in one page `Ui`. Sibling `Ui`s share a stable
+/// id, so a background id built from it made every shelf after the first a
+/// duplicate (egui's red "Second use of widget ID" over Recently played),
+/// and only the last shelf's background could start the gesture.
+#[test]
+fn sibling_shelves_each_arm_from_their_own_background() {
+    for target in 0..2 {
+        let ctx = Context::default();
+        let mut controller = Autoscroll::default();
+        let mut frame = 0;
+        let mut render = |events| {
+            frame += 1;
+            let mut ids = [Id::NULL; 2];
+            let mut gaps = [Pos2::ZERO; 2];
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(500.0, 340.0))),
+                    events,
+                    time: Some(frame as f64 / 60.0),
+                    ..Default::default()
+                },
+                |ui| {
+                    controller.begin(&ctx, true);
+                    for (index, (id, gap)) in ids.iter_mut().zip(&mut gaps).enumerate() {
+                        let shelf = show(
+                            ui,
+                            ScrollArea::horizontal()
+                                .id_salt(("shelf", index))
+                                .animated(false),
+                            egui::Vec2b::new(true, false),
+                            |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 40.0;
+                                    for album in 0..12 {
+                                        let response = ui.add_sized(
+                                            [120.0, 60.0],
+                                            egui::Button::new(format!("Album {album}")),
+                                        );
+                                        row(ui, &response);
+                                        if album == 0 {
+                                            *gap = response.rect.right_center()
+                                                + egui::vec2(20.0, 0.0);
+                                        }
+                                    }
+                                });
+                            },
+                        );
+                        *id = shelf.id;
+                    }
+                    controller.finish(&ctx, true);
+                },
+            );
+            output.textures_delta.clear();
+            let offsets = ids.map(|id| egui::scroll_area::State::load(&ctx, id).unwrap().offset);
+            (gaps, controller.active(), offsets)
+        };
+        render(vec![]);
+        let (gaps, _, _) = render(vec![]);
+        let anchor = gaps[target];
+        let (_, active, _) = render(vec![
+            egui::Event::PointerMoved(anchor),
+            button(anchor, egui::PointerButton::Middle, true),
+        ]);
+        assert!(active, "shelf {target} did not arm");
+        render(vec![button(anchor, egui::PointerButton::Middle, false)]);
+        let (_, _, offsets) = render(vec![egui::Event::PointerMoved(
+            anchor + egui::vec2(150.0, 0.0),
+        )]);
+        assert!(offsets[target].x > 0.0, "shelf {target}: {offsets:?}");
+        assert_eq!(
+            offsets[1 - target],
+            Vec2::ZERO,
+            "shelf {target}: {offsets:?}"
+        );
+    }
+}
+
 #[test]
 fn the_skinned_playlist_accumulates_fractional_motion_and_returns_whole_row_updates() {
     let ctx = Context::default();

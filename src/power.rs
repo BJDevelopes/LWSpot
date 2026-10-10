@@ -104,6 +104,18 @@ pub enum Budget {
     Background,
 }
 
+impl Budget {
+    /// How long an animation drawn every `frame` as designed waits between
+    /// frames under this budget: twice as long under [`Budget::Saver`].
+    /// Nothing is drawn under [`Budget::Background`], so it keeps `frame`.
+    pub fn frame(self, frame: Duration) -> Duration {
+        match self {
+            Budget::Saver => frame * 2,
+            Budget::Normal | Budget::Background => frame,
+        }
+    }
+}
+
 /// The budget for `conditions`, given whether a window is shown and focused.
 pub fn budget(conditions: Conditions, window_shown: bool, focused: bool) -> Budget {
     if !window_shown || conditions.display_off || conditions.locked {
@@ -309,6 +321,14 @@ mod tests {
             Budget::Normal,
             "battery alone is not a request to save"
         );
+    }
+
+    #[test]
+    fn a_saver_budget_draws_animations_at_half_rate() {
+        let frame = Duration::from_millis(33);
+        assert_eq!(Budget::Normal.frame(frame), frame);
+        assert_eq!(Budget::Saver.frame(frame), Duration::from_millis(66));
+        assert_eq!(Budget::Background.frame(frame), frame);
     }
 
     #[test]

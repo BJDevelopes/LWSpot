@@ -1092,6 +1092,9 @@ pub enum Action {
     ToggleQueuePanel,
     ToggleLyricsPanel,
     SetLyricsFullscreen(bool),
+    /// F11: the main window full screen, or back. In fullscreen lyrics it
+    /// leaves them instead.
+    ToggleWindowFullscreen,
     LyricsLineShown(Option<usize>),
     FollowLyrics,
     PauseLyricsFollow,
@@ -1176,8 +1179,11 @@ pub enum Action {
     CloseWindow,
     /// Roll the main window up to its title bar, or down again.
     ToggleWinampShade,
-    /// Open or close the MilkDrop window.
+    /// Open or close the MilkDrop window. Without the add-on for this
+    /// version, download it first and open the window when it is in place.
     ToggleWinampMilkdrop,
+    /// Delete the downloaded MilkDrop add-on.
+    RemoveMilkdropAddon,
     /// How long each MilkDrop preset plays, in seconds.
     SetMilkdropSeconds(u32),
     SetMilkdropScale(u32),

@@ -111,20 +111,24 @@ You need:
   version, and [rustup](https://rustup.rs) installs it automatically.
 - Visual Studio 2022 (or its Build Tools) with the C++ build tools.
 
-To build without MilkDrop, which needs nothing else:
+To build LWSpot, which needs nothing else:
 
 ```powershell
-cargo build --release --no-default-features
+cargo build --release
 ```
 
-The default build includes MilkDrop. It builds libprojectM from source, so it
-also needs CMake, libclang (from LLVM), and vcpkg with GLEW installed.
-Set `VCPKG_INSTALLATION_ROOT` to the vcpkg folder, then build:
+MilkDrop is a separate add-on, `lwspot-milkdrop.exe`. The app downloads it from
+the release of its own version the first time MilkDrop is turned on. To build
+it yourself, which compiles libprojectM from source, you also need CMake,
+libclang (from LLVM), and vcpkg with GLEW installed. Set
+`VCPKG_INSTALLATION_ROOT` to the vcpkg folder, then build:
 
 ```powershell
 vcpkg install glew:x64-windows-static
-cargo build --release
+cargo build --release --features milkdrop --bin lwspot-milkdrop
 ```
+
+It is written next to the app, and LWSpot uses a copy there first.
 
 The app is written to `target\release\lwspot.exe`.
 

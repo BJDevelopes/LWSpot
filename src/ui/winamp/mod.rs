@@ -700,10 +700,10 @@ fn options_menu(app: &mut App, ui: &mut Ui, unit: f32) {
     {
         app.actions.push(Action::SetWinampTaskbar(visible));
     }
-    let mut milkdrop = app.settings.milkdrop_open;
+    let mut milkdrop = app.milkdrop_on();
     if ui
         .checkbox(&mut milkdrop, "MilkDrop")
-        .on_hover_text(super::keys::MILKDROP_SHORTCUT)
+        .on_hover_text(milkdrop_hover(app))
         .clicked()
     {
         app.actions.push(Action::ToggleWinampMilkdrop);
@@ -877,7 +877,7 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .lamp_button(
             layout::CLUTTER_V,
             sprites::CLUTTER_V_LIT,
-            app.settings.milkdrop_open,
+            app.milkdrop_on(),
             "clutter-v",
         )
         .on_hover_text(gettext(app.locale, "Visualisation").as_ref());
@@ -897,15 +897,25 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
             }
         }
         ui.separator();
-        let mut milkdrop = app.settings.milkdrop_open;
+        let mut milkdrop = app.milkdrop_on();
         if ui
             .checkbox(&mut milkdrop, "MilkDrop")
-            .on_hover_text(super::keys::MILKDROP_SHORTCUT)
+            .on_hover_text(milkdrop_hover(app))
             .clicked()
         {
             app.actions.push(Action::ToggleWinampMilkdrop);
         }
     });
+}
+
+/// What the MilkDrop checkboxes say on hover: their shortcut, or that the
+/// add-on is on its way.
+fn milkdrop_hover(app: &App) -> String {
+    if app.milkdrop_addon.fetching() {
+        gettext(app.locale, "Downloading the MilkDrop add-on").into_owned()
+    } else {
+        super::keys::MILKDROP_SHORTCUT.to_owned()
+    }
 }
 
 /// The display's left box: the spectrum analyser, the oscilloscope, or

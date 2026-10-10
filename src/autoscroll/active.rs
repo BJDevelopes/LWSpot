@@ -304,9 +304,11 @@ pub fn show<R>(
     let clip = ui.clip_rect();
     let output = area.show(ui, |ui| {
         if enabled {
+            // `Ui::id` is shared by sibling areas (every shelf on Home), so
+            // the background takes this area's own content `Ui` id.
             let background = ui.interact(
                 ui.clip_rect().intersect(ui.max_rect()),
-                ui.id().with("autoscroll-background"),
+                ui.unique_id().with("autoscroll-background"),
                 egui::Sense::click(),
             );
             row(ui, &background);
@@ -315,11 +317,20 @@ pub fn show<R>(
     });
     if enabled {
         let max = (output.content_size - output.inner_rect.size()).max(Vec2::ZERO) * axes.to_vec2();
+        // egui reports the room the area was offered: a shelf's reaches the
+        // bottom of the page and covers the shelves below it. Across the
+        // axis it does not scroll, the area is as big as its content.
+        let mut rect = output.inner_rect;
+        for d in 0..2 {
+            if !axes[d] {
+                rect.max[d] = rect.max[d].min(rect.min[d] + output.content_size[d]);
+            }
+        }
         let observation = Area {
             kind: Kind::Ordinary,
             id: output.id,
             layer,
-            rect: output.inner_rect.intersect(clip),
+            rect: rect.intersect(clip),
             max,
             input: Input::read(ui.ctx()),
             state: output.state,

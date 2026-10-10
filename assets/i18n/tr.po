@@ -719,6 +719,31 @@ msgstr "{folder} açılamadı: {error}"
 msgid "Added {skin} skin"
 msgstr "{skin} teması eklendi"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:3014
+#, rust-format
+msgid "Couldn't start MilkDrop: {error}"
+msgstr "MilkDrop başlatılamadı: {error}"
+
+#: src/app.rs:3051 src/ui/settings.rs:1884 src/ui/topbar.rs:485
+#: src/ui/winamp/mod.rs:915
+msgid "Downloading the MilkDrop add-on"
+msgstr "MilkDrop eklentisi indiriliyor"
+
+#: src/app.rs:3055
+msgid "MilkDrop add-on installed"
+msgstr "MilkDrop eklentisi yüklendi"
+
+#: src/app.rs:3067
+msgid "The MilkDrop add-on isn't available for this version."
+msgstr "MilkDrop eklentisi bu sürüm için mevcut değil."
+
+#. Translators: {error} is an error message.
+#: src/app.rs:3073
+#, rust-format
+msgid "Couldn't get the MilkDrop add-on: {error}"
+msgstr "MilkDrop eklentisi alınamadı: {error}"
+
 #: src/app.rs:3110
 msgid "Proxy applied. Restarting local playback."
 msgstr "Proxy uygulandı. Yerel çalma yeniden başlatılıyor."
@@ -1016,6 +1041,12 @@ msgstr "MilkDrop hazır ayar paketleri indiriliyor"
 msgid "Downloading {name} presets"
 msgstr "{name} hazır ayarları indiriliyor"
 
+#. Translators: {error} is an error message.
+#: src/app.rs:9507
+#, rust-format
+msgid "Couldn't remove the MilkDrop add-on: {error}"
+msgstr "MilkDrop eklentisi kaldırılamadı: {error}"
+
 #: src/app.rs:10243
 msgid "Couldn't start playback"
 msgstr "Çalma başlatılamadı"
@@ -1055,6 +1086,51 @@ msgid ""
 msgstr ""
 "Hiçbir ses çıkış cihazı bulunamadı. Bir cihaz bağlayın veya etkinleştirin, "
 "ardından tekrar çala basın."
+
+#: src/sink.rs:1138
+msgid ""
+"Another app is using your audio device exclusively. Close it, or turn off "
+"exclusive mode in Windows sound settings."
+msgstr ""
+"Başka bir uygulama ses cihazınızı özel modda kullanıyor. Uygulamayı kapatın "
+"veya Windows ses ayarlarında özel modu kapatın."
+
+#: src/sink.rs:1142
+msgid ""
+"Windows couldn't open your audio device. Its driver may not be responding; "
+"try another output or restart Windows audio."
+msgstr ""
+"Windows ses cihazınızı açamadı. Sürücüsü yanıt vermiyor olabilir; başka bir "
+"ses çıkışı deneyin veya Windows sesini yeniden başlatın."
+
+#: src/sink.rs:1146
+msgid ""
+"The audio device was disconnected. Reconnect it or choose another output."
+msgstr ""
+"Ses cihazının bağlantısı kesildi. Yeniden bağlayın veya başka bir ses çıkışı "
+"seçin."
+
+#: src/sink.rs:1150
+msgid ""
+"Windows audio isn't running. Start the Windows Audio service, then press "
+"play again."
+msgstr ""
+"Windows ses hizmeti çalışmıyor. Windows Audio hizmetini başlatın, ardından "
+"tekrar çala basın."
+
+#: src/sink.rs:1154
+msgid "Windows blocked access to your audio device. Try another output."
+msgstr ""
+"Windows ses cihazınıza erişimi engelledi. Başka bir ses çıkışı deneyin."
+
+#: src/sink.rs:1156
+msgid "Can't play on this audio device right now."
+msgstr "Şu anda bu ses cihazında çalınamıyor."
+
+#. Translators: Keep {code} exactly as written. It becomes a Windows error code such as 0x8889000F, shown after an audio device error.
+#: src/sink.rs:1192
+msgid "(code {code})"
+msgstr "(kod {code})"
 
 #: src/app.rs:10304
 msgid ""
@@ -1181,7 +1257,8 @@ msgstr "İstemci Kimliği (Client ID)"
 msgid "Setup guide"
 msgstr "Kurulum rehberi"
 
-#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/dialogs.rs:96
+#: src/ui/settings.rs:385 src/ui/settings.rs:401 src/ui/settings.rs:1440
+#: src/ui/dialogs.rs:96
 msgid "Remove"
 msgstr "Kaldır"
 
@@ -1601,6 +1678,10 @@ msgid ""
 msgstr ""
 "Şu anda {skin} gösteriliyor. Mini çalar her açıldığında başka biri seçilir."
 
+#: src/ui/settings.rs:1425
+msgid "Add-on"
+msgstr "Eklenti"
+
 #: src/ui/settings.rs:1463
 msgid "MilkDrop window"
 msgstr "MilkDrop penceresi"
@@ -1824,6 +1905,16 @@ msgstr "Klavye kısayolları"
 #: src/ui/settings.rs:1857
 msgid "Source code"
 msgstr "Kaynak kodu"
+
+#: src/ui/settings.rs:1888
+msgid "Not installed. Turning MilkDrop on downloads it from GitHub (a few MB)."
+msgstr "Yüklü değil. MilkDrop'u açtığınızda GitHub'dan indirilir (birkaç MB)."
+
+#. Translators: {version} is a version number such as 1.2.0.
+#: src/ui/settings.rs:1893
+#, rust-format
+msgid "Installed, version {version}."
+msgstr "Yüklü, sürüm {version}."
 
 #. Translators: {query} is the text typed into the settings search field.
 #: src/ui/settings.rs:1929
@@ -2407,6 +2498,10 @@ msgstr "Şarkı sözlerini göster"
 msgid "Lyrics: leave full screen"
 msgstr "Şarkı sözleri: tam ekrandan çık"
 
+#: src/ui/keys.rs:191
+msgid "Enter or leave full screen"
+msgstr "Tam ekrana gir veya çık"
+
 #: src/ui/keys.rs:218
 msgid "Song list: extend or shrink the selection"
 msgstr "Şarkı listesi: seçimi genişlet veya daralt"
@@ -2764,7 +2859,7 @@ msgid "Checking download…"
 msgstr "İndirme denetleniyor…"
 
 #. Translators: {received} and {total} are sizes in megabytes, such as 12.5.
-#: src/ui/update.rs:90
+#: src/ui/settings.rs:1879 src/ui/update.rs:90
 #, rust-format
 msgid "{received} of {total} MB"
 msgstr "{received} / {total} MB"

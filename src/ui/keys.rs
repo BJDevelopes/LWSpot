@@ -64,6 +64,8 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
             Key::Slash,
             Action::ShowDialog(Dialog::Shortcuts),
         );
+        // No text field types with F11, so it works from one too.
+        key(Modifiers::NONE, Key::F11, Action::ToggleWindowFullscreen);
         // In a text field these keys move the caret: Ctrl or Alt by a word,
         // Up and Down to the end of the text.
         // Taking them here skipped songs while a search was being typed.
@@ -148,6 +150,8 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
             app.show_devices = false;
         } else if app.lyrics_fullscreen.is_some() {
             app.actions.push(Action::SetLyricsFullscreen(false));
+        } else if app.window_fullscreen() {
+            app.actions.push(Action::ToggleWindowFullscreen);
         }
     }
 }
@@ -184,6 +188,7 @@ pub fn shortcuts(locale: Locale) -> Vec<(Cow<'static, str>, Cow<'static, str>)> 
         (keys("Q"), gettext(locale, "Show the queue")),
         (keys("L"), gettext(locale, "Show the lyrics")),
         (keys("Esc"), gettext(locale, "Lyrics: leave full screen")),
+        (keys("F11"), gettext(locale, "Enter or leave full screen")),
         (
             keys("Shift+↑  /  Shift+↓"),
             gettext(locale, "Song list: extend or shrink the selection"),
@@ -406,6 +411,76 @@ mod tests {
             frame(&mut app, &mut text, press(Key::ArrowRight, command)),
             format!("{:?}", [Action::Next])
         );
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// F11 fills the screen with the main window, even from a text field,
+    /// and Esc leaves it.
+    #[test]
+    fn f11_toggles_full_screen_and_esc_leaves_it() {
+        let root =
+            std::env::temp_dir().join(format!("lwspot-f11-shortcut-test-{}", std::process::id()));
+        let dirs = AppDirs {
+            config: root.join("config"),
+            state: root.join("state"),
+            cache: root.join("cache"),
+        };
+        let mut app = App::new(
+            &crate::backend::Waker::default(),
+            dirs,
+            Settings::default(),
+            AppOptions {
+                media_controls: false,
+                restore_sign_in: false,
+                tray: false,
+            },
+        );
+        crate::demo::populate(&mut app);
+
+        let ctx = egui::Context::default();
+        let field = egui::Id::new("f11-test-field");
+        let mut text = String::new();
+        let mut press = |app: &mut App, keys: &[Key]| {
+            app.actions.clear();
+            let input = egui::RawInput {
+                events: keys
+                    .iter()
+                    .map(|&key| egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: Modifiers::NONE,
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                handle(app, ui.ctx());
+                ui.add(egui::TextEdit::singleline(&mut text).id(field));
+            });
+            output.textures_delta.clear();
+            format!("{:?}", app.actions)
+        };
+        let toggle = format!("{:?}", [Action::ToggleWindowFullscreen]);
+
+        assert_eq!(press(&mut app, &[Key::F11]), toggle);
+        // Esc leaves nothing while the window is not full screen.
+        assert_eq!(press(&mut app, &[Key::Escape]), "[]");
+        let window = egui::Context::default();
+        let mut output = window.run_ui(egui::RawInput::default(), |ui| {
+            app.apply(Action::ToggleWindowFullscreen, ui.ctx());
+        });
+        output.textures_delta.clear();
+        assert!(app.window_fullscreen());
+        assert_eq!(press(&mut app, &[Key::Escape]), toggle);
+
+        // No text field types with F11.
+        ctx.memory_mut(|memory| memory.request_focus(field));
+        press(&mut app, &[]);
+        assert!(ctx.text_edit_focused());
+        assert_eq!(press(&mut app, &[Key::F11]), toggle);
         app.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
