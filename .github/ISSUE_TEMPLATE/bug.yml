@@ -1,0 +1,59 @@
+name: Bug report
+description: Something does not work, or the app crashed or vanished.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please include the log from LWSpot's last run:
+
+        `%LOCALAPPDATA%\LWSpot\data\lwspot.log`
+
+        If the app crashed or vanished, include `panic.log` from the same folder.
+  - type: input
+    id: version
+    attributes:
+      label: LWSpot version and how you installed it
+      placeholder: "0.1.0 from the installer / the portable ZIP / built from source"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: os_details
+    attributes:
+      label: System details
+      description: Windows version and build, and whether the PC is x64 (Intel or AMD) or ARM.
+      placeholder: "Windows 11 24H2, x64"
+    validations:
+      required: true
+  - type: dropdown
+    id: plan
+    attributes:
+      label: Spotify plan
+      options:
+        - Premium
+        - Free
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What did you do, and what happened instead?
+      placeholder: "1. Signed in. 2. Pressed play on a playlist. 3. Nothing played; the button kept spinning."
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: lwspot.log
+      description: Reproduce the problem, quit the app, then paste the whole file here (and panic.log, if there is one). The path is above.
+      render: text
+    validations:
+      required: true

@@ -1,0 +1,115 @@
+title: LWSpot
+lwspot_version: "0.1.0"
+description: A lightweight native Spotify client for Windows.
+lang: en-US
+url: https://bjdevelopes.github.io
+baseurl: "/lwspot"
+logo: /assets/images/logo.svg
+image: /screenshot.png
+
+markdown: kramdown
+kramdown:
+  input: GFM
+
+permalink: pretty
+theme: jekyll-vitepress-theme
+
+collections:
+  guide:
+    output: true
+    permalink: "/:name/"
+  reference:
+    output: true
+    permalink: "/:name/"
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+      image: /screenshot.png
+      topics:
+        - Spotify client
+        - Rust
+        - egui
+        - librespot
+        - Spotify Connect
+        - Windows music player
+  - scope:
+      type: guide
+    values:
+      layout: default
+  - scope:
+      type: reference
+    values:
+      layout: default
+
+jekyll_vitepress:
+  seo:
+    page_type: TechArticle
+    image:
+      path: /screenshot.png
+      alt: LWSpot showing Home with the queue open and a track playing
+    publisher:
+      type: Organization
+      name: LWSpot contributors
+      url: https://github.com/BJDevelopes/lwspot
+      same_as:
+        - https://github.com/BJDevelopes/lwspot
+  llms:
+    title: LWSpot
+    description: >-
+      Documentation for LWSpot, a lightweight native Spotify client for
+      Windows. It covers local playback, library access, and Spotify
+      Connect.
+    full: true
+    details: >-
+      Covers installation, sign-in, everyday use, settings, and Spotify
+      connections. Source is on
+      [GitHub](https://github.com/BJDevelopes/lwspot). LWSpot is a fork of
+      [Spotifast](https://github.com/crmne/spotifast) by Carmine Paolino.
+  branding:
+    site_title: LWSpot
+    logo:
+      default: /assets/images/logo.svg
+      alt: LWSpot
+  syntax:
+    light_theme: github
+    dark_theme: github.dark
+  footer:
+    enabled: true
+    show_on_docs: false
+    message: >-
+      LWSpot is a fork of <a href="https://github.com/crmne/spotifast" target="_blank" rel="noreferrer">Spotifast</a> by Carmine Paolino.
+    copyright: >-
+      <span class="footer-built-with">Docs built with <a href="https://jekyll-vitepress.dev" target="_blank" rel="noreferrer">Jekyll VitePress</a>. LWSpot is an independent project, not affiliated with or endorsed by Spotify AB. Spotify is a trademark of Spotify AB.</span>
+  doc_footer:
+    enabled: true
+    previous_label: Previous page
+    next_label: Next page
+  last_updated:
+    enabled: true
+    text: Last updated
+    format: "%Y-%m-%d %H:%M"
+  edit_link:
+    enabled: true
+    pattern: "https://github.com/BJDevelopes/lwspot/edit/main/docs/:path"
+    text: Edit this page on GitHub
+  github_star:
+    enabled: true
+    repository: BJDevelopes/lwspot
+    text: Star
+    show_count: true
+
+plugins:
+  - jekyll-redirect-from
+  - jekyll-vitepress-theme
+
+exclude:
+  - _site
+  - .jekyll-cache
+  - .sass-cache
+  - .bundle
+  - vendor
+  - Gemfile
+  - Gemfile.lock

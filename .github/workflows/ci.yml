@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    env:
+      CMAKE_GENERATOR: Ninja
+    # A cold cache (projectM through CMake) takes about 30 minutes.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, windows-11-arm]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      # libprojectM reads OpenGL through GLEW; projectm-sys builds against
+      # vcpkg's static-CRT triplet, matching .cargo/config.toml.
+      - name: GLEW for libprojectM
+        run: vcpkg install glew:${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-windows-static
+      # Native tools on each runner: the action's default is x64, which on the
+      # arm64 runner would compile under emulation.
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Formatting
+        if: runner.arch != 'ARM64'
+        run: cargo fmt --all --check
+      - name: Clippy (all features)
+        if: runner.arch != 'ARM64'
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      # The demo feature carries the headless render test that lays out every
+      # page, panel, and dialog without a display.
+      - name: Tests (default features)
+        run: cargo test --locked --all-targets
+      - name: Tests (all features)
+        run: cargo test --locked --all-targets --all-features
+      - name: Tests (without MilkDrop)
+        run: cargo test --locked --all-targets --no-default-features
+      - name: Native credential store (dummy grants)
+        timeout-minutes: 2
+        run: cargo test --locked --lib credentials::tests::native_store_round_trip -- --ignored --exact
+      - name: Documentation tests
+        run: cargo test --locked --all-features --doc
+      # A build can pass while importing Microsoft's C++ runtime, then fail on
+      # a clean user's machine. Inspect the executable CI actually produced.
+      - name: Standalone Windows runtime
+        shell: pwsh
+        run: |
+          cargo build --locked
+          $imports = & dumpbin /dependents target\debug\lwspot.exe | Out-String
+          $runtime = $imports | Select-String -Pattern 'MSVCP[0-9_]*\.dll|VCRUNTIME[0-9_]*\.dll'
+          if ($runtime) { throw "LWSpot imports an MSVC runtime:`n$runtime" }
+          $machine = if ($env:RUNNER_ARCH -eq 'ARM64') { 'AA64 machine \(ARM64\)' } else { '8664 machine \(x64\)' }
+          $headers = & dumpbin /headers target\debug\lwspot.exe | Out-String
+          if ($headers -notmatch $machine) { throw "lwspot.exe is not built for $env:RUNNER_ARCH`:`n$headers" }
+      - name: Windows installer syntax
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          $arch = if ($env:RUNNER_ARCH -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+          & $iscc "/DVersion=$version" "/DArch=$arch" "/DBinary=$PWD\target\debug\lwspot.exe" "/DOutputDir=$env:RUNNER_TEMP\lwspot-installer-check" packaging\windows\lwspot.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

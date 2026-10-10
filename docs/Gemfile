@@ -1,0 +1,8 @@
+source "https://rubygems.org"
+
+gem "jekyll", "~> 4.4"
+gem "webrick", "~> 1.9"
+gem "jekyll-vitepress-theme"
+
+# Lets renamed guides keep their old URLs with redirect_from.
+gem "jekyll-redirect-from", "~> 0.16"

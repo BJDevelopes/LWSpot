@@ -1,0 +1,270 @@
+[package]
+name = "lwspot"
+default-run = "lwspot"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+description = "A lightweight native Spotify client for Windows"
+repository = "https://github.com/BJDevelopes/lwspot"
+keywords = ["spotify", "music", "windows", "librespot", "player"]
+categories = ["multimedia::audio"]
+
+[lib]
+name = "lwspot"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lwspot"
+path = "src/lwspot.rs"
+
+[dependencies]
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+directories = "6"
+# One protected-store API, with only each target's native provider below.
+# Durable Spotify grants must not be copied into ordinary state JSON.
+keyring-core = "1"
+# The whole UI. glow keeps the binary and the dependency tree small; wgpu is
+# not needed for a 2D music client.
+# AccessKit connects egui's control names, states, and actions to native screen readers.
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "glow", "default_fonts", "links", "persistence"] }
+egui = "0.36"
+egui_extras = { version = "0.36", features = ["image", "svg"] }
+# The shared foundation of LWSpot, ZapFast, RekordFlash and TonePush
+# (crmne/fastframe). Every crate comes from the same revision; move them
+# together. For now a fork of v0.4.1's successor with two changes proposed
+# upstream: a headless shell that sleeps until woken, and the audio stream's
+# thread joining MMCSS on Windows. Back to a crmne/fastframe tag once a
+# release carries them.
+fastframe-text ={ git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+fastframe-fonts = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+fastframe-icons = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+fastframe-theme = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# Colour emoji in the platform's own style (Apple Color Emoji, Segoe UI
+# Emoji, the desktop's colour emoji font), in every text through its egui
+# plugin.
+fastframe-emoji = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# Catalogs compiled from PO files at build time (see build.rs) and the
+# system's preferred languages. No libintl or runtime catalog parsing.
+fastframe-i18n = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# The log file for bug reports and the panic log (env_logger underneath).
+fastframe-log = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# The notification-area icon, so closing the window can keep the music
+# playing.
+fastframe-tray = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# Keeps the app running without a window around eframe::run_native.
+fastframe-shell = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# Self-update from GitHub releases, on the reqwest client below.
+fastframe-update = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e", features = ["reqwest"] }
+# The audio device stream: it pauses, so a paused player costs no CPU (#636),
+# follows the default output and reopens after a failure. Its cpal 0.18
+# cannot share a build with the cpal 0.16 of librespot's rodio backend (both
+# link ALSA), so that backend is left out.
+fastframe-audio = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# The wheel step, the Linux touchpad scale and glide, and the axis a scroll
+# gesture holds.
+fastframe-scroll = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# One running copy per user: a lock and a private channel that a second
+# launch and the command line hand their requests to.
+fastframe-instance = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# Windows' media controls (the media overlay and lock screen). The media
+# keys and those panels send commands back, and closing the window keeps the
+# music playing.
+fastframe-now-playing = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
+# Reading installed fonts for MilkDrop's overlays, the Winamp playlist's
+# pixel text, and the playlist face. skrifa is the parser epaint already
+# rasterizes with, and the version has to track epaint's or the binary
+# compiles two copies of it; memmap2 keeps the search for the playlist face
+# to the few pages of each font that name it. fastframe-fonts uses both.
+skrifa = "0.44"
+memmap2 = "0.9"
+# bmp is for Winamp skins, whose bitmaps are BMP files.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
+# Inflating the zip a Winamp skin comes as (src/skin/zip.rs). Already
+# compiled for reqwest's gzip support, so this adds no code to the build.
+flate2 = "1"
+# Filling glyph outlines with no anti-aliasing for the Winamp playlist's
+# text (src/ui/winamp/pixel_text.rs). Already compiled for the SVG icons
+# through egui_extras and resvg, so this adds no code to the build.
+tiny-skia = "0.11"
+# MilkDrop, as libprojectM reimplements it, for the MilkDrop window
+# (src/milkdrop.rs). Built into the binary, so it stays one file.
+projectm-sys = { version = "1.2.2", default-features = false, features = ["static"], optional = true }
+# The MilkDrop window runs as a child process with its own winit event loop
+# and OpenGL context (src/milkdrop/child.rs), because winit allows one event
+# loop per process and eframe owns the app's. These are the same versions
+# eframe already pulls in, so they add no build. Only compiled with the
+# milkdrop feature.
+winit = { version = "0.30", optional = true }
+glutin = { version = "0.32", optional = true }
+glutin-winit = { version = "0.5", optional = true }
+# Detect the live window backend, including when MilkDrop is disabled.
+# eframe already compiles this crate.
+raw-window-handle = "0.6"
+# Spotify playback and Connect. rustls everywhere so the client links one TLS
+# stack and builds without OpenSSL on every platform.
+#
+# librespot-core depends on hyper-proxy2 for HTTP proxy support. The
+# published 0.1.0 release pins rustls 0.22 / rustls-webpki 0.102; we patch
+# it (see [patch.crates-io]) onto rustls 0.23 so CONNECT-then-TLS uses the
+# same stack as the rest of the client. SOCKS5 still covers the Web API but
+# not the engine: librespot only speaks HTTP CONNECT.
+librespot-core = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
+librespot-playback = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
+librespot-connect = { version = "0.8", default-features = false }
+librespot-metadata = { version = "0.8", default-features = false }
+librespot-protocol = { version = "0.8", default-features = false }
+# Parses the rootlist's playlist4 protobuf, the same crate librespot generates with.
+protobuf = "3"
+# Local playback's audio sink is this crate's own (src/sink.rs): librespot's
+# rodio backend unwraps the device open on the player thread, and a release
+# build aborts on panic, so it is left out. rodio supplies the mixer and the
+# queue only; fastframe-audio below owns the device stream.
+rodio = { version = "0.21", default-features = false }
+# `socks` is SOCKS5 proxy support for the Web API, artwork, lyrics, and
+# update checks. HTTP proxies work without it. `system-proxy` reads the OS
+# proxy on macOS and Windows when the mode is System; Linux uses environment
+# variables either way.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip", "http2", "blocking", "socks", "system-proxy"] }
+# Same System-proxy matcher reqwest uses, so local playback follows the same
+# HTTP proxy (environment, and the OS proxy on macOS and Windows).
+hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
+http = "1"
+# `fs` is used by the playlist cache in `backend.rs`. On Linux the MPRIS
+# dependency happens to turn it on, which is why leaving it out built
+# there and nowhere else. `net` is the local HTTP-proxy tests.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "fs", "net", "io-util"] }
+sha1 = "0.10"
+sha2 = "0.10"
+base64 = "0.22"
+# Native asynchronous file selection.
+rfd = "0.17.2"
+rand = "0.9"
+open = "5"
+percent-encoding = "2"
+urlencoding = "2"
+jiff = "0.2"
+mdns-sd = "0.21"
+unicode-bidi = "0.3"
+hmac = "0.12"
+pbkdf2 = "0.12"
+aes = "0.8"
+ctr = "0.9"
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = { version = "1.1", default-features = false }
+# Message loops, the taskbar thumbnail buttons and window styles. Power,
+# session and network state (src/power/windows.rs): power settings, sleep and
+# wake, the session lock, and the network's reach and cost.
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[build-dependencies]
+# Drops unfinished PO entries and compiles catalog text and gettext plural
+# expressions to Rust. Ordinary builds do not need gettext tools.
+fastframe-i18n = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e", features = ["build"] }
+
+[dev-dependencies]
+# Checks that every catalog covers the template and keeps its placeholders.
+polib = "0.3"
+# Run connection-deadline regressions with a virtual clock.
+tokio = { version = "1", features = ["test-util"] }
+
+# The icon and version information Windows shows for the executable.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[features]
+default = ["milkdrop"]
+# Sample data and screenshot flags; never part of a release build.
+demo = []
+# MilkDrop, through libprojectM: a C++ library that CMake builds into the
+# binary at compile time, so building needs cmake, a C++ compiler, and
+# libclang. `--no-default-features` leaves it out.
+milkdrop = ["dep:projectm-sys", "dep:winit", "dep:glutin", "dep:glutin-winit"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Audio decoding and immediate-mode layout are too slow at opt-level 0 to
+# audition the app in development. Keep every dependency optimized while the
+# application crate itself stays incremental.
+[profile.dev.package."*"]
+opt-level = 2
+
+# projectm-sys names the library it links after Rust's profile (a `d` suffix
+# for dev) but CMake names what it builds after the optimisation level, so an
+# optimised dev build would look for a library that was never made. A debug
+# build of libprojectM is fine to develop against; releases are optimised.
+[profile.dev.package.projectm-sys]
+opt-level = 0
+
+[patch.crates-io]
+# crmne/egui apps-0.36, shared with ZapFast, RekordFlash and TonePush: egui
+# 0.36.1 with right-to-left runs shaped in their bidi direction and digits
+# shaped left to right in text without right-to-left letters
+# (emilk/egui#8577), egui's busy-loop fix (emilk/egui#8398), and eframe pacing
+# Wayland frames by the compositor's frame callbacks so a window the
+# compositor stops showing never blocks in a vsync swap (emilk/egui#8631,
+# #266), each emoji cluster laid out one emoji wide, and egui's clipboard
+# sharing its Wayland data device with winit's file drops (#614), accesskit
+# focus on a widget drawn a frame later (emilk/egui#8621), a compatibility
+# profile when a core GL context fails (emilk/egui#8655), and the zoom factor
+# saved with the window size so a zoomed window keeps its size
+# (emilk/egui#8656). Every egui
+# crate comes from the same revision so they share one emath and epaint.
+# Drop this once egui releases these changes.
+ecolor = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+eframe = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+egui = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+egui-wgpu = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+egui-winit = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+egui_extras = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+egui_glow = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+emath = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+epaint = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+epaint_default_fonts = { git = "https://github.com/crmne/egui", rev = "ba6790fe7cf46e58e8d27ce1524cbfdee745e938" }
+# crmne/winit apps-0.30, shared with the same apps: winit 0.30.13 plus Wayland
+# `Occluded` for the xdg-shell suspended state with commits on the app's behalf
+# while it isn't presenting (rust-windowing/winit#4709, #4710), macOS Quit
+# through close requests behind a feature LWSpot leaves off (winit#4692),
+# a macOS window ordered out and flushed before it closes, so a Touch Bar
+# cannot leave a ghost window behind (winit#4728), and file drag and drop on Wayland through the one data device egui's
+# clipboard also uses, since Hyprland gives the clipboard and drags only to an
+# app's first data device (#614). eframe from the fork above calls the
+# Occluded API and shares that device. Move both forks together with the
+# other apps.
+winit = { git = "https://github.com/crmne/winit", rev = "ed7caa9023f10b397f5b6ec8284a840cbd8a6f65" }
+# projectm-sys 1.2.2 hardcodes the Visual Studio 17 2022 CMake generator,
+# which GitHub's windows-latest images no longer carry; the fork lets an
+# explicit CMAKE_GENERATOR win, and asks vcpkg for the target's architecture
+# so libprojectM links for Windows on ARM. Drop when upstream takes the change.
+projectm-sys = { git = "https://github.com/dennisgr7/projectm-rs", rev = "1ef6df1c20247a3a5800c625e46262330f93bbd6" }
+# hyper-proxy2's unreleased rustls 0.23 update plus our upstream provider
+# compatibility fix. Drop this fork when a release includes both changes.
+hyper-proxy2 = { git = "https://github.com/crmne/hyper-proxy2", rev = "efca4811371ddae81c06be168de54194938d70b1" }
+# librespot 0.8.0 plus the small patches LWSpot needs: queue controls,
+# normalisation-factor reporting for the visualisers, and a distinct event
+# when Spotify refuses an audio key, bounded socket setup with DNS address
+# fallback, an in-memory credential cache for platform storage, full
+# playback-state recovery after a session disconnect, the desktop platform
+# signature for Windows on ARM, and a volume set while the device is inactive.
+# Recovery is proposed upstream in librespot-org/librespot#1765 and the
+# volume in librespot-org/librespot#1770; the ARM signature answers
+# librespot-org/librespot#1737.
+# Every librespot crate comes from the
+# fork so one copy exists. Drop patches as upstream takes them.
+librespot-audio = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
+librespot-connect = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
+librespot-core = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
+librespot-metadata = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
+librespot-oauth = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
+librespot-playback = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
+librespot-protocol = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }

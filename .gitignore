@@ -1,0 +1,23 @@
+/target/
+**/target/
+.idea/
+.vscode/
+/examples/token_probe.rs
+/examples/oauth_probe.rs
+docs/_site/
+docs/.jekyll-cache/
+docs/vendor/
+docs/.bundle/
+/.cache/
+/dist/
+
+# Local secrets and environment
+.env
+.env.*
+*.local.json
+
+# Windows and editor clutter
+Thumbs.db
+desktop.ini
+*.code-workspace
+*.log
