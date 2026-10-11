@@ -204,6 +204,7 @@ main fields are:
 | `custom_theme_cache` | absent | Last accepted custom palette; preserves appearance if its file is missing or invalid |
 | `accent_from_art` | `true` | Tint pages with album art |
 | `player_bar_vis` | `off` | What moves behind the player bar while a song plays on this computer: `off`, `spectrum` or `waveform` |
+| `player_bar_vis_fps` | `30` | How many frames a second the player bar's visualizer draws: `20`, `30` or `60`; another number draws 30 |
 | `library_sort` | `{}` | Per-section Library order overrides: `library`, `recently_played`, `name`, `recently_added`, `local`, or `spotify`, where supported |
 | `sidebar_order` | `[]` | Saved local playlist arrangement, including an unpinned Liked Songs, retained when another sort is selected |
 | `pinned_contexts` | `[]` | Local Library pin order; Liked Songs uses a local key that is never sent to Spotify |

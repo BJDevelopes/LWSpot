@@ -1487,6 +1487,16 @@ msgid ""
 "Show the song moving behind the player bar's controls while it plays here."
 msgstr ""
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr ""
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+
 #: src/ui/settings.rs:1018
 msgid "Off"
 msgstr ""

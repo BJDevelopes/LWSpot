@@ -1543,6 +1543,18 @@ msgstr ""
 "Pokazuje ruch utworu za przyciskami paska odtwarzacza, gdy gra na tym "
 "komputerze."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Liczba klatek na sekundę wizualizacji"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"Jak często porusza się wizualizacja na pasku odtwarzacza. Niższe wartości "
+"zużywają mniej zasobów."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Wyłączona"

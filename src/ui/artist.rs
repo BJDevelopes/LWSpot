@@ -123,6 +123,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         .filter(|album| seen.insert(album.name.to_lowercase()))
                         .collect();
                     widgets::grid(ui, |ui| {
+                        let art_width = widgets::card_art_width(ui.ctx());
                         for album in &albums {
                             let subtitle = format!(
                                 "{} • {}",
@@ -135,7 +136,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                             let card = widgets::card(
                                 ui,
                                 app,
-                                pick_image(&album.images, 640),
+                                pick_image(&album.images, art_width),
                                 &album.name,
                                 subtitle.trim_start_matches(" • "),
                                 widgets::CardCover::square(playing_here),
@@ -203,6 +204,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 let artist_label = gettext(locale, "Artist");
                 let title = gettext(locale, "Fans also like");
                 widgets::shelf(ui, &palette, "related", &title, |ui| {
+                    let art_width = widgets::card_art_width(ui.ctx());
                     for artist in related {
                         let playing_here = app.playing_context_uri().as_deref()
                             == Some(artist.uri.as_str())
@@ -210,7 +212,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         let card = widgets::card(
                             ui,
                             app,
-                            pick_image(&artist.images, 640),
+                            pick_image(&artist.images, art_width),
                             &artist.name,
                             &artist_label,
                             widgets::CardCover::portrait(playing_here),

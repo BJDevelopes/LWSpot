@@ -340,6 +340,14 @@ computer. It is off by default. Clicking the player bar's empty space switches
 it, as Winamp's visualizer did: off, then Spectrum, then Waveform, then off
 again.
 
+**Visualizer frame rate** sets how often it moves: 20, 30 (the default) or 60
+times a second. Each of its frames redraws the whole window, so a lower rate
+uses less power; while LWSpot is not the window in focus it moves half as
+often. While other windows cover all of LWSpot, a full-screen window on its
+monitor does, or it is on another virtual desktop, the visualizers and the
+progress bar stop moving and LWSpot looks once a second whether it can be
+seen again.
+
 In **Settings > Appearance**, **Compact track list** puts each song on one
 line. In narrow lists, the added date follows the artist credits with a spaced
 bullet; each artist name remains a separate link.

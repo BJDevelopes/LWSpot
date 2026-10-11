@@ -71,6 +71,16 @@ Baseline (2026-10-10, release build, same song, 60 s averages):
 | CPU, paused, window visible | n/a | 5.7% of a core |
 | CPU, paused, minimized | n/a | 0.2% of a core |
 
+After Phase 2 (2026-10-10, release build, same machine and states):
+
+| State | Official Spotify | LWSpot before | LWSpot after |
+|---|---|---|---|
+| Memory (working set), playing | 1,297 MB | 203 MB | 148 MB |
+| Private memory, playing | 927 MB | 133 MB | 73 MB |
+| CPU, playing, window visible (spectrum 30 fps) | 22% | 107% | 18.4% |
+| CPU, playing, window covered | n/a | n/a | ~0.6% |
+| CPU, playing, minimized | 2.1% | 1.5% | 1.3% |
+
 - [x] Stop continuous redraws while playing with the window visible. Player-bar
       spectrum capped at 30 fps (15 unfocused, the power saver's half rate now
       applies); the progress bar redraws only when the time or its pixel changes.
@@ -79,20 +89,35 @@ Baseline (2026-10-10, release build, same song, 60 s averages):
       A vsync-off experiment saved only ~20%, so the rest is egui's whole-window
       repaint per spectrum frame; redrawing only the visualizer would be the
       next step if it matters.
-- [ ] Profile one frame and cut its cost (target 2-3x): ~6 ms of CPU per frame in
-      release is high for egui; suspects are rounded artwork meshes, shadows,
-      text layout, the sidebar list.
-- [ ] Stop visualizer frames while the window is fully covered by other windows.
-- [ ] Memory audit: decoded artwork, font atlases, caches (target 120-150 MB).
-- [ ] Optional visualizer frame-rate setting (20 / 30 / 60 fps).
+- [~] Profile one frame and cut its cost (target 2-3x). Profiled 2026-10-10
+      (release demo, Home, spectrum at 30 fps, Intel UHD, 1240x800): ~3.0 ms
+      of process CPU per frame. The app's own UI pass is ~0.63 ms of it
+      (Home 0.31, sidebar 0.12, player bar 0.11, top bar 0.03; the sidebar
+      list and the cards already skip what is off screen), egui's end of
+      frame and tessellation ~0.2 ms (165 shapes, 104 meshes, 7.6k
+      vertices), egui_glow's painting ~0.45 ms, the swap and event loop
+      ~0.6 ms, and the Intel driver's own thread ~0.9 ms. No texture uploads
+      per frame. The rest is eframe's: egui_glow uploads every mesh with its
+      own glBufferData, and on this driver bigger uploads cost more.
+      Reordering shapes into fewer, larger meshes made frames 0.45 ms slower;
+      splitting them saved ~0.2 ms. The next step is in the egui fork (one
+      streamed vertex buffer per frame), not in the app.
+- [x] Stop visualizer frames while the window is fully covered by other windows,
+      on another virtual desktop, or under a full-screen window: a z-order
+      check at most once a second; covered, the visualizers and the progress
+      bar draw once a second. Demo with the spectrum: 8.6% of a core visible,
+      0.6% covered.
+- [x] Memory audit: decoded artwork, font atlases, caches (target 120-150 MB).
+- [x] Optional visualizer frame-rate setting (20 / 30 / 60 fps), Settings >
+      Appearance. Demo: 5.4% / 8.6% / 17.6% of a core.
 - [ ] Winamp mini player visualizer still runs at 60 fps (its analyser steps
       once per frame, so slowing it needs time-based falloff first).
 
 - [x] MilkDrop as an optional component: not linked into the main exe, loaded
       only when enabled. Done as the `lwspot-milkdrop.exe` add-on, downloaded
       from the release the first time MilkDrop is turned on.
-- [ ] Zero repaint and minimal timers when minimized or in the tray.
-- [ ] Review cache budgets and image decode sizes. Targets set after the baseline.
+- [x] Zero repaint and minimal timers when minimized or in the tray (1.3% playing, 0.1-0.4% paused).
+- [x] Review cache budgets and image decode sizes: art picked for its display size, decoded pixels freed after upload, 32 MiB texture budget, 2 decodes at a time, Segment Heap.
 
 ## Phase 3: Native Windows
 

@@ -136,11 +136,12 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
             ui.set_width(top_width);
             theme::section_title(ui, &palette, &gettext(locale, "Top result"));
             ui.add_space(4.0);
+            let art_width = widgets::art_width(TOP_RESULT_ART, ui.ctx().pixels_per_point());
             if let Some(artist) = top_artist {
                 top_result(
                     app,
                     ui,
-                    pick_image(&artist.images, 640),
+                    pick_image(&artist.images, art_width),
                     &artist.name,
                     TopResultSubtitle::Text(&gettext(locale, "Artist")),
                     true,
@@ -160,7 +161,7 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                 top_result(
                     app,
                     ui,
-                    track.image(640),
+                    track.image(art_width),
                     &track.name,
                     TopResultSubtitle::SongArtists(&track.artists),
                     false,
@@ -181,7 +182,7 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                 top_result(
                     app,
                     ui,
-                    pick_image(&album.images, 640),
+                    pick_image(&album.images, art_width),
                     &album.name,
                     TopResultSubtitle::Text(
                         // Translators: {artists} is the album's artist names.
@@ -207,7 +208,7 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                 top_result(
                     app,
                     ui,
-                    pick_image(&playlist.images, 640),
+                    pick_image(&playlist.images, art_width),
                     &playlist.name,
                     TopResultSubtitle::Text(
                         // Translators: {owner} is the name of the playlist's owner.
@@ -232,7 +233,7 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                 top_result(
                     app,
                     ui,
-                    pick_image(&show.images, 640),
+                    pick_image(&show.images, art_width),
                     &show.name,
                     TopResultSubtitle::Text(
                         // Translators: {publisher} is the podcast's publisher.
@@ -280,6 +281,9 @@ enum TopResultSubtitle<'a> {
     SongArtists(&'a [ArtistRef]),
 }
 
+/// Side of the top result's cover, in points.
+const TOP_RESULT_ART: f32 = 96.0;
+
 #[allow(clippy::too_many_arguments)]
 fn top_result(
     app: &mut App,
@@ -305,7 +309,8 @@ fn top_result(
         };
         ui.painter()
             .rect_filled(rect, CornerRadius::same(theme::RADIUS), fill);
-        let image_rect = Rect::from_min_size(rect.min + vec2(20.0, 20.0), Vec2::splat(96.0));
+        let image_rect =
+            Rect::from_min_size(rect.min + vec2(20.0, 20.0), Vec2::splat(TOP_RESULT_ART));
         widgets::paint_shadow(ui, &palette, image_rect, if round { 48.0 } else { 6.0 });
         widgets::paint_cover(
             ui,
@@ -464,10 +469,11 @@ fn songs(app: &mut App, ui: &mut egui::Ui, results: &SearchResults, limit: usize
 fn artist_card(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
     let playing_here =
         app.playing_context_uri().as_deref() == Some(artist.uri.as_str()) && app.believed_playing();
+    let art_width = widgets::card_art_width(ui.ctx());
     let card = widgets::card(
         ui,
         app,
-        pick_image(&artist.images, 640),
+        pick_image(&artist.images, art_width),
         &artist.name,
         &gettext(app.locale, "Artist"),
         widgets::CardCover::portrait(playing_here),
@@ -531,10 +537,11 @@ fn album_card(app: &mut App, ui: &mut egui::Ui, album: &crate::api::models::Albu
     );
     let playing_here =
         app.playing_context_uri().as_deref() == Some(album.uri.as_str()) && app.believed_playing();
+    let art_width = widgets::card_art_width(ui.ctx());
     let card = widgets::card(
         ui,
         app,
-        pick_image(&album.images, 640),
+        pick_image(&album.images, art_width),
         &album.name,
         subtitle.trim_start_matches(" • "),
         widgets::CardCover::square(playing_here),
@@ -593,10 +600,11 @@ fn albums_grid(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
 fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models::Playlist) {
     let playing_here = app.playing_context_uri().as_deref() == Some(playlist.uri.as_str())
         && app.believed_playing();
+    let art_width = widgets::card_art_width(ui.ctx());
     let card = widgets::card(
         ui,
         app,
-        pick_image(&playlist.images, 640),
+        pick_image(&playlist.images, art_width),
         &playlist.name,
         // Translators: {owner} is the name of the playlist's owner.
         &gettext(app.locale, "By {owner}").replace("{owner}", playlist.owner_name()),
@@ -665,10 +673,11 @@ fn playlists_grid(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
 }
 
 fn show_card(app: &mut App, ui: &mut egui::Ui, show: &crate::api::models::Show) {
+    let art_width = widgets::card_art_width(ui.ctx());
     let card = widgets::card(
         ui,
         app,
-        pick_image(&show.images, 640),
+        pick_image(&show.images, art_width),
         &show.name,
         &show.publisher,
         widgets::CardCover::default(),

@@ -1538,6 +1538,18 @@ msgstr ""
 "Показывает движение трека за кнопками панели плеера, пока он играет на этом "
 "компьютере."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Частота кадров визуализатора"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"Как часто обновляется визуализатор в панели плеера. Низкая частота расходует"
+" меньше ресурсов."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Выкл."

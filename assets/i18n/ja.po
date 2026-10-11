@@ -1524,6 +1524,16 @@ msgstr ""
 "このコンピューターで再生中の曲の動きを、プレイヤーバーの操作ボタンの背後に表"
 "示します。"
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "ビジュアライザーのフレームレート"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr "プレイヤーバーのビジュアライザーを動かす頻度です。レートを下げるとリソースの使用量が減ります。"
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "オフ"

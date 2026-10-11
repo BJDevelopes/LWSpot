@@ -13,8 +13,23 @@ use crate::theme::{self, Icon, Palette};
 use crate::util;
 
 pub const CARD_WIDTH: f32 = 172.0;
+/// Side of a [`card`]'s cover: the card less its padding on either side.
+pub const CARD_ART_SIZE: f32 = CARD_WIDTH - 2.0 * 12.0;
 pub const CARD_GAP: f32 = 14.0;
 pub const PAGE_PADDING: f32 = 24.0;
+
+/// The artwork width to ask [`pick_image`] for so that art shown `points`
+/// wide stays sharp: its size in physical pixels. `pick_image` then takes
+/// the smallest variant at least that wide (Spotify offers 64, 300 and 640),
+/// rather than decoding a 640 px cover for a card a third of that size.
+pub fn art_width(points: f32, pixels_per_point: f32) -> u32 {
+    (points * pixels_per_point).ceil().max(1.0) as u32
+}
+
+/// The artwork width a [`card`]'s cover needs on this screen.
+pub fn card_art_width(ctx: &egui::Context) -> u32 {
+    art_width(CARD_ART_SIZE, ctx.pixels_per_point())
+}
 
 /// Draws an image (or a placeholder) in a square.
 pub fn cover(
@@ -141,7 +156,7 @@ fn paint_cover_url(
     };
     if let Some(art) = art {
         art.release_bytes(url);
-        art.note_decoded(
+        art.note_texture(
             url,
             texture.size.x.round() as usize,
             texture.size.y.round() as usize,
@@ -2301,7 +2316,7 @@ pub fn card_row_height(ui: &mut Ui) -> f32 {
     const TITLE_GAP: f32 = 10.0;
     const SUBTITLE_GAP: f32 = 2.0;
     const BOTTOM_PAD: f32 = 8.0;
-    let image_size = CARD_WIDTH - 2.0 * PAD;
+    let image_size = CARD_ART_SIZE;
     let title_font = theme::semibold(14.0);
     let subtitle_font = theme::regular(12.5);
     let (title_row, subtitle_row) = ui.fonts_mut(|fonts| {
@@ -2332,7 +2347,7 @@ pub fn card(
     const TITLE_GAP: f32 = 10.0;
     const SUBTITLE_GAP: f32 = 2.0;
     const BOTTOM_PAD: f32 = 8.0;
-    let image_size = CARD_WIDTH - 2.0 * PAD;
+    let image_size = CARD_ART_SIZE;
     let text_width = image_size;
     let title_font = theme::semibold(14.0);
     let subtitle_font = theme::regular(12.5);
@@ -3146,6 +3161,39 @@ mod tests {
     use crate::model::{Action, Page};
     use crate::paths::AppDirs;
     use crate::settings::Settings;
+
+    fn spotify_images() -> Vec<Image> {
+        [640, 300, 64]
+            .into_iter()
+            .map(|width| Image {
+                url: width.to_string(),
+                width: Some(width),
+                height: Some(width),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn artwork_is_picked_by_the_pixels_it_fills() {
+        assert_eq!(art_width(148.0, 1.0), 148);
+        assert_eq!(art_width(148.0, 1.5), 222);
+        assert_eq!(art_width(148.0, 1.25), 185);
+        assert_eq!(art_width(212.0, 1.5), 318);
+        assert_eq!(art_width(0.0, 2.0), 1);
+        let images = spotify_images();
+        let card = |ppp: f32| pick_image(&images, art_width(CARD_ART_SIZE, ppp));
+        // A card's 148 pt cover is sharp from the 300 px variant up to 2x.
+        assert_eq!(CARD_ART_SIZE, 148.0);
+        assert_eq!(card(1.0), Some("300"));
+        assert_eq!(card(1.5), Some("300"));
+        assert_eq!(card(2.0), Some("300"));
+        // Past 300 px on screen, only the large variant stays sharp.
+        assert_eq!(card(2.25), Some("640"));
+        assert_eq!(pick_image(&images, art_width(212.0, 1.5)), Some("640"));
+        assert_eq!(pick_image(&images, art_width(40.0, 1.5)), Some("64"));
+        // Artwork without a smaller variant falls back to what there is.
+        assert_eq!(pick_image(&images[..1], art_width(148.0, 1.0)), Some("640"));
+    }
 
     #[test]
     fn editing_a_proxy_endpoint_clears_its_password_but_password_entry_is_preserved() {

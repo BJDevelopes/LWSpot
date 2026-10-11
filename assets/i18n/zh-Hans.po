@@ -1482,6 +1482,16 @@ msgid ""
 "Show the song moving behind the player bar's controls while it plays here."
 msgstr "歌曲在本机播放时，在播放栏控件后方显示它的律动。"
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "可视化效果帧率"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr "播放栏可视化效果的刷新频率。帧率越低占用资源越少。"
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "关闭"

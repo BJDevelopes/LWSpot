@@ -1545,6 +1545,18 @@ msgstr ""
 "Şarkı burada çalarken çalar çubuğu kontrollerinin arkasında hareket eden "
 "dalga formunu gösterir."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Görselleştirici kare hızı"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"Çalar çubuğu görselleştiricisinin ne sıklıkla hareket ettiği. Daha düşük "
+"kare hızları daha az kaynak kullanır."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Kapalı"

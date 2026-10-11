@@ -1543,6 +1543,18 @@ msgstr ""
 "Zeigt den Song in Bewegung hinter den Steuerelementen der Wiedergabeleiste, "
 "während er hier läuft."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Bildrate des Visualizers"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"Wie oft sich der Visualizer in der Wiedergabeleiste bewegt. Niedrigere Raten"
+" brauchen weniger Ressourcen."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Aus"

@@ -476,9 +476,354 @@ pub fn tint_title_bar(palette: &crate::theme::Palette) {
     set(DWMWA_TEXT_COLOR, (&raw const text).cast(), size_of::<u32>());
 }
 
+/// How often a moving visualizer asks Windows whether anyone can see the
+/// main window, and how often a hidden one wakes to ask again.
+pub const OCCLUSION_CHECK: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Whether the main window can be seen, asked of Windows at most once per
+/// [`OCCLUSION_CHECK`] while a visualizer moves.
+#[derive(Debug, Default)]
+pub struct Occlusion {
+    checked: Option<(std::time::Instant, bool)>,
+    hidden: bool,
+}
+
+impl Occlusion {
+    /// Whether nobody can see the main window, so animation can stop.
+    /// `focused` is whether it has the keyboard focus: gaining it asks
+    /// again at once, as clicking a covered window brings it forward.
+    pub fn hidden(&mut self, now: std::time::Instant, focused: bool) -> bool {
+        self.hidden_by(now, focused, main_window_hidden)
+    }
+
+    /// The last answer, without asking again.
+    pub fn last(&self) -> bool {
+        self.hidden
+    }
+
+    fn hidden_by(
+        &mut self,
+        now: std::time::Instant,
+        focused: bool,
+        hidden: impl FnOnce() -> bool,
+    ) -> bool {
+        let due = match self.checked {
+            None => true,
+            Some((at, was_focused)) => {
+                now.duration_since(at) >= OCCLUSION_CHECK || (focused && !was_focused)
+            }
+        };
+        if due {
+            self.hidden = hidden();
+            self.checked = Some((now, focused));
+        }
+        self.hidden
+    }
+}
+
+/// A rectangle of screen pixels; the right and bottom edges are outside it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ScreenRect {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+impl ScreenRect {
+    fn is_empty(self) -> bool {
+        self.left >= self.right || self.top >= self.bottom
+    }
+
+    fn intersect(self, other: Self) -> Self {
+        Self {
+            left: self.left.max(other.left),
+            top: self.top.max(other.top),
+            right: self.right.min(other.right),
+            bottom: self.bottom.min(other.bottom),
+        }
+    }
+}
+
+/// The most pieces the uncovered part of a window is tracked in. Past it
+/// the window is counted as seen, which only keeps a visualizer moving.
+const MOST_PIECES: usize = 256;
+
+/// Whether `covers` together hide every pixel of `target`. Each cover cuts
+/// what is left of the target into at most four pieces around it.
+fn fully_covered(target: ScreenRect, covers: &[ScreenRect]) -> bool {
+    let mut uncovered = vec![target];
+    uncovered.retain(|piece| !piece.is_empty());
+    for &cover in covers {
+        if uncovered.is_empty() {
+            break;
+        }
+        let mut left = Vec::with_capacity(uncovered.len());
+        for piece in uncovered {
+            let overlap = piece.intersect(cover);
+            if overlap.is_empty() {
+                left.push(piece);
+                continue;
+            }
+            let around = [
+                ScreenRect {
+                    bottom: overlap.top,
+                    ..piece
+                },
+                ScreenRect {
+                    top: overlap.bottom,
+                    ..piece
+                },
+                ScreenRect {
+                    top: overlap.top,
+                    bottom: overlap.bottom,
+                    right: overlap.left,
+                    ..piece
+                },
+                ScreenRect {
+                    top: overlap.top,
+                    bottom: overlap.bottom,
+                    left: overlap.right,
+                    ..piece
+                },
+            ];
+            left.extend(around.into_iter().filter(|piece| !piece.is_empty()));
+        }
+        if left.len() > MOST_PIECES {
+            return false;
+        }
+        uncovered = left;
+    }
+    uncovered.is_empty()
+}
+
+/// Whether nobody can see any of the main window: it is hidden or
+/// minimized, on another virtual desktop, or the windows above it cover all
+/// of it, as a full-screen window on its monitor does. Windows that can be
+/// seen through (click-through overlays, translucent or colour-keyed ones)
+/// cover nothing. Before the window exists it counts as seen.
+fn main_window_hidden() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GW_HWNDPREV, GetSystemMetrics, GetWindow, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    };
+    let hwnd = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
+    if hwnd == 0 {
+        return false;
+    }
+    let hwnd = hwnd as windows_sys::Win32::Foundation::HWND;
+    if !shown(hwnd) {
+        return true;
+    }
+    let Some(own) = frame_bounds(hwnd) else {
+        return false;
+    };
+    // SAFETY: GetSystemMetrics reads system values and takes no pointers.
+    let screens = unsafe {
+        let left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        let top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        ScreenRect {
+            left,
+            top,
+            right: left + GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            bottom: top + GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        }
+    };
+    let mut covers = Vec::new();
+    // SAFETY: GetWindow takes any window handle and returns null at the
+    // top of the z-order or for a window that no longer exists.
+    let mut above = unsafe { GetWindow(hwnd, GW_HWNDPREV) };
+    // A z-order that changes while it is walked could in principle cycle.
+    for _ in 0..4096 {
+        if above.is_null() {
+            return fully_covered(own.intersect(screens), &covers);
+        }
+        if let Some(cover) = opaque_cover(above) {
+            covers.push(cover);
+        }
+        // SAFETY: as above.
+        above = unsafe { GetWindow(above, GW_HWNDPREV) };
+    }
+    false
+}
+
+/// Whether a window is on screen: shown, not minimized, and not cloaked by
+/// Windows (on another virtual desktop, or a suspended app's window).
+fn shown(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
+    use windows_sys::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
+    let mut cloaked: u32 = 0;
+    // SAFETY: these take any window handle; the attribute is written to a
+    // u32 of the size given.
+    unsafe {
+        IsWindowVisible(hwnd) != 0
+            && IsIconic(hwnd) == 0
+            && (DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED as u32,
+                (&raw mut cloaked).cast(),
+                size_of::<u32>() as u32,
+            ) != 0
+                || cloaked == 0)
+    }
+}
+
+/// The screen area a window hides of the windows below it, if it is shown
+/// and opaque.
+fn opaque_cover(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<ScreenRect> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetLayeredWindowAttributes, GetWindowLongPtrW, LWA_ALPHA, LWA_COLORKEY,
+        WS_EX_LAYERED, WS_EX_TRANSPARENT,
+    };
+    if !shown(hwnd) {
+        return None;
+    }
+    // SAFETY: GetWindowLongPtrW takes any window handle.
+    let style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
+    if style & WS_EX_TRANSPARENT != 0 {
+        return None;
+    }
+    if style & WS_EX_LAYERED != 0 {
+        let (mut key, mut alpha, mut flags) = (0, 0u8, 0);
+        // SAFETY: the three outputs are writable locals. It fails for a
+        // window drawn with per-pixel alpha, which may be see-through.
+        let read = unsafe { GetLayeredWindowAttributes(hwnd, &mut key, &mut alpha, &mut flags) };
+        if read == 0 || flags & LWA_COLORKEY != 0 || (flags & LWA_ALPHA != 0 && alpha < 255) {
+            return None;
+        }
+    }
+    frame_bounds(hwnd).filter(|rect| !rect.is_empty())
+}
+
+/// A window's visible frame on screen, without the invisible resize
+/// borders Windows 10 and 11 count in its window rectangle.
+fn frame_bounds(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<ScreenRect> {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    // SAFETY: both write one RECT to the local given, of the size given.
+    let read = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS as u32,
+            (&raw mut rect).cast(),
+            size_of::<RECT>() as u32,
+        ) == 0
+            || GetWindowRect(hwnd, &mut rect) != 0
+    };
+    read.then_some(ScreenRect {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn screen_rect(left: i32, top: i32, right: i32, bottom: i32) -> ScreenRect {
+        ScreenRect {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    #[test]
+    fn a_window_is_covered_only_when_no_pixel_shows() {
+        let window = screen_rect(100, 100, 900, 700);
+        // Nothing above it.
+        assert!(!fully_covered(window, &[]));
+        // A full-screen window on its monitor.
+        assert!(fully_covered(window, &[screen_rect(0, 0, 1920, 1080)]));
+        // Exactly its own size.
+        assert!(fully_covered(window, &[window]));
+        // One pixel column left uncovered on the right.
+        assert!(!fully_covered(window, &[screen_rect(0, 0, 899, 1080)]));
+        // Two windows meeting edge to edge cover it together.
+        assert!(fully_covered(
+            window,
+            &[
+                screen_rect(0, 0, 500, 1080),
+                screen_rect(500, 0, 1920, 1080)
+            ]
+        ));
+        // Four windows around a hole in the middle leave the hole.
+        let around_hole = [
+            screen_rect(0, 0, 1920, 300),
+            screen_rect(0, 400, 1920, 1080),
+            screen_rect(0, 0, 400, 1080),
+            screen_rect(500, 0, 1920, 1080),
+        ];
+        assert!(!fully_covered(window, &around_hole));
+        // A fifth fills it.
+        let mut filled = around_hole.to_vec();
+        filled.push(screen_rect(390, 290, 510, 410));
+        assert!(fully_covered(window, &filled));
+        // Overlapping covers, in any order.
+        assert!(fully_covered(
+            window,
+            &[
+                screen_rect(300, 50, 950, 400),
+                screen_rect(50, 350, 600, 750),
+                screen_rect(50, 50, 320, 380),
+                screen_rect(580, 380, 950, 750),
+            ]
+        ));
+    }
+
+    #[test]
+    fn a_window_off_every_screen_counts_as_covered() {
+        // What is left of a window wholly off the screens is empty.
+        let off = screen_rect(-900, 100, -100, 700).intersect(screen_rect(0, 0, 1920, 1080));
+        assert!(off.is_empty());
+        assert!(fully_covered(off, &[]));
+    }
+
+    #[test]
+    fn too_many_gaps_count_as_seen() {
+        // A comb of thin covers leaves more gaps than are tracked.
+        let window = screen_rect(0, 0, 2000, 2000);
+        let comb: Vec<_> = (0..400)
+            .map(|i| screen_rect(i * 5, 0, i * 5 + 4, 2000))
+            .chain((0..400).map(|i| screen_rect(0, i * 5, 2000, i * 5 + 4)))
+            .collect();
+        assert!(!fully_covered(window, &comb));
+    }
+
+    #[test]
+    fn occlusion_is_asked_once_a_second_and_again_on_focus() {
+        let start = std::time::Instant::now();
+        let mut occlusion = Occlusion::default();
+        let asked = std::cell::Cell::new(0);
+        let ask = |hidden: bool| {
+            let asked = &asked;
+            move || {
+                asked.set(asked.get() + 1);
+                hidden
+            }
+        };
+        // #given a covered window, asked on its first frame
+        assert!(occlusion.hidden_by(start, false, ask(true)));
+        // #when frames come sooner than a second #then the answer holds
+        let soon = start + std::time::Duration::from_millis(500);
+        assert!(occlusion.hidden_by(soon, false, ask(false)));
+        // #when it gains the focus #then it asks at once
+        assert!(!occlusion.hidden_by(soon, true, ask(false)));
+        // #when a second has passed #then it asks again
+        let later = soon + OCCLUSION_CHECK;
+        assert!(occlusion.hidden_by(later, true, ask(true)));
+        assert_eq!(asked.get(), 3);
+    }
 
     fn reachable(pos: [f32; 2], scale: f32, area: [f32; 4]) -> bool {
         let rect =

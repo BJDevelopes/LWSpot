@@ -5678,6 +5678,66 @@ mod tests {
         app.backend.shutdown();
     }
 
+    /// Appearance offers the player bar visualizer's three frame rates.
+    #[test]
+    fn appearance_offers_the_visualizer_frame_rates() {
+        let root = std::env::temp_dir().join(format!("lwspot-vis-fps-test-{}", std::process::id()));
+        let dirs = AppDirs {
+            config: root.join("config"),
+            state: root.join("state"),
+            cache: root.join("cache"),
+        };
+        let ctx = egui::Context::default();
+        let waker = crate::backend::Waker::default();
+        waker.attach(&ctx);
+        let mut app = App::new(
+            &waker,
+            dirs,
+            Settings::default(),
+            AppOptions {
+                media_controls: false,
+                restore_sign_in: false,
+                tray: false,
+            },
+        );
+        app.attach(&ctx);
+        populate(&mut app);
+        app.open(Page::Settings);
+        let mut said = Vec::new();
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 4000.0),
+                )),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| app.frame_ui(ui));
+            output.textures_delta.clear();
+            said.clear();
+            fn walk(shape: &egui::epaint::Shape, said: &mut Vec<String>) {
+                match shape {
+                    egui::epaint::Shape::Text(text) => said.push(text.galley.job.text.clone()),
+                    egui::epaint::Shape::Vec(shapes) => {
+                        shapes.iter().for_each(|shape| walk(shape, said))
+                    }
+                    _ => {}
+                }
+            }
+            for clipped in &output.shapes {
+                walk(&clipped.shape, &mut said);
+            }
+        }
+        for label in ["Visualizer frame rate", "20 fps", "30 fps", "60 fps"] {
+            assert!(
+                said.iter().any(|text| text == label),
+                "Appearance should show {label}: {said:?}"
+            );
+        }
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     /// Rule: side-panel headers stay on one line at their narrowest width.
     #[test]
     fn the_narrowest_panels_keep_their_headers_on_one_row() {

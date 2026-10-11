@@ -42,6 +42,20 @@ fn glew_library(lib: &std::path::Path) -> Option<&'static str> {
         .find(|name| present.iter().any(|found| found == name))
 }
 
+/// The application manifest. It asks Windows 10 2004 and later for the
+/// segment heap, which keeps less memory committed than the default heap
+/// for the many short-lived allocations of decoding and layout.
+#[cfg(windows)]
+const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <heapType xmlns="http://schemas.microsoft.com/SMI/2020/WindowsSettings">SegmentHeap</heapType>
+    </windowsSettings>
+  </application>
+</assembly>
+"#;
+
 fn main() {
     fastframe_i18n::build::compile_catalogs("assets/i18n");
     #[cfg(windows)]
@@ -51,7 +65,8 @@ fn main() {
         resource
             .set_icon("packaging/windows/lwspot.ico")
             .set("ProductName", "LWSpot")
-            .set("FileDescription", "A native Spotify client");
+            .set("FileDescription", "A native Spotify client")
+            .set_manifest(MANIFEST);
         if let Err(error) = resource.compile() {
             println!("cargo:warning=Windows resources not embedded: {error}");
         }

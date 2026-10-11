@@ -1538,6 +1538,18 @@ msgstr ""
 "Mostra il brano in movimento dietro i controlli della barra del lettore "
 "mentre suona qui."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Frequenza fotogrammi del visualizzatore"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"Quanto spesso si muove il visualizzatore nella barra del lettore. Valori più"
+" bassi consumano meno risorse."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Disattivato"

@@ -77,6 +77,11 @@ pub enum PlayerBarVis {
     Waveform,
 }
 
+/// The frame rates the player bar's visualizer offers.
+pub const PLAYER_BAR_VIS_RATES: [u32; 3] = [20, 30, 60];
+/// The player bar visualizer's frame rate until another is chosen.
+pub const PLAYER_BAR_VIS_DEFAULT_FPS: u32 = 30;
+
 impl PlayerBarVis {
     /// The mode a click on the player bar moves to: spectrum, waveform,
     /// then off, as Winamp's visualizer cycles.
@@ -257,6 +262,9 @@ pub struct Settings {
     pub accent_from_art: bool,
     /// A spectrum or waveform of the playing song behind the player bar.
     pub player_bar_vis: PlayerBarVis,
+    /// How many frames a second the player bar's visualizer draws, one of
+    /// [`PLAYER_BAR_VIS_RATES`].
+    pub player_bar_vis_fps: u32,
     /// Last local volume, 0..=65535.
     pub volume: u16,
     /// Whether the library sidebar is visible.
@@ -418,6 +426,7 @@ impl Default for Settings {
             home: HomeSettings::default(),
             accent_from_art: true,
             player_bar_vis: PlayerBarVis::Off,
+            player_bar_vis_fps: PLAYER_BAR_VIS_DEFAULT_FPS,
             volume: (u16::MAX as u32 * 70 / 100) as u16,
             sidebar_visible: true,
             art_expanded: false,
@@ -483,6 +492,17 @@ fn default_buffer_ms() -> u32 {
 }
 
 impl Settings {
+    /// How long the player bar's visualizer waits between frames at its
+    /// chosen rate. A rate it does not offer draws at the default.
+    pub fn player_bar_vis_frame(&self) -> std::time::Duration {
+        let fps = if PLAYER_BAR_VIS_RATES.contains(&self.player_bar_vis_fps) {
+            self.player_bar_vis_fps
+        } else {
+            PLAYER_BAR_VIS_DEFAULT_FPS
+        };
+        std::time::Duration::from_secs(1) / fps
+    }
+
     pub(crate) fn cached_palette(&self) -> Option<crate::theme::Palette> {
         self.custom_theme
             .as_ref()
@@ -1165,6 +1185,37 @@ mod tests {
         assert_eq!(PlayerBarVis::Off.next(), PlayerBarVis::Spectrum);
         assert_eq!(PlayerBarVis::Spectrum.next(), PlayerBarVis::Waveform);
         assert_eq!(PlayerBarVis::Waveform.next(), PlayerBarVis::Off);
+    }
+
+    #[test]
+    fn the_player_bar_visualizer_draws_thirty_frames_a_second_unless_chosen() {
+        use std::time::Duration;
+        // #given a settings file from before the rate could be chosen
+        let older: Settings = serde_json::from_str(r#"{"player_bar_vis":"spectrum"}"#).unwrap();
+        // #then it draws thirty frames a second
+        assert_eq!(older.player_bar_vis_fps, 30);
+        assert_eq!(
+            older.player_bar_vis_frame(),
+            Duration::from_nanos(33_333_333)
+        );
+        // #given each offered rate #then it round-trips and paces the frames
+        for (fps, frame) in [(20, 50_000_000), (30, 33_333_333), (60, 16_666_666)] {
+            let settings = Settings {
+                player_bar_vis_fps: fps,
+                ..Settings::default()
+            };
+            let json = serde_json::to_string(&settings).unwrap();
+            let restored: Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored.player_bar_vis_fps, fps);
+            assert_eq!(restored.player_bar_vis_frame(), Duration::from_nanos(frame));
+        }
+        // #given a rate it does not offer, edited into the file
+        let edited: Settings = serde_json::from_str(r#"{"player_bar_vis_fps":1000}"#).unwrap();
+        // #then it draws at the default
+        assert_eq!(
+            edited.player_bar_vis_frame(),
+            Duration::from_nanos(33_333_333)
+        );
     }
 
     #[test]

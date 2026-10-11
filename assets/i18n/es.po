@@ -1534,6 +1534,18 @@ msgstr ""
 "Muestra la canción en movimiento detrás de los controles de la barra de "
 "reproducción mientras suena aquí."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Cuadros por segundo del visualizador"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"Con qué frecuencia se mueve el visualizador de la barra de reproducción. Las"
+" tasas más bajas usan menos recursos."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Desactivado"

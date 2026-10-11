@@ -1542,6 +1542,18 @@ msgstr ""
 "Montre le titre en mouvement derrière les commandes de la barre de lecture "
 "pendant qu’il est lu ici."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Images par seconde du visualiseur"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"La fréquence à laquelle le visualiseur de la barre de lecture bouge. Des "
+"valeurs plus basses consomment moins de ressources."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Désactivé"

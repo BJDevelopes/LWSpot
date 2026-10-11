@@ -227,6 +227,7 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                 let message = gettext(app.locale, "Couldn't load this shelf");
                 widgets::error_row(ui, app, &message, Some(Page::Home));
             }
+            let art_width = widgets::card_art_width(ui.ctx());
             for playlist in &playlists {
                 let subtitle = playlist
                     .description
@@ -243,7 +244,7 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                 let card = widgets::card(
                     ui,
                     app,
-                    pick_image(&playlist.images, 640),
+                    pick_image(&playlist.images, art_width),
                     &playlist.name,
                     &subtitle,
                     widgets::CardCover::square(playing_here),
@@ -329,12 +330,13 @@ fn recently_played(app: &mut App, ui: &mut egui::Ui) {
         "recent",
         &gettext(app.locale, "Recently played"),
         |ui| {
+            let art_width = widgets::card_art_width(ui.ctx());
             for entry in &tracks {
                 let track = &entry.track;
                 let card = widgets::card(
                     ui,
                     app,
-                    track.image(640),
+                    track.image(art_width),
                     &track.name,
                     &track.artist_names(),
                     widgets::CardCover::square(false),
@@ -465,6 +467,7 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
         "podcasts",
         &gettext(app.locale, "Your podcasts"),
         |ui| {
+            let art_width = widgets::card_art_width(ui.ctx());
             for (show, episode, reason) in &episodes {
                 let subtitle = match reason {
                     EpisodeReason::Continue { left_ms } => {
@@ -484,7 +487,8 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
                 let card = widgets::card(
                     ui,
                     app,
-                    pick_image(&episode.images, 640).or_else(|| pick_image(&show.images, 640)),
+                    pick_image(&episode.images, art_width)
+                        .or_else(|| pick_image(&show.images, art_width)),
                     &episode.name,
                     &subtitle,
                     widgets::CardCover::square(false),
@@ -551,6 +555,7 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
         "top-artists",
         &gettext(app.locale, "Your top artists"),
         |ui| {
+            let art_width = widgets::card_art_width(ui.ctx());
             for artist in &artists {
                 let playing_here = app.playing_context_uri().as_deref()
                     == Some(artist.uri.as_str())
@@ -558,7 +563,7 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
                 let card = widgets::card(
                     ui,
                     app,
-                    pick_image(&artist.images, 640),
+                    pick_image(&artist.images, art_width),
                     &artist.name,
                     &gettext(app.locale, "Artist"),
                     widgets::CardCover::portrait(playing_here),

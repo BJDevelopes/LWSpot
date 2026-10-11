@@ -39,6 +39,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
     match page {
         Page::Albums => {
             let card_height = widgets::card_row_height(ui);
+            let art_width = widgets::card_art_width(ui.ctx());
             let count = app.library.albums.items.len();
             widgets::virtual_wrapped_cards(ui, count, card_height, |ui, index| {
                 let album = app.library.albums.items[index].album.clone();
@@ -50,7 +51,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                 let card = widgets::card(
                     ui,
                     app,
-                    pick_image(&album.images, 640),
+                    pick_image(&album.images, art_width),
                     &album.name,
                     &subtitle,
                     widgets::CardCover::square(playing_here),
@@ -96,6 +97,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
         }
         Page::Artists => {
             let card_height = widgets::card_row_height(ui);
+            let art_width = widgets::card_art_width(ui.ctx());
             let count = app.library.artists.items.len();
             let artist_label = gettext(locale, "Artist");
             widgets::virtual_wrapped_cards(ui, count, card_height, |ui, index| {
@@ -107,7 +109,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                 let card = widgets::card(
                     ui,
                     app,
-                    pick_image(&artist.images, 640),
+                    pick_image(&artist.images, art_width),
                     &artist.name,
                     &artist_label,
                     widgets::CardCover::portrait(playing_here),
@@ -155,6 +157,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
         }
         Page::Podcasts => {
             let card_height = widgets::card_row_height(ui);
+            let art_width = widgets::card_art_width(ui.ctx());
             let count = app.library.shows.items.len();
             widgets::virtual_wrapped_cards(ui, count, card_height, |ui, index| {
                 let show = app.library.shows.items[index].show.clone();
@@ -162,7 +165,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                 let card = widgets::card(
                     ui,
                     app,
-                    pick_image(&show.images, 640),
+                    pick_image(&show.images, art_width),
                     &show.name,
                     &show.publisher,
                     widgets::CardCover::default(),

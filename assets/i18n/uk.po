@@ -1542,6 +1542,18 @@ msgstr ""
 "Показувати візуалізацію пісні за елементами керування на панелі плеєра, коли "
 "вона відтворюється на цьому комп’ютері."
 
+#: src/ui/settings.rs:883
+msgid "Visualizer frame rate"
+msgstr "Частота кадрів візуалізатора"
+
+#: src/ui/settings.rs:887
+msgid ""
+"How often the player bar's visualizer moves. Lower rates use fewer "
+"resources."
+msgstr ""
+"Як часто оновлюється візуалізатор на панелі плеєра. Нижча частота "
+"використовує менше ресурсів."
+
 #: src/ui/settings.rs:1017
 msgid "Off"
 msgstr "Вимкнено"

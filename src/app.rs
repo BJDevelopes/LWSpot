@@ -262,6 +262,8 @@ pub struct App {
     /// What the app may spend on drawing and polling, from the power state
     /// and the window's; worked out in each logic pass.
     pub budget: crate::power::Budget,
+    /// Whether the window is hidden behind others, for the visualizers.
+    pub occlusion: crate::window::Occlusion,
     /// How wide the player bar last drew its progress bar, in physical
     /// pixels, so the logic knows when the fill next moves.
     pub progress_bar_px: f32,
@@ -764,6 +766,7 @@ impl App {
             tray_playing: false,
             power,
             budget: crate::power::Budget::default(),
+            occlusion: crate::window::Occlusion::default(),
             progress_bar_px: 0.0,
             window_hidden: false,
             hide_intent: false,
@@ -983,6 +986,8 @@ impl App {
     pub fn attach(&mut self, ctx: &egui::Context) {
         theme::install(ctx);
         ctx.add_bytes_loader(std::sync::Arc::new(self.backend.art().clone()));
+        // After egui_extras' image loaders, so artwork is decoded here first.
+        ctx.add_image_loader(std::sync::Arc::new(self.backend.art().decoder()));
         ctx.set_theme(self.theme_preference());
         self.applied_dark = None;
         self.winamp.forget_textures();
@@ -9857,8 +9862,15 @@ impl App {
     /// This runs with the logic, not the drawing: eframe skips drawing a
     /// hidden, minimised or occluded window but still runs its logic, so
     /// a hidden window keeps polling and keeps media controls current.
-    fn schedule_next_pass(&self, ctx: &egui::Context) {
+    ///
+    /// A drawn window that other windows cover moves its progress bar only
+    /// once a second, as nobody sees it move in between.
+    fn schedule_next_pass(&mut self, ctx: &egui::Context) {
         let drawn = self.budget != crate::power::Budget::Background;
+        if drawn && self.now_playing().is_some_and(|now| now.playing) {
+            let focused = ctx.input(|input| input.viewport().focused.unwrap_or(true));
+            self.occlusion.hidden(Instant::now(), focused);
+        }
         if let Some(due) = self.next_pass(drawn) {
             ctx.request_repaint_after(due);
         }
@@ -9873,7 +9885,12 @@ impl App {
     fn next_pass(&self, drawn: bool) -> Option<Duration> {
         let playing = self.now_playing().filter(|now| now.playing).map(|now| {
             if drawn {
-                progress_due(now.position_ms, now.duration_ms, self.progress_bar_px)
+                let bar_px = if self.occlusion.last() {
+                    0.0
+                } else {
+                    self.progress_bar_px
+                };
+                progress_due(now.position_ms, now.duration_ms, bar_px)
             } else {
                 PROGRESS_FRAME
             }

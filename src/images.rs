@@ -1,11 +1,14 @@
-//! Album art: fetched once, kept on disk, decoded by egui on demand.
+//! Album art: fetched once, kept on disk, decoded on demand into textures.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use egui::load::{Bytes, BytesLoadResult, BytesLoader, BytesPoll, ImagePoll, LoadError};
+use egui::load::{
+    Bytes, BytesLoadResult, BytesLoader, BytesPoll, ImageLoadResult, ImageLoader, ImagePoll,
+    LoadError, SizeHint,
+};
 use sha1::{Digest, Sha1};
 
 use crate::http::Http;
@@ -17,12 +20,22 @@ use crate::http::Http;
 /// reloaded every two and a half minutes (#129).
 ///
 /// Size-based eviction keeps visible images stable.
-const HELD_BYTES: usize = 64 * 1024 * 1024;
+///
+/// Only textures count once painted (see [`ArtDecoder`]). A 1920x1080 Home
+/// at 1.5x shows about 18 card covers of 300 px (360 KiB each, 6.5 MiB in
+/// all); the budget holds about 20 of the 640 px covers that cards ask for
+/// from 2.25x, as many as the old 64 MiB of decoded image plus texture did.
+const HELD_BYTES: usize = 32 * 1024 * 1024;
 const MAX_ART_BYTES: usize = 8 * 1024 * 1024;
 
-/// Decoded ColorImage plus the GPU texture, both RGBA.
-fn decoded_and_texture_bytes(width: usize, height: usize) -> usize {
-    2 * width.saturating_mul(height).saturating_mul(4)
+/// Covers decoded at once. A decode briefly holds the image twice, so a
+/// page of covers that arrives together decodes a few at a time instead of
+/// all at once on as many threads.
+const DECODES_AT_ONCE: usize = 2;
+
+/// The GPU texture of a painted cover, RGBA.
+fn texture_bytes(width: usize, height: usize) -> usize {
+    width.saturating_mul(height).saturating_mul(4)
 }
 
 /// What this loader answers for. egui offers it every URI, and artwork that
@@ -36,14 +49,23 @@ enum Entry {
     Ready {
         bytes: Option<Arc<[u8]>>,
         last_used: Instant,
-        /// JPEG bytes still held, plus decoded image and texture once painted.
+        /// JPEG bytes still held, plus the texture once painted.
         retained: usize,
     },
     Failed(String),
 }
 
+/// A cover on its way from bytes to a texture.
+enum Decoded {
+    Pending,
+    Ready(Arc<egui::ColorImage>),
+    Failed(String),
+}
+
 struct Inner {
     entries: Mutex<HashMap<String, Entry>>,
+    decoded: Mutex<HashMap<String, Decoded>>,
+    decodes: Arc<tokio::sync::Semaphore>,
     http: Http,
     runtime: tokio::runtime::Handle,
     cache_dir: PathBuf,
@@ -60,11 +82,20 @@ impl ArtLoader {
         Self {
             inner: Arc::new(Inner {
                 entries: Mutex::new(HashMap::new()),
+                decoded: Mutex::new(HashMap::new()),
+                decodes: Arc::new(tokio::sync::Semaphore::new(DECODES_AT_ONCE)),
                 http: http.into(),
                 runtime,
                 cache_dir,
             }),
         }
+    }
+
+    /// The image loader that decodes this loader's artwork. Install it with
+    /// [`egui::Context::add_image_loader`] after egui_extras' loaders, so it
+    /// is asked first.
+    pub fn decoder(&self) -> ArtDecoder {
+        ArtDecoder { art: self.clone() }
     }
 
     /// Bytes for `url`, from memory, disk, or the network.
@@ -165,8 +196,9 @@ impl ArtLoader {
         self.inner.drop_bytes(url);
     }
 
-    /// Record decoded image + texture size after egui has uploaded the cover.
-    pub fn note_decoded(&self, url: &str, width: usize, height: usize) {
+    /// Records the texture's size once egui has uploaded the cover. Its
+    /// decoded pixels went as the texture was made, so only it counts.
+    pub fn note_texture(&self, url: &str, width: usize, height: usize) {
         if let Some(Entry::Ready {
             bytes, retained, ..
         }) = self
@@ -177,7 +209,7 @@ impl ArtLoader {
             .get_mut(url)
         {
             let jpeg = bytes.as_ref().map(|bytes| bytes.len()).unwrap_or(0);
-            *retained = jpeg + decoded_and_texture_bytes(width, height);
+            *retained = jpeg + texture_bytes(width, height);
         }
     }
 
@@ -318,6 +350,37 @@ impl Inner {
             *retained = retained.saturating_sub(held.len());
         }
     }
+
+    /// Decodes `bytes` off the UI thread, at most [`DECODES_AT_ONCE`] at a
+    /// time, and answers for `url` once done.
+    fn start_decode(self: &Arc<Self>, ctx: &egui::Context, url: String, bytes: Bytes) {
+        let inner = Arc::clone(self);
+        let ctx = ctx.clone();
+        self.runtime.spawn(async move {
+            let Ok(_slot) = Arc::clone(&inner.decodes).acquire_owned().await else {
+                return;
+            };
+            let result = inner
+                .runtime
+                .spawn_blocking(move || decode_cover(&bytes))
+                .await
+                .unwrap_or_else(|error| Err(error.to_string()));
+            let mut decoded = inner.decoded.lock().unwrap_or_else(|p| p.into_inner());
+            // A cover forgotten while it decoded is no longer wanted.
+            let Some(entry) = decoded
+                .get_mut(&url)
+                .filter(|entry| matches!(entry, Decoded::Pending))
+            else {
+                return;
+            };
+            *entry = match result {
+                Ok(image) => Decoded::Ready(Arc::new(image)),
+                Err(error) => Decoded::Failed(error),
+            };
+            drop(decoded);
+            ctx.request_repaint();
+        });
+    }
 }
 
 impl BytesLoader for ArtLoader {
@@ -397,6 +460,149 @@ impl BytesLoader for ArtLoader {
     }
 }
 
+/// Decodes artwork for [`ArtLoader`]'s URLs into the pixels egui uploads.
+///
+/// egui_extras' loader would decode each cover on a thread of its own, copy
+/// it twice on the way to egui's pixels, and keep those pixels next to the
+/// texture until the cover is forgotten. This one decodes a few at a time,
+/// copies once, and lets the pixels go when egui takes them for a texture:
+/// egui keeps the texture and does not ask for an image it has one of.
+pub struct ArtDecoder {
+    art: ArtLoader,
+}
+
+impl ImageLoader for ArtDecoder {
+    fn id(&self) -> &str {
+        "lwspot::ArtDecoder"
+    }
+
+    fn load(&self, ctx: &egui::Context, uri: &str, _: SizeHint) -> ImageLoadResult {
+        if !is_http(uri) {
+            return Err(LoadError::NotSupported);
+        }
+        let inner = &self.art.inner;
+        {
+            let mut decoded = inner.decoded.lock().unwrap_or_else(|p| p.into_inner());
+            match decoded.get(uri) {
+                Some(Decoded::Pending) => return Ok(ImagePoll::Pending { size: None }),
+                Some(Decoded::Failed(error)) => return Err(LoadError::Loading(error.clone())),
+                // egui makes a texture of it at once, so the pixels go with it.
+                Some(Decoded::Ready(_)) => {
+                    if let Some(Decoded::Ready(image)) = decoded.remove(uri) {
+                        return Ok(ImagePoll::Ready { image });
+                    }
+                }
+                None => {}
+            }
+        }
+        match BytesLoader::load(&self.art, ctx, uri)? {
+            BytesPoll::Pending { size } => Ok(ImagePoll::Pending { size }),
+            BytesPoll::Ready { bytes, .. } => {
+                inner
+                    .decoded
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .insert(uri.to_string(), Decoded::Pending);
+                inner.start_decode(ctx, uri.to_string(), bytes);
+                Ok(ImagePoll::Pending { size: None })
+            }
+        }
+    }
+
+    fn forget(&self, uri: &str) {
+        self.art
+            .inner
+            .decoded
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(uri);
+    }
+
+    fn forget_all(&self) {
+        self.art
+            .inner
+            .decoded
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clear();
+    }
+
+    fn byte_size(&self) -> usize {
+        self.art
+            .inner
+            .decoded
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .values()
+            .map(|decoded| match decoded {
+                Decoded::Ready(image) => image.pixels.len() * size_of::<egui::Color32>(),
+                Decoded::Failed(error) => error.len(),
+                Decoded::Pending => 0,
+            })
+            .sum()
+    }
+
+    fn has_pending(&self) -> bool {
+        self.art
+            .inner
+            .decoded
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .values()
+            .any(|decoded| matches!(decoded, Decoded::Pending))
+    }
+}
+
+/// The bounds every artwork decode works within.
+fn art_limits() -> image::Limits {
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+    limits
+}
+
+/// Decodes a cover straight into egui's pixels, turned as its EXIF says.
+fn decode_cover(bytes: &[u8]) -> Result<egui::ColorImage, String> {
+    use image::{DynamicImage, ImageDecoder as _};
+
+    if bytes.len() > MAX_ART_BYTES {
+        return Err("artwork is too large".to_string());
+    }
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| error.to_string())?;
+    reader.limits(art_limits());
+    let mut decoder = reader.into_decoder().map_err(|error| error.to_string())?;
+    let orientation = decoder.orientation().map_err(|error| error.to_string())?;
+    let mut image = DynamicImage::from_decoder(decoder).map_err(|error| error.to_string())?;
+    image.apply_orientation(orientation);
+    let size = [image.width() as usize, image.height() as usize];
+    // JPEG covers decode to RGB: build the opaque pixels from it directly
+    // rather than through an RGBA copy.
+    Ok(match image {
+        DynamicImage::ImageRgb8(rgb) => egui::ColorImage::new(
+            size,
+            rgb.pixels()
+                .map(|pixel| {
+                    let [r, g, b] = pixel.0;
+                    egui::Color32::from_rgb(r, g, b)
+                })
+                .collect(),
+        ),
+        DynamicImage::ImageLuma8(gray) => egui::ColorImage::new(
+            size,
+            gray.pixels()
+                .map(|pixel| egui::Color32::from_gray(pixel.0[0]))
+                .collect(),
+        ),
+        DynamicImage::ImageRgba8(rgba) => {
+            egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw())
+        }
+        other => egui::ColorImage::from_rgba_unmultiplied(size, other.to_rgba8().as_raw()),
+    })
+}
+
 /// A colour that represents an album cover, suitable for tinting a dark or
 /// light surface: the most common saturated hue, with its lightness pulled
 /// into a range that still reads as a background.
@@ -433,14 +639,23 @@ pub fn accent_color(bytes: &[u8]) -> Option<[u8; 3]> {
 /// Blur applied to the full-window lyrics backdrop.
 const LYRICS_BLUR: f32 = 9.0;
 
+/// Longest side of the lyrics backdrop before it is blurred.
+const BACKDROP_SIZE: u32 = 256;
+
+/// Longest side of a softened cover: twice the 64 px thumbnail it comes
+/// from, which is all the detail there is to keep.
+const SOFTENED_SIZE: u32 = 128;
+
 /// Blur applied to a library thumbnail standing in for a cover.
 ///
-/// Softening happens at the same bounded size as the backdrop, so this is
-/// weaker than the backdrop's radius: the thumbnail already carries little
-/// detail, and a heavier blur smears it into flat colour.
-const COVER_BLUR: f32 = 1.5;
+/// This is weaker than the backdrop's radius: the thumbnail already carries
+/// little detail, and a heavier blur smears it into flat colour. At
+/// [`SOFTENED_SIZE`] it matches the look 1.5 gave at twice the size.
+const COVER_BLUR: f32 = 1.0;
 
-/// Softened covers held at once, for library artwork seen recently.
+/// Softened covers held at once, for library artwork seen recently. The
+/// sidebar prepares one for every visible row, so this stays above the rows
+/// a tall window shows; at [`SOFTENED_SIZE`] they hold 4 MiB at most.
 const HELD_COVERS: usize = 64;
 
 #[derive(Default)]
@@ -491,7 +706,9 @@ impl LyricsBackdrop {
                 let result = match inner.fetch(&url).await {
                     Ok(bytes) => inner
                         .runtime
-                        .spawn_blocking(move || blurred_background(&bytes, LYRICS_BLUR))
+                        .spawn_blocking(move || {
+                            blurred_background(&bytes, BACKDROP_SIZE, LYRICS_BLUR)
+                        })
                         .await
                         .map_err(|error| error.to_string()),
                     Err(error) => Err(error),
@@ -521,16 +738,15 @@ impl LyricsBackdrop {
     }
 }
 
-fn terminal_art_error(error: &LoadError) -> bool {
-    matches!(error, LoadError::NotSupported)
-}
-
 /// Softened artwork for covers that are still loading, one entry per URL.
 ///
 /// A library row's small thumbnail is already on screen when its page opens,
 /// so enlarging it blurred stands in for the cover until the full artwork
 /// arrives. Blurring happens off the UI thread and the result is kept, so a
 /// cover that is opened, left, and opened again shows softened art at once.
+///
+/// The thumbnail is read again from the disk cache rather than from egui:
+/// egui keeps only the texture of a painted cover, not its pixels.
 struct SoftenedCover {
     texture: egui::TextureHandle,
     last_used: Instant,
@@ -607,61 +823,49 @@ impl SoftenedCovers {
         {
             return None;
         }
-        // The visible thumbnail has already been decoded by egui. Its source
-        // bytes may have been released by paint_cover_url, which would discard
-        // them again on the next frame before this consumer could use them.
-        match ctx.try_load_image(uri, Default::default()) {
-            Ok(ImagePoll::Ready { image }) => {
-                let ready_tx = self.ready_tx.clone();
-                let ready_uri = uri.to_string();
-                let ctx = ctx.clone();
-                self.pending.insert(ready_uri.clone());
-                loader.inner.runtime.spawn_blocking(move || {
-                    let image = softened_background(&image);
-                    let _ = ready_tx.send((ready_uri, image));
-                    ctx.request_repaint();
-                });
-            }
-            Err(error) if terminal_art_error(&error) => {
-                self.failed.insert(uri.to_string());
-            }
-            _ => {}
+        if !is_http(uri) {
+            self.failed.insert(uri.to_string());
+            return None;
         }
+        // Wait for the thumbnail itself, which puts it in the disk cache.
+        if !loader.is_ready(uri) {
+            return None;
+        }
+        let ready_tx = self.ready_tx.clone();
+        let ready_uri = uri.to_string();
+        let ctx = ctx.clone();
+        let inner = Arc::clone(&loader.inner);
+        self.pending.insert(ready_uri.clone());
+        loader.inner.runtime.spawn(async move {
+            let image = match inner.fetch(&ready_uri).await {
+                Ok(bytes) => inner
+                    .runtime
+                    .spawn_blocking(move || blurred_background(&bytes, SOFTENED_SIZE, COVER_BLUR))
+                    .await
+                    .ok()
+                    .flatten(),
+                Err(_) => None,
+            };
+            let _ = ready_tx.send((ready_uri, image));
+            ctx.request_repaint();
+        });
         None
     }
 }
 
-fn softened_background(image: &egui::ColorImage) -> Option<egui::ColorImage> {
-    let [width, height] = image.size;
-    if width > 8192 || height > 8192 || image.pixels.len() > 64 * 1024 * 1024 / 4 {
-        return None;
-    }
-    let pixels = image
-        .pixels
-        .iter()
-        .flat_map(egui::Color32::to_srgba_unmultiplied)
-        .collect();
-    let image = image::RgbaImage::from_raw(width as u32, height as u32, pixels)?;
-    Some(blurred_image(image.into(), COVER_BLUR))
-}
-
-fn blurred_background(bytes: &[u8], sigma: f32) -> Option<egui::ColorImage> {
+fn blurred_background(bytes: &[u8], size: u32, sigma: f32) -> Option<egui::ColorImage> {
     if bytes.len() > MAX_ART_BYTES {
         return None;
     }
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .ok()?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(8192);
-    limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(64 * 1024 * 1024);
-    reader.limits(limits);
-    Some(blurred_image(reader.decode().ok()?, sigma))
+    reader.limits(art_limits());
+    Some(blurred_image(reader.decode().ok()?, size, sigma))
 }
 
-fn blurred_image(image: image::DynamicImage, sigma: f32) -> egui::ColorImage {
-    let image = image.thumbnail(256, 256).blur(sigma).to_rgba8();
+fn blurred_image(image: image::DynamicImage, size: u32, sigma: f32) -> egui::ColorImage {
+    let image = image.thumbnail(size, size).blur(sigma).to_rgba8();
     egui::ColorImage::from_rgba_unmultiplied(
         [image.width() as usize, image.height() as usize],
         image.as_raw(),
@@ -816,15 +1020,6 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
-    #[test]
-    fn transient_cover_load_errors_remain_retryable() {
-        assert!(!terminal_art_error(&LoadError::Loading(
-            "temporary network failure".into()
-        )));
-        assert!(!terminal_art_error(&LoadError::NoMatchingBytesLoader));
-        assert!(terminal_art_error(&LoadError::NotSupported));
-    }
-
     fn cached_png(loader: &ArtLoader, uri: &str, rgb: [u8; 3]) {
         let mut encoded = std::io::Cursor::new(Vec::new());
         image::RgbImage::from_pixel(64, 64, image::Rgb(rgb))
@@ -961,7 +1156,7 @@ mod tests {
         let image = image::RgbImage::from_pixel(8193, 1, image::Rgb([20, 30, 40]));
         let mut bytes = std::io::Cursor::new(Vec::new());
         image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
-        assert!(blurred_background(bytes.get_ref(), LYRICS_BLUR).is_none());
+        assert!(blurred_background(bytes.get_ref(), BACKDROP_SIZE, LYRICS_BLUR).is_none());
     }
 
     fn softened_test_image() -> egui::ColorImage {
@@ -969,40 +1164,32 @@ mod tests {
     }
 
     #[test]
-    fn softened_cover_reuses_decoded_art_after_source_bytes_are_released() {
+    fn softened_cover_reads_the_thumbnail_after_its_bytes_are_released() {
         let runtime = artwork_test_runtime();
         let dir =
-            std::env::temp_dir().join(format!("lwspot-softened-decoded-{}", std::process::id()));
+            std::env::temp_dir().join(format!("lwspot-softened-cached-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         let loader = artwork_test_loader(&runtime, dir.clone());
         let ctx = egui::Context::default();
-        egui_extras::install_image_loaders(&ctx);
-        ctx.add_bytes_loader(Arc::new(loader.clone()));
-        let uri = "https://i.scdn.co/image/decoded";
+        let uri = "https://i.scdn.co/image/softened";
         let mut encoded = std::io::Cursor::new(Vec::new());
         image::RgbImage::from_pixel(64, 32, image::Rgb([20, 30, 40]))
             .write_to(&mut encoded, image::ImageFormat::Png)
             .unwrap();
-        let bytes: Arc<[u8]> = encoded.into_inner().into();
+        std::fs::write(loader.inner.cache_path(uri), encoded.into_inner()).unwrap();
+        // The thumbnail is painted: egui holds its texture, and the loader
+        // has let its bytes go. There is deliberately no HTTP server.
         loader.inner.entries.lock().unwrap().insert(
             uri.into(),
             Entry::Ready {
-                retained: bytes.len(),
-                bytes: Some(bytes),
+                retained: 0,
+                bytes: None,
                 last_used: Instant::now(),
             },
         );
+        let mut covers = SoftenedCovers::default();
         runtime.block_on(async {
             tokio::time::timeout(Duration::from_secs(10), async {
-                while !matches!(
-                    ctx.try_load_texture(uri, Default::default(), Default::default()),
-                    Ok(egui::load::TexturePoll::Ready { .. })
-                ) {
-                    tokio::time::sleep(Duration::from_millis(1)).await;
-                }
-                // Painting a visible cover releases its encoded bytes every
-                // frame. There is deliberately no disk file or HTTP server.
-                loader.release_bytes(uri);
-                let mut covers = SoftenedCovers::default();
                 loop {
                     loader.release_bytes(uri);
                     let texture = covers.texture(&ctx, &loader, uri);
@@ -1014,18 +1201,125 @@ mod tests {
                         "softening must not restart the byte loader"
                     );
                     if let Some(texture) = texture {
-                        assert_eq!(texture.size(), [256, 128]);
+                        assert_eq!(texture.size(), [128, 64]);
                         break;
                     }
                     tokio::time::sleep(Duration::from_millis(1)).await;
                 }
-                assert!(covers.pending.is_empty());
-                assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
             })
             .await
-            .expect("decoded artwork produces a softened cover");
+            .expect("cached artwork produces a softened cover");
         });
+        assert!(covers.pending.is_empty());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn softened_cover_waits_for_its_thumbnail() {
+        let runtime = artwork_test_runtime();
+        let dir =
+            std::env::temp_dir().join(format!("lwspot-softened-waits-{}", std::process::id()));
+        let loader = artwork_test_loader(&runtime, dir.clone());
+        let ctx = egui::Context::default();
+        let mut covers = SoftenedCovers::default();
+        let uri = "https://i.scdn.co/image/not-yet";
+        assert!(covers.texture(&ctx, &loader, uri).is_none());
+        assert!(covers.pending.is_empty() && covers.failed.is_empty());
+        assert!(covers.texture(&ctx, &loader, "bytes://local").is_none());
+        assert!(covers.failed.contains("bytes://local"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn encoded(image: image::DynamicImage, format: image::ImageFormat) -> Vec<u8> {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut bytes, format).unwrap();
+        bytes.into_inner()
+    }
+
+    #[test]
+    fn covers_decode_straight_to_egui_pixels() {
+        let rgb = image::RgbImage::from_pixel(3, 2, image::Rgb([200, 40, 10]));
+        let cover = decode_cover(&encoded(rgb.into(), image::ImageFormat::Png)).unwrap();
+        assert_eq!(cover.size, [3, 2]);
+        assert_eq!(cover.source_size, egui::vec2(3.0, 2.0));
+        assert!(
+            cover
+                .pixels
+                .iter()
+                .all(|pixel| *pixel == egui::Color32::from_rgb(200, 40, 10))
+        );
+
+        let jpeg = image::RgbImage::from_pixel(16, 16, image::Rgb([90, 90, 90]));
+        let cover = decode_cover(&encoded(jpeg.into(), image::ImageFormat::Jpeg)).unwrap();
+        assert_eq!(cover.size, [16, 16]);
+        assert!(cover.pixels.iter().all(|pixel| pixel.a() == 255
+            && pixel.r().abs_diff(90) <= 2
+            && pixel.g().abs_diff(90) <= 2));
+
+        let rgba = image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 128]));
+        let cover = decode_cover(&encoded(rgba.into(), image::ImageFormat::Png)).unwrap();
+        assert_eq!(
+            cover.pixels[0],
+            egui::Color32::from_rgba_unmultiplied(255, 0, 0, 128)
+        );
+
+        let gray = image::GrayImage::from_pixel(2, 1, image::Luma([77]));
+        let cover = decode_cover(&encoded(gray.into(), image::ImageFormat::Png)).unwrap();
+        assert_eq!(cover.pixels, vec![egui::Color32::from_gray(77); 2]);
+
+        assert!(decode_cover(b"broken artwork").is_err());
+    }
+
+    /// A painted cover keeps its texture, and its decoded pixels go.
+    #[test]
+    fn decoded_pixels_go_once_the_texture_exists() {
+        let runtime = artwork_test_runtime();
+        let dir = std::env::temp_dir().join(format!("lwspot-art-decoder-{}", std::process::id()));
+        let loader = artwork_test_loader(&runtime, dir.clone());
+        let ctx = egui::Context::default();
+        egui_extras::install_image_loaders(&ctx);
+        ctx.add_bytes_loader(Arc::new(loader.clone()));
+        ctx.add_image_loader(Arc::new(loader.decoder()));
+        let uri = "https://i.scdn.co/image/decoder";
+        let rgb = image::RgbImage::from_pixel(40, 20, image::Rgb([20, 30, 40]));
+        let bytes: Arc<[u8]> = encoded(rgb.into(), image::ImageFormat::Png).into();
+        loader.inner.entries.lock().unwrap().insert(
+            uri.into(),
+            Entry::Ready {
+                retained: bytes.len(),
+                bytes: Some(bytes),
+                last_used: Instant::now(),
+            },
+        );
+        let texture = runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    if let Ok(egui::load::TexturePoll::Ready { texture }) =
+                        ctx.try_load_texture(uri, Default::default(), Default::default())
+                    {
+                        break texture;
+                    }
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            })
+            .await
+            .expect("the cover decodes")
+        });
+        assert_eq!(texture.size, egui::vec2(40.0, 20.0));
+        assert!(loader.inner.decoded.lock().unwrap().is_empty());
+        assert_eq!(loader.decoder().byte_size(), 0);
+        assert!(!loader.decoder().has_pending());
+        assert!(matches!(
+            ctx.try_load_texture(uri, Default::default(), Default::default()),
+            Ok(egui::load::TexturePoll::Ready { .. })
+        ));
+        assert!(matches!(
+            loader
+                .decoder()
+                .load(&ctx, "bytes://local", SizeHint::default()),
+            Err(LoadError::NotSupported)
+        ));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -1105,7 +1399,8 @@ mod tests {
         });
         let mut bytes = std::io::Cursor::new(Vec::new());
         image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
-        let background = blurred_background(bytes.get_ref(), LYRICS_BLUR).expect("valid artwork");
+        let background =
+            blurred_background(bytes.get_ref(), BACKDROP_SIZE, LYRICS_BLUR).expect("valid artwork");
         assert_eq!(background.size, [256, 128]);
         let center = background.pixels[64 * 256 + 128];
         assert!(
@@ -1116,7 +1411,7 @@ mod tests {
             background.pixels[0].r() > 240,
             "the cover's colors remain recognizable"
         );
-        assert!(blurred_background(b"broken artwork", LYRICS_BLUR).is_none());
+        assert!(blurred_background(b"broken artwork", BACKDROP_SIZE, LYRICS_BLUR).is_none());
     }
 
     /// The media controls ask for a file rather than a URL, and have to be
@@ -1277,9 +1572,9 @@ mod tests {
     }
 
     #[test]
-    fn large_covers_evict_using_decoded_and_texture_sizes() {
-        let one = decoded_and_texture_bytes(640, 640);
-        assert_eq!(one, 2 * 640 * 640 * 4);
+    fn large_covers_evict_using_texture_sizes() {
+        let one = texture_bytes(640, 640);
+        assert_eq!(one, 640 * 640 * 4);
         let jpeg = 50_000usize;
         let dir = std::env::temp_dir().join(format!(
             "lwspot-art-budget-{}-{}",
@@ -1317,20 +1612,20 @@ mod tests {
         for i in 0..40 {
             let url = format!("https://i.scdn.co/image/{i}");
             loader.release_bytes(&url);
-            loader.note_decoded(&url, 640, 640);
+            loader.note_texture(&url, 640, 640);
         }
         let before = retained_total(&loader);
         assert_eq!(before, 40 * one);
         assert!(
             before > HELD_BYTES,
-            "decoded 640×640 covers plus textures must exceed 64 MiB: {before}"
+            "640×640 textures must exceed the budget: {before}"
         );
         let ctx = egui::Context::default();
         loader.evict(&ctx);
         let after = retained_total(&loader);
         assert!(
             after <= HELD_BYTES,
-            "eviction must bring retained decoded+texture bytes under budget: after={after}"
+            "eviction must bring retained texture bytes under budget: after={after}"
         );
         assert!(
             after < before,
