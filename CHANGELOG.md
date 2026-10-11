@@ -7,7 +7,7 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-11
 
 The first release of LWSpot, a Windows-only fork of
 [Spotifast](https://github.com/crmne/spotifast) 0.12.0 by Carmine Paolino. It
