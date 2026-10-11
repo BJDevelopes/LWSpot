@@ -66,7 +66,7 @@ the official Spotify app, Spotifast 0.12.0 as released, and LWSpot.
 |---|---|---|---|
 | CPU, window open, default settings | 9.5% of a core | 5.5% of a core | **2.3% of a core** |
 | CPU, window open, spectrum visualizer on | no visualizer | 107.8% of a core | **16.8% of a core** |
-| CPU, window minimized | 1.0% | 1.3% | 1.8% |
+| CPU, window minimized | 1.0 to 2.1% | 1.7% | 1.7% |
 | Memory (working set) | 1,138 MB | 209 MB | **155 MB** |
 | Private memory | 798 MB | 139 MB | **79 MB** |
 | Processes | 8 | 1 | 1 |
@@ -76,8 +76,9 @@ With its window open, LWSpot uses about **4 times less CPU than Spotify's app**
 and **2.4 times less than Spotifast**, and with the spectrum visualizer on,
 about **6 times less than Spotifast**, which redraws its whole window for every
 visualizer frame. It needs about a **tenth of Spotify's private memory** and
-**40% less than Spotifast's**. Minimized, all three are close, around 1 to 2%
-of a core.
+**40% less than Spotifast's**. Minimized, LWSpot and Spotifast are level: almost
+all of it is decoding the music and feeding the sound card, which both do with
+the same libraries, and LWSpot's own share is about half of Spotifast's.
 
 How we measured: one laptop (MSI GF65, Windows 11, Intel graphics), one
 session, release builds, each app alone with the others closed, the display

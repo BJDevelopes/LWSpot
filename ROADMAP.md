@@ -96,6 +96,21 @@ it; 60 s averages starting 30 s after playback began):
 | Private memory, visualizer off | 798 MB | 139 MB | 79 MB |
 | Launch to window | 1,123 ms | 134 ms | 132 ms |
 
+Minimized, per thread (2026-10-11 night, 90 s each, same song, release
+builds, thread names via GetThreadDescription):
+
+| Thread | LWSpot | Spotifast 0.12.0 |
+|---|---|---|
+| librespot player (decoding) | 0.64% | 0.62% |
+| cpal_wasapi_out (audio output) | 0.56% | 0.57% |
+| main | 0.17% | 0.33% |
+| everything else | 0.28% | 0.20% |
+| total | 1.65% | 1.72% |
+
+Minimized CPU is a tie within run-to-run noise (about 0.3% of a core); the
+earlier 1.8% vs 1.3% was noise. The README shows 1.7% for both. Official
+Spotify measured 1.0% to 2.1% minimized across runs.
+
 Seek (LWSpot, verbose log, four seeks into a freshly started song): librespot
 confirmed in 22-28 ms and new audio was queued 32-38 ms after the command,
 before the 100 ms device buffer.
