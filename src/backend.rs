@@ -27,7 +27,7 @@ use crate::images::{ArtLoader, accent_color};
 use crate::model::PlaylistCache;
 use crate::paths::AppDirs;
 use crate::player::{
-    Engine, EngineConfig, EngineEvent, Heard, LocalState, PlaybackResume, PlayerCommand,
+    Engine, EngineConfig, EngineEvent, Heard, LocalState, Playback, PlaybackResume, PlayerCommand,
 };
 use crate::session_reads;
 use crate::settings::ProxyConfig;
@@ -72,6 +72,30 @@ fn defer_engine_replace(engine_busy: bool, restart_pending: &mut bool) -> bool {
         *restart_pending = true;
     }
     engine_busy
+}
+
+/// How far a position report may stray from where the clock puts the song
+/// and still change nothing on screen: well under the second the time
+/// shows and the time the progress bar takes to move a pixel.
+const RESYNC_TOLERANCE_MS: u32 = 50;
+
+/// Whether `next` is `shown` with only its position reported again, close
+/// to where the clock already puts it at `now`, so the window would draw
+/// the same.
+fn same_but_resynced(shown: &LocalState, next: &LocalState, now: Instant) -> bool {
+    let position = |state: &LocalState| match (state.playback, state.position_at) {
+        (Playback::Playing, Some(at)) => state.position_ms.saturating_add(
+            u32::try_from(now.saturating_duration_since(at).as_millis()).unwrap_or(u32::MAX),
+        ),
+        _ => state.position_ms,
+    };
+    let unplaced = |state: &LocalState| LocalState {
+        position_ms: 0,
+        position_at: None,
+        ..state.clone()
+    };
+    position(shown).abs_diff(position(next)) <= RESYNC_TOLERANCE_MS
+        && unplaced(shown) == unplaced(next)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -2520,14 +2544,31 @@ impl Worker {
         let commands = self.commands.clone();
         let waker = self.waker.clone();
         let lease = self.credentials.lease(CredentialSlot::Playback);
+        let woken_for: std::sync::Mutex<Option<LocalState>> = std::sync::Mutex::default();
         Arc::new(move |event| {
             if !lease.current() {
                 return;
             }
             match event {
                 EngineEvent::State(state) => {
+                    // librespot reports the position every second while a
+                    // song plays. One the clock already shows changes
+                    // nothing on screen, so it waits for the next frame
+                    // rather than drawing one of its own.
+                    let wake = {
+                        let mut woken_for = woken_for.lock().unwrap_or_else(|p| p.into_inner());
+                        let wake = woken_for
+                            .as_ref()
+                            .is_none_or(|shown| !same_but_resynced(shown, &state, Instant::now()));
+                        if wake {
+                            *woken_for = Some(state.clone());
+                        }
+                        wake
+                    };
                     let _ = events.send(Event::Local(Box::new(state)));
-                    waker.wake();
+                    if wake {
+                        waker.wake();
+                    }
                 }
                 EngineEvent::SessionEnded => {
                     let _ = commands.send(Command::Reconnect);
@@ -6246,5 +6287,78 @@ mod tests {
         assert!(pending);
         assert!(!defer_engine_replace(false, &mut pending));
         assert!(pending, "finishing the attempt owns clearing the request");
+    }
+}
+
+#[cfg(test)]
+mod resync_tests {
+    use super::*;
+
+    fn playing(position_ms: u32, at: Instant) -> LocalState {
+        LocalState {
+            playback: Playback::Playing,
+            track: Some(crate::player::LocalTrack {
+                uri: "spotify:track:a".into(),
+                duration_ms: 213_000,
+                ..Default::default()
+            }),
+            position_ms,
+            position_at: Some(at),
+            ..LocalState::default()
+        }
+    }
+
+    #[test]
+    fn a_position_report_the_clock_already_shows_draws_nothing_new() {
+        let start = Instant::now();
+        let shown = playing(10_000, start);
+        let now = start + Duration::from_millis(1_000);
+        assert!(same_but_resynced(&shown, &playing(11_000, now), now));
+        assert!(same_but_resynced(&shown, &playing(11_040, now), now));
+        assert!(same_but_resynced(&shown, &playing(10_960, now), now));
+    }
+
+    #[test]
+    fn a_correction_the_clock_does_not_show_is_drawn() {
+        let start = Instant::now();
+        let shown = playing(10_000, start);
+        let now = start + Duration::from_millis(1_000);
+        assert!(!same_but_resynced(&shown, &playing(11_200, now), now));
+        assert!(!same_but_resynced(&shown, &playing(10_500, now), now));
+    }
+
+    #[test]
+    fn any_other_change_is_drawn() {
+        let start = Instant::now();
+        let shown = playing(10_000, start);
+        let now = start + Duration::from_millis(1_000);
+        let paused = LocalState {
+            playback: Playback::Paused,
+            position_at: None,
+            ..playing(11_000, now)
+        };
+        assert!(!same_but_resynced(&shown, &paused, now));
+        let seeked = LocalState {
+            seek_sequence: 1,
+            ..playing(11_000, now)
+        };
+        assert!(!same_but_resynced(&shown, &seeked, now));
+        let louder = LocalState {
+            volume: 9,
+            ..playing(11_000, now)
+        };
+        assert!(!same_but_resynced(&shown, &louder, now));
+    }
+
+    #[test]
+    fn a_paused_song_reported_where_it_stopped_draws_nothing_new() {
+        let start = Instant::now();
+        let paused = LocalState {
+            playback: Playback::Paused,
+            position_at: None,
+            ..playing(42_000, start)
+        };
+        let later = start + Duration::from_secs(5);
+        assert!(same_but_resynced(&paused, &paused.clone(), later));
     }
 }

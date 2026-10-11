@@ -51,6 +51,12 @@ being the lightest and most reliable Spotify client on Windows.
 
 - A new icon, a feather wearing headphones on a violet tile, and violet as
   the default accent colour of the Light and Dark themes.
+- Faster seeking and track starts: a seek asks only for the audio it needs,
+  no longer waits behind background downloads, uses audio as it arrives, and
+  resumes after 1 second of audio instead of 5. On our test laptop new audio
+  was ready about 35 ms after a seek.
+- Faster start: the first frame is drawn in about 0.2 s instead of 0.4 s, with
+  fonts, media controls and the tray set up in the background.
 - Much lighter: no continuous redraws while a song plays, the player bar
   visualizer capped at 30 frames a second (15 when the window is not
   focused), and visualizers paused while the window is covered, minimized or

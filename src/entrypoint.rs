@@ -428,6 +428,8 @@ pub(crate) fn run() -> eframe::Result<()> {
     lwspot::emoji::install(demo);
     #[cfg(not(feature = "demo"))]
     lwspot::emoji::install(false);
+    // The interface's fonts too, while the app and its window start.
+    lwspot::theme::prefetch_fonts();
 
     // A capture run is a throwaway process next to the real one: no tray
     // icon of its own, and no second media session to fight over media keys.

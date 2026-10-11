@@ -223,6 +223,71 @@ impl Default for AppOptions {
     }
 }
 
+/// The media controls, the tray item and the power reader. Each waits for
+/// a thread of its own to answer as it starts, so they start together on
+/// another thread while the window opens, and the app takes them before
+/// anything reads them.
+struct DesktopServices {
+    media_controls: Option<MediaControls>,
+    tray: Option<fastframe_tray::Tray>,
+    power: crate::power::Power,
+}
+
+impl DesktopServices {
+    /// Starts the services `options` asks for, on a thread of their own
+    /// when there are any. Until the thread is joined, the app holds none.
+    fn spawn(waker: &Waker, options: AppOptions) -> (Self, Option<std::thread::JoinHandle<Self>>) {
+        if options.media_controls || options.tray {
+            let thread_waker = waker.clone();
+            match std::thread::Builder::new()
+                .name("lwspot-desktop".into())
+                .spawn(move || Self::start(&thread_waker, options))
+            {
+                Ok(thread) => return (Self::none(), Some(thread)),
+                Err(error) => log::warn!("starting the media controls and tray in line: {error}"),
+            }
+        }
+        (Self::start(waker, options), None)
+    }
+
+    fn none() -> Self {
+        Self {
+            media_controls: None,
+            tray: None,
+            power: crate::power::Power::fixed(crate::power::Conditions::default()),
+        }
+    }
+
+    fn start(waker: &Waker, options: AppOptions) -> Self {
+        std::thread::scope(|scope| {
+            let wake = waker.clone();
+            let media_controls = scope.spawn(move || {
+                options
+                    .media_controls
+                    .then(|| MediaControls::start(media_app(), move || wake.wake()))
+            });
+            let wake = waker.clone();
+            let tray = scope.spawn(move || {
+                options
+                    .tray
+                    .then(|| fastframe_tray::Tray::spawn(tray_config(), move || wake.wake()))
+                    .flatten()
+            });
+            let power = if options.media_controls {
+                let wake = waker.clone();
+                crate::power::Power::spawn(move || wake.wake())
+            } else {
+                crate::power::Power::fixed(crate::power::Conditions::default())
+            };
+            Self {
+                media_controls: media_controls.join().ok().flatten(),
+                tray: tray.join().ok().flatten(),
+                power,
+            }
+        })
+    }
+}
+
 /// Listening time for the current track.
 ///
 /// `listened` stores completed intervals. `playing_since` starts the current
@@ -259,6 +324,9 @@ pub struct App {
     tray_playing: bool,
     /// The system's power and session state.
     power: crate::power::Power,
+    /// The media controls, the tray item and the power reader while they
+    /// start, until [`App::adopt_desktop`] takes them.
+    desktop: Option<std::thread::JoinHandle<DesktopServices>>,
     /// What the app may spend on drawing and polling, from the power state
     /// and the window's; worked out in each logic pass.
     pub budget: crate::power::Budget,
@@ -669,6 +737,7 @@ impl fastframe_shell::Resident for App {
     /// `--autostart=tray`: the tray icon is the way back to the window.
     /// Sign-in and the engine start in `App::new`, with or without one.
     fn start_hidden(&mut self) -> bool {
+        self.adopt_desktop();
         self.tray
             .as_ref()
             .is_some_and(fastframe_tray::Tray::is_shown)
@@ -759,21 +828,7 @@ impl App {
             applied_proxy
         };
         let session = SessionState::load(&dirs.session_file());
-        let wake = waker.clone();
-        let media_controls = options
-            .media_controls
-            .then(|| MediaControls::start(media_app(), move || wake.wake()));
-        let wake = waker.clone();
-        let tray = options
-            .tray
-            .then(|| fastframe_tray::Tray::spawn(tray_config(), move || wake.wake()))
-            .flatten();
-        let power = if options.media_controls {
-            let wake = waker.clone();
-            crate::power::Power::spawn(move || wake.wake())
-        } else {
-            crate::power::Power::fixed(crate::power::Conditions::default())
-        };
+        let (services, desktop) = DesktopServices::spawn(waker, options);
 
         let first_page = session
             .last_page
@@ -798,11 +853,12 @@ impl App {
             settings_dirty: false,
             last_settings_save: Instant::now(),
             backend,
-            media_controls,
+            media_controls: services.media_controls,
             media_art: None,
-            tray,
+            tray: services.tray,
             tray_playing: false,
-            power,
+            power: services.power,
+            desktop,
             budget: crate::power::Budget::default(),
             occlusion: crate::window::Occlusion::default(),
             progress_bar_px: 0.0,
@@ -1031,9 +1087,21 @@ impl App {
         self.control_devices = Some(guard.devices_slot());
     }
 
+    /// Takes the media controls, the tray item and the power reader from
+    /// the thread that starts them, waiting for it the first time if they
+    /// are still starting.
+    fn adopt_desktop(&mut self) {
+        if let Some(services) = self.desktop.take().and_then(|thread| thread.join().ok()) {
+            self.media_controls = services.media_controls;
+            self.tray = services.tray;
+            self.power = services.power;
+        }
+    }
+
     /// Per-window setup: fonts, icons, loaders, theme. Called every time a
     /// window is (re)created around this long-lived application state.
     pub fn attach(&mut self, ctx: &egui::Context) {
+        self.adopt_desktop();
         theme::install(ctx);
         ctx.add_bytes_loader(std::sync::Arc::new(self.backend.art().clone()));
         // After egui_extras' image loaders, so artwork is decoded here first.
@@ -10162,6 +10230,7 @@ impl App {
 impl App {
     /// Runs background work with or without a main window.
     pub fn background_frame(&mut self, ctx: &egui::Context) {
+        self.adopt_desktop();
         if self.autoscroll.cancel_if_unfocused(ctx) {
             self.scrolling.stop();
         }

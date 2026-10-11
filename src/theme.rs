@@ -450,12 +450,28 @@ fn apply_to_style(style: &mut egui::Style, palette: &Palette) {
 /// installed faces for the scripts Inter lacks, drawn the way the desktop
 /// renders text.
 fn install_fonts(ctx: &egui::Context) {
+    ctx.set_fonts(font_definitions());
+}
+
+fn font_definitions() -> egui::FontDefinitions {
     let emoji = egui::FontData::from_static(include_bytes!("../assets/fonts/NotoEmoji.ttf"));
     let mut fonts = fastframe_fonts::FontSetup::default()
         .companion("noto_emoji", std::sync::Arc::new(emoji))
         .definitions();
     text_rendering().apply_to(&mut fonts);
-    ctx.set_fonts(fonts);
+    fonts
+}
+
+/// Looks through the system's fonts on a thread of its own while the
+/// window opens. What it finds is kept for the run, so the window's
+/// [`install`] reads the same fonts without waiting for the search.
+pub fn prefetch_fonts() {
+    if let Err(error) = std::thread::Builder::new()
+        .name("lwspot-fonts".into())
+        .spawn(|| drop(font_definitions()))
+    {
+        log::debug!("fonts are looked for when the window opens: {error}");
+    }
 }
 
 fastframe_icons::icons! {

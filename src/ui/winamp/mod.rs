@@ -379,17 +379,18 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 
     // egui subtracts one predicted frame from delayed repaints; the display
     // supplies it through the vsync swap. A window nobody can see only
-    // looks again now and then whether it is seen.
-    if vis_moving {
+    // looks again now and then whether it is seen, the marquee and the
+    // clock included.
+    if vis_moving || now.is_some() {
         ctx.request_repaint_after(
             if app.occlusion.hidden(std::time::Instant::now(), focused) {
                 crate::window::OCCLUSION_CHECK
-            } else {
+            } else if vis_moving {
                 VIS_FRAME
+            } else {
+                Duration::from_millis(220)
             },
         );
-    } else if now.is_some() {
-        ctx.request_repaint_after(Duration::from_millis(220));
     }
 }
 

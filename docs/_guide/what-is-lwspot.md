@@ -59,26 +59,33 @@ cannot play music through LWSpot on this computer or another device.
 
 ## How light is it?
 
-These numbers come from one laptop (an MSI GF65 with Windows 11), measured in
-one session with release builds playing the same song, averaged over 60
-seconds. LWSpot had the player bar spectrum visualizer on at 30 frames a
-second.
+LWSpot started as a fork of Spotifast, so we measured all three side by side:
+the official Spotify app, Spotifast 0.12.0 as released, and LWSpot.
 
-| While playing | Official Spotify app | LWSpot 0.1.0 |
-|---|---|---|
-| Memory (working set) | 1,297 MB across 8 processes | 148 MB, 1 process |
-| Private memory | 927 MB | 73 MB |
-| CPU, window visible | 22% of one core | 18.4% of one core |
-| CPU, window minimized | 2.1% of one core | 1.3% of one core |
-| CPU, window covered by other windows | not measured | about 0.6% of one core |
+| While playing the same song | Official Spotify app | Spotifast 0.12.0 | LWSpot 0.1.0 |
+|---|---|---|---|
+| CPU, window open, default settings | 9.5% of a core | 5.5% of a core | **2.3% of a core** |
+| CPU, window open, spectrum visualizer on | no visualizer | 107.8% of a core | **16.8% of a core** |
+| CPU, window minimized | 1.0% | 1.3% | 1.8% |
+| Memory (working set) | 1,138 MB | 209 MB | **155 MB** |
+| Private memory | 798 MB | 139 MB | **79 MB** |
+| Processes | 8 | 1 | 1 |
+| Launch to window | 1.12 s | 0.13 s | 0.13 s |
 
-Your numbers will vary with your hardware, library and settings. Most of the
-visible-window figure is the visualizer: each of its frames redraws the
-window, so a lower frame rate in **Settings > Appearance** uses less, and
-with it off LWSpot redraws only when something on screen changes. MilkDrop,
-when you turn it on, runs as a second process.
+With its window open, LWSpot uses about **4 times less CPU than Spotify's app**
+and **2.4 times less than Spotifast**, and with the spectrum visualizer on,
+about **6 times less than Spotifast**, which redraws its whole window for every
+visualizer frame. It needs about a **tenth of Spotify's private memory** and
+**40% less than Spotifast's**. Minimized, all three are close, around 1 to 2%
+of a core.
 
-<a id="account-safety"></a>
+How we measured: one laptop (MSI GF65, Windows 11, Intel graphics), one
+session, release builds, each app alone with the others closed, the display
+on and the app's window kept on top so nothing covered it. CPU and memory are
+60-second averages of the app's processes, taken 30 seconds after playback
+started; launch time is the average of three launches until the window
+appears. Your numbers will vary with your hardware, library, and settings.
+The [roadmap](https://github.com/BJDevelopes/LWSpot/blob/main/ROADMAP.md#phase-2-lighter) has the full measurements.
 
 ## Will my Spotify account get banned?
 

@@ -67,8 +67,14 @@ but is not required for closure. Reopen the issue if it persists after updating.
   player engine in `src/player.rs`, never as blocking work on the UI thread.
 - Settings and state files stay readable, backward compatible, and atomically
   written. Never log credentials or authorization responses.
-- egui, winit and librespot come from pinned forks (see `[patch.crates-io]`
-  in `Cargo.toml`). Move all crates of one fork to a new revision together.
+- egui, winit and librespot come from pinned upstream forks (see
+  `[patch.crates-io]` in `Cargo.toml`). Move all crates of one fork to a new
+  revision together.
+- The few dependency crates LWSpot changes itself live in `vendor/`
+  (`fastframe-fonts`, `librespot-audio`, `librespot-playback`) and are
+  patched in at the end of `Cargo.toml`. `vendor/README.md` lists what each
+  change is and how to refresh a crate from upstream. Keep changes there small
+  and offer them upstream.
 - The egui fork shapes right-to-left runs in their own direction but leaves
   them in logical order. Pass logical text to `crate::bidi`, which reorders
   the laid-out runs; never reorder the string before layout.

@@ -330,7 +330,7 @@ and `--demo-show` adds surfaces on top of it: a comma separated list of
 `focus`, `winamp`, `playlist`, `eq`, `eq-shade`, `compact`, `update`, `personal-app`,
 `collection-loading`, `shuffle-selected`, `shuffle-started`, `library-list`,
 `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
-`library-grid-wide`, `rtl`, `player-bar-spectrum`, `player-bar-waveform`,
+`library-grid-wide`, `rtl`, `player-bar-spectrum`, `player-bar-waveform`, `playing-here`,
 `lyrics-fullscreen-view`, `lyrics-fullscreen-instrumental`, `signed-out`, and
 `connecting`. The Library variants show the list or cover grid with
 a normal, narrow, or wide sidebar and collapsed artwork for matching captures.
@@ -342,6 +342,9 @@ app introduction.
 session connects.
 `player-bar-spectrum` and `player-bar-waveform` play a fixed, music-like
 sound on this computer with that player bar visualizer on.
+`playing-here` plays the displayed song on this computer with its clock
+running, the visualizer as saved and a title too long for the player bar,
+for measuring what a playing window costs.
 `lyrics-fullscreen-view` and `lyrics-fullscreen-instrumental` draw full-screen
 lyrics, with words or without, at the window's own size.
 `rtl` gives the first songs of `playlist:pl1` invented Hebrew and Arabic

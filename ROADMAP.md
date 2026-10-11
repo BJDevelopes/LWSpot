@@ -82,6 +82,44 @@ After Phase 2 (2026-10-10, release build, same machine and states):
 | CPU, playing, window covered | n/a | n/a | ~0.6% |
 | CPU, playing, minimized | 2.1% | 1.5% | 1.3% |
 
+Three-way benchmark, final (2026-10-11 evening, release builds with the
+vendored librespot and fonts changes; display kept on with
+SetThreadExecutionState and the measured window pinned on top so nothing covers
+it; 60 s averages starting 30 s after playback began):
+
+| State | Official Spotify | Spotifast 0.12.0 | LWSpot |
+|---|---|---|---|
+| CPU, playing, window open, visualizer off | 9.5% | 5.5% | 2.3% |
+| CPU, playing, window open, spectrum on | n/a | 107.8% | 16.8% |
+| CPU, playing, minimized | 1.0% | 1.3% | 1.8% |
+| Memory (working set), visualizer off | 1,138 MB | 209 MB | 155 MB |
+| Private memory, visualizer off | 798 MB | 139 MB | 79 MB |
+| Launch to window | 1,123 ms | 134 ms | 132 ms |
+
+Seek (LWSpot, verbose log, four seeks into a freshly started song): librespot
+confirmed in 22-28 ms and new audio was queued 32-38 ms after the command,
+before the 100 ms device buffer.
+
+The earlier run below measured Spotifast at 110% with the visualizer off; that
+did not reproduce. It came right after a rate-limited sign-in, most likely
+loading spinners animating while its library failed to load, and with less
+care about window coverage and display sleep (a covered window or a sleeping
+display makes every app look idle). Kept for the record:
+
+Three-way benchmark, first run (2026-10-11, same laptop, each app alone, the same song,
+60 s averages, launch time averaged over three launches; Spotifast is the
+released v0.12.0 portable build, LWSpot a release build of this tree):
+
+| State | Official Spotify | Spotifast 0.12.0 | LWSpot |
+|---|---|---|---|
+| CPU, playing, window open, visualizer off | 23.5% | 110.2% | 6.8% |
+| CPU, playing, window open, spectrum on | n/a | 109.8% | 13.8% |
+| CPU, playing, minimized | 1.7% | 1.4% | 1.7% |
+| Memory (working set), visualizer off | 1,235 MB | 222 MB | 157 MB |
+| Private memory, visualizer off | 868 MB | 151 MB | 80 MB |
+| Processes | 8 | 1 | 1 |
+| Launch to window | 1,409 ms | 145 ms | 187 ms (140 ms on the second set) |
+
 - [x] Stop continuous redraws while playing with the window visible. Player-bar
       spectrum capped at 30 fps (15 unfocused, the power saver's half rate now
       applies); the progress bar redraws only when the time or its pixel changes.

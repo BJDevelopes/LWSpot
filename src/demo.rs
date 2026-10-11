@@ -803,6 +803,16 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 app.local.playback = crate::player::Playback::Playing;
                 app.winamp.tap.push(&demo_sound(), 1.0);
             }
+            // Plays on this computer with the clock running and a title
+            // too long for the player bar, for measuring a playing window.
+            "playing-here" => {
+                play_here(app);
+                if let Some(track) = &mut app.local.track {
+                    track.title = format!("{} - 2022 Remaster (Extended Mix)", track.title);
+                }
+                app.local.playback = crate::player::Playback::Playing;
+                app.local.position_at = Some(Instant::now());
+            }
             // The sign-in card and the card while the session connects.
             "signed-out" => {
                 app.auth = AuthStatus::SignedOut;
@@ -4492,6 +4502,45 @@ mod tests {
         app.local.playback = crate::player::Playback::Paused;
         let output = draw(&mut app);
         assert!(!waveform(&output), "a paused song is still");
+        app.backend.shutdown();
+    }
+
+    /// A song playing here under a title too long for the player bar, with
+    /// the visualizer off: the bar cuts the title short and asks for no
+    /// frames of its own, so only its clock and progress move it.
+    #[cfg(feature = "demo")]
+    #[test]
+    fn a_long_title_playing_here_asks_the_player_bar_for_no_frames() {
+        let (ctx, mut app) = accessible_app("playing-here");
+        apply_flags(&mut app, None, Some("playing-here"));
+        app.settings.player_bar_vis = crate::settings::PlayerBarVis::Off;
+        let now = app.now_playing().expect("a song is playing");
+        assert!(now.playing && now.local);
+        assert!(now.title.chars().count() > 30, "{}", now.title);
+        assert!(app.local.position_at.is_some(), "its clock runs");
+
+        let mut delay = None;
+        for _ in 0..3 {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1280.0, 800.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| crate::ui::player_bar::show(&mut app, ui),
+            );
+            output.textures_delta.clear();
+            delay = output
+                .viewport_output
+                .get(&egui::ViewportId::ROOT)
+                .map(|viewport| viewport.repaint_delay);
+        }
+        assert!(
+            delay.is_none_or(|delay| delay >= std::time::Duration::from_secs(1)),
+            "the player bar asked for a frame in {delay:?}"
+        );
         app.backend.shutdown();
     }
 

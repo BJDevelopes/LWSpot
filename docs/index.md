@@ -26,7 +26,7 @@ hero:
 features:
   - icon: ⚡
     title: Lightweight
-    details: One process with no browser engine. About 150 MB of memory while playing on our test laptop, where Spotify's app used about 1.3 GB.
+    details: One process with no browser engine. While playing with the window open, about 4x less CPU and 10x less memory than Spotify's app, and 40% less memory than Spotifast.
     link: /what-is-lwspot/#how-light-is-it
     link_text: See the measurements
   - icon: 🔊
