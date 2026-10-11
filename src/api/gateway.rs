@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use super::ApiSource;
 use super::client::{ApiClient, ApiError, NetActivity, TokenProvider};
@@ -131,6 +132,45 @@ fn plan(operation: Operation, personal_ready: bool) -> ApiSource {
     }
 }
 
+/// How long a request the personal app would serve waits for that app's
+/// grant to finish verifying before it settles for the shared app. Both
+/// grants verify at startup; whichever answers first signs the app in, and
+/// without this wait the first burst of requests went to the shared app
+/// whenever its answer came first.
+pub const PERSONAL_GRACE: Duration = Duration::from_secs(10);
+
+/// How long a playlist request waits for the account's saved playlist
+/// classification to be read from disk.
+const ACCESS_SEED_WAIT: Duration = Duration::from_secs(2);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Route {
+    Go(ApiSource),
+    /// The personal app would serve this and is still verifying: wait for
+    /// it until this instant, then plan again.
+    AwaitPersonal(Instant),
+}
+
+/// Where an operation goes given the personal app's state right now.
+/// `grace` is when waiting for a personal grant being verified stops.
+fn route(
+    operation: Operation,
+    personal: &SessionState,
+    grace: Option<Instant>,
+    now: Instant,
+) -> Route {
+    if matches!(personal, SessionState::Ready { .. }) {
+        return Route::Go(plan(operation, true));
+    }
+    if matches!(personal, SessionState::Authorizing)
+        && plan(operation, true) == ApiSource::Personal
+        && let Some(until) = grace.filter(|until| *until > now)
+    {
+        return Route::AwaitPersonal(until);
+    }
+    Route::Go(plan(operation, false))
+}
+
 fn classify_playlist(account: &AccountId, playlist: &Playlist) -> PlaylistAccess {
     if playlist.owner.id.as_deref() == Some(account.as_str()) {
         PlaylistAccess::Owned
@@ -181,6 +221,11 @@ pub struct ApiGateway {
     shared: Session,
     personal: Session,
     playlist_access: Mutex<HashMap<PlaylistId, PlaylistAccess>>,
+    /// Until when requests the personal app would serve wait for its grant
+    /// to verify. Set when a personal grant is restored or verified.
+    personal_grace: Mutex<Option<Instant>>,
+    /// True while the account's saved playlist classification is read.
+    access_seeding: tokio::sync::watch::Sender<bool>,
 }
 
 impl ApiGateway {
@@ -190,6 +235,8 @@ impl ApiGateway {
             shared: Session::new(http.clone(), activity.clone(), ApiProfile::SHARED),
             personal: Session::new(http, activity, ApiProfile::PERSONAL),
             playlist_access: Mutex::new(HashMap::new()),
+            personal_grace: Mutex::new(None),
+            access_seeding: tokio::sync::watch::channel(false).0,
         }
     }
 
@@ -231,6 +278,9 @@ impl ApiGateway {
     }
 
     pub fn begin_verification(&self, source: ApiSource, provider: TokenProvider) {
+        if source == ApiSource::Personal {
+            self.expect_personal(PERSONAL_GRACE);
+        }
         let session = self.session(source);
         let client = session.client().for_authorization(provider);
         *session
@@ -260,6 +310,46 @@ impl ApiGateway {
             .lock()
             .unwrap_or_else(|lock| lock.into_inner())
             .clear();
+        self.access_seeding.send_replace(false);
+    }
+
+    /// Requests the personal app would serve wait up to `within` for a
+    /// personal grant that is being restored or verified.
+    pub fn expect_personal(&self, within: Duration) {
+        *self
+            .personal_grace
+            .lock()
+            .unwrap_or_else(|lock| lock.into_inner()) = Some(Instant::now() + within);
+    }
+
+    fn personal_grace(&self) -> Option<Instant> {
+        *self
+            .personal_grace
+            .lock()
+            .unwrap_or_else(|lock| lock.into_inner())
+    }
+
+    /// The app the operation goes to. While a personal grant is still
+    /// verifying, an operation it would serve waits for it (bounded by
+    /// [`PERSONAL_GRACE`]) instead of committing to the shared app.
+    async fn source_for(&self, operation: Operation) -> ApiSource {
+        let mut personal = self.personal.state.subscribe();
+        loop {
+            let state = personal.borrow_and_update().1.clone();
+            match route(operation, &state, self.personal_grace(), Instant::now()) {
+                Route::Go(source) => return source,
+                Route::AwaitPersonal(until) => {
+                    tokio::select! {
+                        changed = personal.changed() => {
+                            if changed.is_err() {
+                                return plan(operation, false);
+                            }
+                        }
+                        () = tokio::time::sleep_until(tokio::time::Instant::from_std(until)) => {}
+                    }
+                }
+            }
+        }
     }
 
     pub fn account(&self) -> Option<AccountId> {
@@ -274,7 +364,7 @@ impl ApiGateway {
     }
 
     pub async fn client_for(&self, operation: Operation) -> Result<Arc<ApiClient>, ApiError> {
-        let source = plan(operation, self.personal_ready());
+        let source = self.source_for(operation).await;
         let session = self.session(source);
         let mut state = session.state.subscribe();
         let generation = state.borrow().0;
@@ -326,6 +416,48 @@ impl ApiGateway {
         for playlist in playlists {
             self.observe_playlist(playlist);
         }
+    }
+
+    /// The saved classification of the account's playlists is being read;
+    /// playlist requests of unknown access wait briefly for it.
+    pub fn begin_access_seed(&self) {
+        self.access_seeding.send_replace(true);
+    }
+
+    /// Classifies the playlists read from the account's saved list, unless
+    /// another account has signed in meanwhile, and releases waiting requests.
+    pub fn finish_access_seed(&self, account: &str, playlists: &[Playlist]) {
+        if self
+            .account()
+            .is_some_and(|current| current.as_str() == account)
+        {
+            let account = AccountId::new(account);
+            let mut known = self
+                .playlist_access
+                .lock()
+                .unwrap_or_else(|lock| lock.into_inner());
+            for playlist in playlists {
+                // A live answer that already arrived is newer than the disk.
+                known
+                    .entry(PlaylistId::new(playlist.id.clone()))
+                    .and_modify(|access| {
+                        if *access == PlaylistAccess::Unknown {
+                            *access = classify_playlist(&account, playlist);
+                        }
+                    })
+                    .or_insert_with(|| classify_playlist(&account, playlist));
+            }
+        }
+        self.access_seeding.send_replace(false);
+    }
+
+    /// Waits, briefly, while the saved playlist classification is read.
+    pub async fn wait_for_access_seed(&self) {
+        let mut seeding = self.access_seeding.subscribe();
+        if !*seeding.borrow_and_update() {
+            return;
+        }
+        let _ = tokio::time::timeout(ACCESS_SEED_WAIT, seeding.wait_for(|seeding| !*seeding)).await;
     }
 
     pub fn invalidate_playlist_access(&self, id: &PlaylistId) {
@@ -487,6 +619,170 @@ mod tests {
         ] {
             assert_eq!(plan(operation, false), ApiSource::Shared);
         }
+    }
+
+    #[test]
+    fn a_verifying_personal_grant_holds_what_it_would_serve() {
+        let now = Instant::now();
+        let until = now + Duration::from_secs(5);
+        let verifying = SessionState::Authorizing;
+        for operation in [
+            Operation::Playback,
+            Operation::UserData,
+            Operation::Catalog,
+            Operation::CatalogSearch,
+            Operation::PlaylistItems(PlaylistAccess::Owned),
+        ] {
+            assert_eq!(
+                route(operation, &verifying, Some(until), now),
+                Route::AwaitPersonal(until),
+                "{operation:?}"
+            );
+        }
+        // What only the shared app serves never waits for the personal one.
+        for operation in [
+            Operation::PlaylistLibrary,
+            Operation::PlaylistSearch,
+            Operation::UnsupportedDevelopmentMode,
+            Operation::PlaylistItems(PlaylistAccess::Unknown),
+        ] {
+            assert_eq!(
+                route(operation, &verifying, Some(until), now),
+                Route::Go(ApiSource::Shared),
+                "{operation:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_wait_for_a_personal_grant_is_bounded() {
+        let now = Instant::now();
+        let verifying = SessionState::Authorizing;
+        // Past the grace, or with none (a browser sign-in in progress), the
+        // shared app answers as before.
+        for grace in [None, Some(now), Some(now - Duration::from_secs(1))] {
+            assert_eq!(
+                route(Operation::Playback, &verifying, grace, now),
+                Route::Go(ApiSource::Shared)
+            );
+        }
+        // No personal app at all: nothing waits.
+        assert_eq!(
+            route(
+                Operation::Playback,
+                &SessionState::Unavailable,
+                Some(now + PERSONAL_GRACE),
+                now
+            ),
+            Route::Go(ApiSource::Shared)
+        );
+        let ready = SessionState::Ready {
+            account: AccountId::new("me"),
+        };
+        assert_eq!(
+            route(Operation::Playback, &ready, None, now),
+            Route::Go(ApiSource::Personal)
+        );
+        assert_eq!(
+            route(Operation::PlaylistLibrary, &ready, None, now),
+            Route::Go(ApiSource::Shared)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_request_waits_for_the_personal_grant_instead_of_the_shared_app() {
+        let gateway = ApiGateway::new(reqwest::Client::new(), Arc::new(NetActivity::default()));
+        gateway.begin_verification(
+            ApiSource::Shared,
+            provider("race-shared", ApiSource::Shared),
+        );
+        gateway.begin_verification(
+            ApiSource::Personal,
+            provider("race-personal", ApiSource::Personal),
+        );
+        // The shared grant verifies first.
+        gateway
+            .install(ApiSource::Shared, AccountId::new("same"))
+            .unwrap();
+        let mut waiting = Box::pin(gateway.client_for(Operation::Playback));
+        std::future::poll_fn(|cx| {
+            assert!(waiting.as_mut().poll(cx).is_pending());
+            std::task::Poll::Ready(())
+        })
+        .await;
+        gateway
+            .install(ApiSource::Personal, AccountId::new("same"))
+            .unwrap();
+        let client = waiting.await.unwrap();
+        assert!(Arc::ptr_eq(
+            &client,
+            &gateway.verification_client(ApiSource::Personal)
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_failed_personal_grant_releases_waiting_requests_to_the_shared_app() {
+        let gateway = ApiGateway::new(reqwest::Client::new(), Arc::new(NetActivity::default()));
+        gateway.begin_verification(
+            ApiSource::Shared,
+            provider("fail-shared", ApiSource::Shared),
+        );
+        gateway.begin_verification(
+            ApiSource::Personal,
+            provider("fail-personal", ApiSource::Personal),
+        );
+        gateway
+            .install(ApiSource::Shared, AccountId::new("same"))
+            .unwrap();
+        let mut waiting = Box::pin(gateway.client_for(Operation::UserData));
+        std::future::poll_fn(|cx| {
+            assert!(waiting.as_mut().poll(cx).is_pending());
+            std::task::Poll::Ready(())
+        })
+        .await;
+        gateway.clear(ApiSource::Personal);
+        let client = waiting.await.unwrap();
+        assert!(Arc::ptr_eq(
+            &client,
+            &gateway.verification_client(ApiSource::Shared)
+        ));
+    }
+
+    #[tokio::test]
+    async fn saved_classification_routes_own_playlists_from_the_start() {
+        let gateway = ApiGateway::new(reqwest::Client::new(), Arc::new(NetActivity::default()));
+        gateway.begin_verification(
+            ApiSource::Shared,
+            provider("seed-shared", ApiSource::Shared),
+        );
+        gateway
+            .install(ApiSource::Shared, AccountId::new("me"))
+            .unwrap();
+        gateway.begin_access_seed();
+        let mut mine = Playlist {
+            id: "mine".into(),
+            ..Playlist::default()
+        };
+        mine.owner.id = Some("me".into());
+        let mut waiting = Box::pin(gateway.wait_for_access_seed());
+        std::future::poll_fn(|cx| {
+            assert!(waiting.as_mut().poll(cx).is_pending());
+            std::task::Poll::Ready(())
+        })
+        .await;
+        gateway.finish_access_seed("me", &[mine]);
+        waiting.await;
+        assert_eq!(gateway.playlist_access("mine"), PlaylistAccess::Owned);
+        // Another account's saved list classifies nothing.
+        gateway.begin_access_seed();
+        let mut theirs = Playlist {
+            id: "theirs".into(),
+            ..Playlist::default()
+        };
+        theirs.owner.id = Some("other".into());
+        gateway.finish_access_seed("other", &[theirs]);
+        assert_eq!(gateway.playlist_access("theirs"), PlaylistAccess::Unknown);
+        gateway.wait_for_access_seed().await;
     }
 
     #[test]

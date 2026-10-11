@@ -901,6 +901,8 @@ pub enum Dialog {
     PremiumNeeded,
     /// Introduce personal Spotify apps to eligible listeners once.
     PersonalAppIntro,
+    /// The guided setup of a personal Spotify app, step by step.
+    PersonalAppSetup(crate::ui::personal_app::Setup),
     /// The theme editor; the app is drawn in its colours while it is open.
     ThemeEditor(Box<crate::theme_files::Draft>),
 }
@@ -911,11 +913,31 @@ pub enum ToastKind {
     Error,
 }
 
+/// A button a toast carries, for the one thing that would help.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToastAction {
+    /// Opens the guided setup of a personal Spotify app.
+    PersonalAppSetup,
+}
+
 #[derive(Clone, Debug)]
 pub struct Toast {
     pub message: String,
     pub kind: ToastKind,
     pub created: Instant,
+    pub action: Option<ToastAction>,
+}
+
+impl Toast {
+    /// How long the toast stays. One with a button stays long enough to
+    /// reach it.
+    pub fn lifetime(&self) -> std::time::Duration {
+        if self.action.is_some() {
+            std::time::Duration::from_secs(10)
+        } else {
+            std::time::Duration::from_millis(3200)
+        }
+    }
 }
 
 /// Actions emitted while drawing and applied afterward to avoid borrow conflicts.
@@ -1078,6 +1100,8 @@ pub enum Action {
     ReloadRecents,
     SetQueueTab(QueueTab),
     LoadMoreArtistAlbums(String),
+    /// The artist page's related-artists shelf came into view.
+    LoadRelatedArtists(String),
     SetDiscographyFilter {
         artist_id: String,
         filter: DiscographyFilter,
@@ -1089,7 +1113,10 @@ pub enum Action {
     SignOut,
     /// Add, replace, or remove the optional personal Web API app.
     ConfigurePersonalWebApp,
+    /// The intro's Set up: Settings, with the guided setup over it.
     OpenPersonalAppSetup,
+    /// Opens the guided setup of a personal Spotify app where the user is.
+    OpenPersonalAppWalkthrough,
     ToggleSidebar,
     ToggleQueuePanel,
     ToggleLyricsPanel,

@@ -32,8 +32,8 @@ a connection registered to your account on Spotify's developer website.
 You do not need to write code or install another player.
 
 LWSpot offers this setup once after you sign in with Premium. Choose
-**Set up personal app** to open Settings, or **Keep shared app** to continue
-as you are. You can set it up later in Settings.
+**Set up personal app** to start the guided setup, or **Keep shared app** to
+continue as you are. You can set it up later in Settings.
 
 A personal app gives many of your searches and library requests a separate
 allowance. Creating one is free and takes a few minutes, and Spotify requires
@@ -58,6 +58,38 @@ Setting up playback on this computer also helps playlists load faster.
 LWSpot can load playlists that would otherwise use the shared allowance
 through its music connection instead.
 [How it connects](../_reference/how-it-connects.md) explains which connection each feature uses.
+
+## Guided setup
+
+The guided setup walks through the whole process in one window, with a tick
+beside each step as you finish it. Open it in any of these ways:
+
+- **Set up personal app** in the one-time introduction.
+- **Guided setup** beside the Client ID field in **Settings > Personal
+  Spotify app**.
+- **Fix this** on a message saying Spotify is rate limiting requests. LWSpot
+  offers this at most once per session, and only while no personal app is
+  ready. Once yours is ready, the requests that are still limited are ones
+  that must use the shared connection, so a personal app would not help.
+
+The steps are:
+
+1. **Open the Spotify developer dashboard.** The button opens it in your
+   browser.
+2. **Create an app.** Any name and description will do. Tick **Web API**
+   and accept the terms.
+3. **Add the Redirect URI.** The setup shows the exact address with a
+   **Copy** button. Paste it under **Redirect URIs**, then save the app.
+4. **Paste your Client ID.** The setup checks that it looks like one: 32
+   characters, only the digits 0 to 9 and the letters a to f. Use the
+   Client ID, not the Client secret.
+5. **Authorize.** Your browser opens Spotify to approve the app. The setup
+   shows that it is waiting for your browser, then checking with Spotify.
+   When the app is verified the setup closes and LWSpot shows
+   **Personal app ready**. If something goes wrong, the error appears in the
+   setup and **Try again** starts over.
+
+The sections below describe the same steps without the guided setup.
 
 ## Make a Spotify app
 

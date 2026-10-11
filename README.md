@@ -44,6 +44,7 @@ cannot play music through LWSpot.
 |---|---|
 | **Library and search** | Browse playlists, Liked Songs, albums, artists, and podcasts. Search the catalogue and edit playlists you own. |
 | **Spotify Connect** | Play on this computer, or control playback on your other devices. |
+| **Discord** | Shows as "Listening to Spotify" in your Discord status, and friends' Listen Along invites play in LWSpot. It works through Discord's Spotify connection, so there is nothing to set up in LWSpot. |
 | **Themes** | Pick a theme from a gallery of live previews, or make your own in the theme editor (it warns when text gets hard to read) and share it as a file. Take the accent colour from the theme, from Windows, or from the playing song's cover. Mica or acrylic backdrop on Windows 11. |
 | **Windows integration** | Media keys and the Windows media overlay (also on the lock screen), Previous/Play/Next buttons in the taskbar preview, and jump list tasks on the taskbar's right-click menu. Keep music playing from the tray, start with Windows (optionally in the tray), F11 for full screen, and a title bar in the theme's colours. |
 | **Winamp mini player** | Use classic `.wsz` skins with an equalizer, playlist, and animated sound displays. Switch with **Ctrl+M**. |

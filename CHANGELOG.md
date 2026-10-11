@@ -17,6 +17,9 @@ being the lightest and most reliable Spotify client on Windows.
 
 ### Added
 
+- Discord status and Listen Along work through Discord's Spotify connection:
+  LWSpot shows as "Listening to Spotify", and joining a friend's Listen Along
+  plays in LWSpot. Documented in the user guide.
 - Installers for Intel/AMD (x64) and ARM PCs that install for your Windows
   user only, without administrator rights, and portable ZIPs. Every release
   lists SHA-256 checksums, and LWSpot updates itself from its GitHub releases.

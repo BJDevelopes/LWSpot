@@ -71,7 +71,9 @@ and Omarchy Spotify. Spotify divides its quota among all users. A personal app a
 A search runs as two requests when a
 personal app is ready: songs, artists, albums, podcasts, and episodes on the
 personal app, and playlists on the shared app. This moves catalogue search off the quota Spotify divides among every user
-of the shared app. Each half is shown the moment it
+of the shared app. The playlist half waits about 0.4 seconds longer than the
+personal half, so a pause while typing does not reach the shared app, and the
+last 32 playlist answers are reused for 10 minutes. Each half is shown the moment it
 arrives, so a shared app waiting out a rate limit no longer holds up the songs,
 and playlists appear underneath when that wait ends. A half belonging to an
 earlier search is discarded rather than shown beside a newer one. A newer or cleared search cancels the previous requests, including waits
@@ -107,6 +109,40 @@ engine starts at the volume being heard. This recovery applies to unexpected
 disconnects; changing audio settings still restarts the engine with its
 current-track pickup.
 
+## Fewer requests to the shared app
+
+Some requests stay on the shared app even with a personal app: the
+complete playlist list, Spotify-owned playlists, recommendations, an
+artist's top tracks and related artists, and whether a playlist is
+followed. LWSpot asks for these as rarely as it can:
+
+- **Startup.** Both grants are verified at startup, and whichever answers
+  first signs the app in. A request the personal app would serve waits up to
+  10 seconds for a personal grant that is still being verified instead of
+  going to the shared app. If verification fails or takes longer, it goes to
+  the shared app as before.
+- **The playlist list** of each account is saved on disk. At sign-in it is
+  shown at once, and read again in the background only when it is more than
+  five minutes old; the saved list stays on screen until the new one is
+  complete. Following, unfollowing, creating, and editing a playlist change
+  the list in place instead of reading every page again. The saved list also
+  tells which playlists are the account's own, so their songs go to the
+  personal app from the start.
+- **Followed or not.** Once the playlist list is complete, a playlist is
+  followed exactly when it is in the list, so no request is needed. A
+  question asked while the list loads waits for it.
+- **Home.** The "Made for you" playlists are kept for a day; after that, the
+  next Home refresh reads them again while the shelf keeps what it shows. A
+  followed copy of Discover Weekly, Release Radar, or daylist stands in for
+  its search. Recommendations are kept for four hours.
+- **Artist pages.** Top tracks and related artists are kept for a day.
+  Related artists are asked for only when that part of the page comes into
+  view.
+
+Refreshing Home or an artist page asks Spotify again; refreshing Home also
+reads the playlist list again. With `lwspot -v`, the log reports each
+minute's requests and rate limits per app.
+
 ## What the client stores
 
 - Shared and personal Web API grants
@@ -139,6 +175,10 @@ current-track pickup.
   prefixes refresh through the existing Web API grant, one page at a time,
   while the saved rows remain visible. Manual refresh starts immediately.
   Like and Unlike are kept over lagging reads until Spotify confirms them.
+- The playlist list, Home's "Made for you" playlists and recommendations,
+  and artists' top tracks and related artists, scoped to the verified
+  account, in the cache directory (see
+  [Fewer requests to the shared app](#fewer-requests-to-the-shared-app)).
 - LWSpot has no telemetry, analytics, or hosted service. When the lyrics
   panel is open and Spotify has no lyrics, it sends the track's artist, title,
   album, and length to [lrclib.net](https://lrclib.net). It also checks
@@ -192,7 +232,11 @@ rows are placeholders until their page arrives; scrolling never starts playback.
 
 Each Web API session has separate concurrency and rate limits. A `Retry-After`
 response pauses only that session. LWSpot routes each request once and
-does not retry it through the other app. A playlist read the librespot session
+does not retry it through the other app. Requests the app makes on its own,
+such as polls, Home shelves, and saved-state checks, run at most four at a
+time per app, and hold none of those places while they wait out a pause.
+After a rate limit they resume one at a time until one succeeds; what you
+asked for directly keeps its own retries. A playlist read the librespot session
 refuses outright, because the playlist is gone or private, is shown as such. A
 dropped connection, a read that takes longer than 30 seconds, or a page whose
 song details Spotify did not supply in full, hands the read to the Web API

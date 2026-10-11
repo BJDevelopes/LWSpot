@@ -158,6 +158,22 @@ released v0.12.0 portable build, LWSpot a release build of this tree):
 - [x] Zero repaint and minimal timers when minimized or in the tray (1.3% playing, 0.1-0.4% paused).
 - [x] Review cache budgets and image decode sizes: art picked for its display size, decoded pixels freed after upload, 32 MiB texture budget, 2 decodes at a time, Segment Heap.
 
+## Shared-app rate limits (2026-10-11)
+
+- [x] Requests that must stay on the shared Web API app are cut: personal-app
+      requests wait for a still-verifying personal grant instead of going
+      shared at startup; each app has its own background slots and throttled
+      background requests drain one at a time; "Made for you" (24 h),
+      recommendations (4 h), artist top tracks and related artists (24 h) and
+      the playlist list are cached on disk; playlist edits and follows update
+      the list in place; the playlist half of search is debounced and cached;
+      playlist saved-state comes from the loaded list. `lwspot -v` logs
+      requests and 429s per app each minute.
+- [x] Guided personal-app setup: a walkthrough dialog (open dashboard, copy
+      the redirect URI, paste and check the Client ID, authorize), offered by
+      a "Fix this" button on the first rate-limit message when no personal app
+      is ready, from Settings, and from the first-run introduction.
+
 ## Phase 3: Native Windows
 
 - [~] Start with Windows, optionally to the tray (#122). Settings > Playback on
@@ -166,9 +182,9 @@ released v0.12.0 portable build, LWSpot a release build of this tree):
 - [~] Real fullscreen for the main window (F11) (#675).
 - [~] Jump list entries (play/pause, next, previous, mini player, show), in the
       interface language, through the command-line verbs.
-- [ ] Discord status (deferred 2026-10-10, revisit with the user): first test whether Discord's built-in Spotify connection
-      already shows LWSpot playback; if not, add Discord Rich Presence (local IPC,
-      opt-in, needs our own Discord application ID).
+- [x] Discord status: works with no code. Discord's Spotify connection reads
+      the account's playback, so LWSpot shows as "Listening to Spotify" with
+      art and progress (checked 2026-10-11). Documented in the user guide.
 - [ ] Optional Last.fm scrobbling. Deferred (2026-10-10): needs a Last.fm API account.
 - [ ] Jam: joining a Jam has no public API (Web API or librespot). Test whether
       LWSpot works as the playback device for a Jam started on a phone.

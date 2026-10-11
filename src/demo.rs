@@ -922,6 +922,15 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 });
             }
             "personal-app" => app.dialog = Some(Dialog::PersonalAppIntro),
+            // The guided setup part way: the dashboard opened, the Redirect
+            // URI copied and a Client ID pasted, ready to authorize.
+            "personal-app-setup" => {
+                let mut setup = crate::ui::personal_app::Setup::new(None, None);
+                setup.dashboard_opened = true;
+                setup.uri_copied = true;
+                setup.client_id = "8f2c1d0e4a6b4c3d9e7f5a1b2c3d4e5f".into();
+                app.dialog = Some(Dialog::PersonalAppSetup(setup));
+            }
             "many-devices" => {
                 app.show_devices = true;
                 app.devices.extend((0..40).map(|index| Device {
@@ -2753,14 +2762,15 @@ mod tests {
                 &mut app,
                 vec![accessible_action(button, AccessibleAction::Click, None)],
             );
-            assert!(app.dialog.is_none());
             assert!(app.settings.personal_app_intro_seen);
             if setup {
+                // Set up opens the guided setup over Settings.
                 assert_eq!(app.page(), &Page::Settings);
-                accessible_frame(&ctx, &mut app, vec![]);
-                assert!(
-                    ctx.memory(|memory| memory.has_focus(egui::Id::new("personal-web-client-id")))
-                );
+                assert!(matches!(app.dialog, Some(Dialog::PersonalAppSetup(_))));
+                let tree = accessible_frame(&ctx, &mut app, vec![]);
+                accessible_node(&tree, "Open dashboard", Role::Button);
+            } else {
+                assert!(app.dialog.is_none());
             }
             app.backend.shutdown();
         }
@@ -2774,6 +2784,64 @@ mod tests {
         );
         assert!(app.dialog.is_none());
         assert!(app.settings.personal_app_intro_seen);
+        app.backend.shutdown();
+    }
+
+    /// The guided setup works from the keyboard and a screen reader: its
+    /// steps read as checked or not, Authorize waits for a real Client ID,
+    /// and a pasted one is saved and authorized.
+    #[test]
+    fn personal_app_setup_is_usable_without_a_pointer() {
+        use egui::accesskit::{Action as AccessibleAction, Role, Toggled};
+        const ID: &str = "8f2c1d0e4a6b4c3d9e7f5a1b2c3d4e5f";
+
+        let (ctx, mut app) = accessible_app("personal-app-setup");
+        app.apply(Action::OpenPersonalAppWalkthrough, &ctx);
+        accessible_frame(&ctx, &mut app, vec![]);
+        let tree = accessible_frame(&ctx, &mut app, vec![]);
+        let node = |tree: &egui::accesskit::TreeUpdate, label: &str, role| {
+            tree.nodes
+                .iter()
+                .find(|(_, node)| node.label() == Some(label) && node.role() == role)
+                .unwrap_or_else(|| panic!("missing {label:?}"))
+                .1
+                .clone()
+        };
+        let step = node(&tree, "Paste your Client ID", Role::CheckBox);
+        assert_eq!(step.toggled(), Some(Toggled::False));
+        assert!(node(&tree, "Authorize", Role::Button).is_disabled());
+        accessible_node(&tree, "Redirect URI", Role::TextInput);
+        accessible_node(&tree, "Copy", Role::Button);
+
+        let field = accessible_node(&tree, "Client ID", Role::TextInput);
+        accessible_frame(
+            &ctx,
+            &mut app,
+            vec![accessible_action(field, AccessibleAction::Focus, None)],
+        );
+        accessible_frame(&ctx, &mut app, vec![egui::Event::Text(format!(" {ID} "))]);
+        let tree = accessible_frame(&ctx, &mut app, vec![]);
+        let step = node(&tree, "Paste your Client ID", Role::CheckBox);
+        assert_eq!(step.toggled(), Some(Toggled::True));
+        assert!(!node(&tree, "Authorize", Role::Button).is_disabled());
+
+        let authorize = accessible_node(&tree, "Authorize", Role::Button);
+        accessible_frame(
+            &ctx,
+            &mut app,
+            vec![accessible_action(authorize, AccessibleAction::Click, None)],
+        );
+        assert_eq!(app.settings.web_client_id.as_deref(), Some(ID));
+        let Some(Dialog::PersonalAppSetup(setup)) = &app.dialog else {
+            panic!("the setup stays open while Spotify answers");
+        };
+        assert!(setup.busy());
+        accessible_frame(
+            &ctx,
+            &mut app,
+            vec![keyboard(egui::Key::Escape, egui::Modifiers::NONE)],
+        );
+        assert!(app.dialog.is_none());
         app.backend.shutdown();
     }
 
@@ -3030,8 +3098,8 @@ mod tests {
         // ...leave Settings...
         app.open(Page::Home);
         accessible_frame(&ctx, &mut app, vec![]);
-        // ...and enter Personal App setup, which must reveal and focus
-        // the Client ID field instead of landing on a filtered-out row.
+        // ...and enter Personal App setup, which must reveal the row the
+        // guided setup leaves behind instead of a filtered-out page.
         app.dialog = Some(Dialog::PersonalAppIntro);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
@@ -3046,11 +3114,12 @@ mod tests {
             settings_filter(&ctx).is_empty(),
             "setup must drop the saved search so its row is visible"
         );
+        assert!(matches!(app.dialog, Some(Dialog::PersonalAppSetup(_))));
+        app.actions.push(Action::CloseDialog);
         accessible_frame(&ctx, &mut app, vec![]);
-        assert!(
-            ctx.memory(|memory| memory.has_focus(egui::Id::new("personal-web-client-id"))),
-            "the Client ID field takes focus once its row is visible"
-        );
+        let tree = accessible_frame(&ctx, &mut app, vec![]);
+        accessible_node(&tree, "Client ID", Role::TextInput);
+        accessible_node(&tree, "Guided setup", Role::Button);
         app.backend.shutdown();
     }
 

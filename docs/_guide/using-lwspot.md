@@ -407,6 +407,17 @@ outside every connected monitor's work area. Positions on connected secondary
 monitors still restore. Reinstalling preserves settings; it is not needed to
 recover a position left on an unplugged display.
 
+## Discord status
+
+Discord shows what LWSpot is playing as **Listening to Spotify**, with the
+cover, title and progress, because Discord reads your Spotify account rather
+than the app. Connect your account once in Discord: **User Settings >
+Connections > Spotify**, and keep **Display Spotify as your status** on. Friends
+with Premium can then use Discord's **Listen Along**, and when you click
+**Join** on a friend's Listen Along invite, the song plays in LWSpot as long
+as LWSpot is your active Spotify device. LWSpot needs no setting of its own for
+this.
+
 ## Starting with Windows
 
 **Start with Windows** under **Settings > Playback on this computer** has

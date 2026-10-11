@@ -11,6 +11,7 @@ mod keys;
 pub mod library;
 pub mod login;
 mod lyrics;
+pub mod personal_app;
 pub mod player_bar;
 pub mod queue;
 pub mod radio;
@@ -29,7 +30,7 @@ use egui::{Align2, Color32, Context, CornerRadius, Frame, Id, Margin, Rect, Stro
 use crate::api::models::pick_image;
 use crate::app::App;
 use crate::backend::AuthStatus;
-use crate::model::{Action, Loadable, Page, ToastKind};
+use crate::model::{Action, Loadable, Page, ToastAction, ToastKind};
 use crate::theme::{self, Icon};
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
@@ -612,18 +613,24 @@ fn toasts(app: &mut App, ctx: &egui::Context, bottom_offset: f32) {
         return;
     }
     let palette = app.palette;
+    let locale = app.locale;
+    // Only a toast with a button takes the pointer; the others let clicks
+    // through to whatever is under them.
+    let interactable = app.toasts.iter().any(|toast| toast.action.is_some());
+    let mut chosen = None;
     egui::Area::new(egui::Id::new("toasts"))
         .anchor(Align2::RIGHT_BOTTOM, vec2(-20.0, -bottom_offset))
         .order(egui::Order::Tooltip)
-        .interactable(false)
+        .interactable(interactable)
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 8.0;
             for toast in &app.toasts {
                 let age = toast.created.elapsed().as_secs_f32();
+                let lifetime = toast.lifetime().as_secs_f32();
                 let alpha = if age < 0.15 {
                     age / 0.15
-                } else if age > 2.8 {
-                    ((3.2 - age) / 0.4).clamp(0.0, 1.0)
+                } else if age > lifetime - 0.4 {
+                    ((lifetime - age) / 0.4).clamp(0.0, 1.0)
                 } else {
                     1.0
                 };
@@ -657,10 +664,27 @@ fn toasts(app: &mut App, ctx: &egui::Context, bottom_offset: f32) {
                                 280.0,
                             );
                             ui.add(egui::Label::new(galley));
+                            if let Some(action) = toast.action {
+                                let label = match action {
+                                    ToastAction::PersonalAppSetup => {
+                                        crate::i18n::gettext(locale, "Fix this")
+                                    }
+                                };
+                                ui.add_space(4.0);
+                                if theme::pill_button(ui, &palette, &label, true).clicked() {
+                                    chosen = Some(action);
+                                }
+                            }
                         });
                     });
             }
         });
+    match chosen {
+        Some(ToastAction::PersonalAppSetup) => {
+            app.actions.push(Action::OpenPersonalAppWalkthrough);
+        }
+        None => {}
+    }
 }
 
 #[cfg(test)]

@@ -3323,6 +3323,92 @@ msgctxt "theme"
 msgid "Name"
 msgstr "名稱"
 
+#. Translators: A button on a toast saying Spotify is rate limiting requests. It opens the guided setup of a personal Spotify app.
+#: src/ui/mod.rs
+msgid "Fix this"
+msgstr "立即修正"
+
+#. Translators: A button beside the personal Spotify app's Client ID field. It opens a step-by-step setup.
+#: src/ui/settings.rs
+msgid "Guided setup"
+msgstr "引導式設定"
+
+#: src/ui/personal_app.rs
+msgid "A Client ID is exactly 32 characters long."
+msgstr "用戶端 ID 剛好為 32 個字元。"
+
+#: src/ui/personal_app.rs
+msgid "A Client ID uses only the digits 0 to 9 and the letters a to f."
+msgstr "用戶端 ID 只能包含數字 0 到 9 和字母 a 到 f。"
+
+#: src/ui/personal_app.rs
+msgid "Use your own Spotify app"
+msgstr "使用你自己的 Spotify 應用程式"
+
+#: src/ui/personal_app.rs
+msgid "Why? Spotify shares one request allowance among everyone who uses LWSpot's default app. Your own app gets an allowance of its own."
+msgstr "為什麼？所有使用 LWSpot 預設應用程式的人共用 Spotify 的同一份請求配額。你自己的應用程式會有獨立的配額。"
+
+#: src/ui/personal_app.rs
+msgid "Open the Spotify developer dashboard"
+msgstr "開啟 Spotify 開發人員資訊主頁"
+
+#: src/ui/personal_app.rs
+msgid "Sign in with your Spotify account. Spotify asks that it be a Premium account."
+msgstr "使用你的 Spotify 帳戶登入。Spotify 要求使用 Premium 帳戶。"
+
+#: src/ui/personal_app.rs
+msgid "Open dashboard"
+msgstr "開啟資訊主頁"
+
+#. Translators: "Create app" and "Web API" are labels on Spotify's English-only developer dashboard.
+#: src/ui/personal_app.rs
+msgid "Click Create app and give it any name and description; nobody else sees them. Tick Web API and accept the terms."
+msgstr "按一下「Create app」，名稱和說明可隨意填寫，其他人看不到。勾選「Web API」並接受條款。"
+
+#: src/ui/personal_app.rs
+msgid "Add the Redirect URI"
+msgstr "新增重新導向 URI"
+
+#. Translators: "Redirect URIs" is a label on Spotify's English-only developer dashboard.
+#: src/ui/personal_app.rs
+msgid "Paste this under Redirect URIs exactly as shown, then save the app."
+msgstr "將它原封不動貼到「Redirect URIs」下，然後儲存應用程式。"
+
+#. Translators: Shown on the Copy button once the Redirect URI was copied.
+#: src/ui/personal_app.rs
+msgid "Copied"
+msgstr "已複製"
+
+#: src/ui/personal_app.rs
+msgid "Redirect URI"
+msgstr "重新導向 URI"
+
+#: src/ui/personal_app.rs
+msgid "Paste your Client ID"
+msgstr "貼上你的用戶端 ID"
+
+#. Translators: "Client secret" is a label on Spotify's English-only developer dashboard.
+#: src/ui/personal_app.rs
+msgid "Your app's page shows it. Use the Client ID, not the Client secret."
+msgstr "應用程式頁面會顯示它。請使用用戶端 ID（Client ID），而不是 Client secret。"
+
+#: src/ui/personal_app.rs
+msgid "Spotify opens in your browser to approve the app. LWSpot then checks that it belongs to the account you use here."
+msgstr "Spotify 會在瀏覽器中開啟以核准應用程式。接著 LWSpot 會檢查它是否屬於你在這裡使用的帳戶。"
+
+#: src/ui/personal_app.rs
+msgid "Checking with Spotify…"
+msgstr "正在向 Spotify 確認…"
+
+#: src/ui/personal_app.rs
+msgid "If your browser still shows Spotify, finish there first."
+msgstr "如果瀏覽器仍顯示 Spotify，請先在那裡完成。"
+
+#: src/ui/personal_app.rs
+msgid "Waiting for your browser…"
+msgstr "正在等待瀏覽器…"
+
 #~ msgid "MacBook notch interactive widget"
 #~ msgstr "MacBook瀏海互動式小工具"
 

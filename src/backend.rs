@@ -49,6 +49,26 @@ const HOME_EPISODES_PER_SHOW: u32 = 5;
 pub const PLAYLIST_PAGE_SIZE: u32 = 50;
 const RECONNECT_WINDOW: Duration = Duration::from_secs(600);
 const RECONNECT_LIMIT: usize = 6;
+/// Added to the interface's 280 ms keystroke debounce before the playlist
+/// half of a split search goes to the shared app, about 700 ms in all.
+const PLAYLIST_SEARCH_DELAY: Duration = Duration::from_millis(420);
+/// How often the debug log reports Web API traffic per app.
+const TRAFFIC_WINDOW: Duration = Duration::from_secs(60);
+
+/// Logs each minute's Web API requests and rate limits per app, at debug
+/// level (`lwspot -v`), when there were any.
+async fn log_traffic(activity: Arc<NetActivity>) {
+    let mut window = tokio::time::interval(TRAFFIC_WINDOW);
+    window.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    window.tick().await;
+    loop {
+        window.tick().await;
+        let (shared, personal) = activity.take_traffic();
+        if let Some(line) = crate::api::traffic_line(shared, personal) {
+            log::debug!("{line}");
+        }
+    }
+}
 
 async fn connect_engine_with_deadline<F: std::future::Future>(
     connect: F,
@@ -734,6 +754,14 @@ pub enum Command {
         generation: u64,
     },
     StoreLikedSongsCache(crate::liked::Cache),
+    /// Read the account's saved playlist list; always answered with
+    /// [`Event::PlaylistList`].
+    LoadPlaylistList {
+        generation: u64,
+    },
+    StorePlaylistList(crate::web_cache::PlaylistList),
+    /// A manual refresh: the next requests in this scope ask Spotify.
+    RefreshWebCache(crate::web_cache::Scope),
     /// Resolve the precise type of Web API singles through the streaming session.
     AlbumTypes(Vec<String>),
     /// Ask the streaming session which saved shows are audiobooks.
@@ -771,6 +799,9 @@ pub struct LyricsRequest {
 }
 
 pub enum Event {
+    /// The browser handed back the approval for the personal app; LWSpot is
+    /// now exchanging and verifying it.
+    PersonalApprovalReceived,
     ProxyRestored {
         config: ProxyConfig,
         password: Option<crate::credentials::ProxyPassword>,
@@ -871,6 +902,12 @@ pub enum Event {
         account_id: String,
         generation: u64,
         cache: Option<crate::liked::Cache>,
+    },
+    /// The account's saved playlist list, or `None` when there is none.
+    PlaylistList {
+        account_id: String,
+        generation: u64,
+        list: Option<crate::web_cache::PlaylistList>,
     },
 }
 
@@ -1353,7 +1390,14 @@ struct Worker {
     web_client_id: Option<String>,
     http: Http,
     api: Arc<ApiGateway>,
+    /// Limits background playlist samples, which the streaming session may
+    /// answer. Web API background requests are limited per app instead.
     background_api: Arc<tokio::sync::Semaphore>,
+    activity: Arc<NetActivity>,
+    /// Slow-changing shared-app answers kept for the signed-in account.
+    web_cache: Arc<crate::web_cache::ReadThrough>,
+    /// Recent answers to the playlist half of a search.
+    playlist_searches: crate::web_cache::QueryCache<Page<Playlist>>,
     art: ArtLoader,
     events: std::sync::mpsc::Sender<Event>,
     commands: mpsc::UnboundedSender<Command>,
@@ -1406,6 +1450,7 @@ impl Worker {
         commands: mpsc::UnboundedSender<Command>,
         waker: Waker,
     ) -> Self {
+        let web_cache = Arc::new(crate::web_cache::ReadThrough::new(dirs.clone()));
         Self {
             #[cfg(not(test))]
             credentials: CredentialStore::new(dirs.clone()),
@@ -1424,8 +1469,14 @@ impl Worker {
             engine_config,
             engine_proxy: None,
             web_client_id,
-            api: Arc::new(ApiGateway::new(http.clone(), activity)),
+            api: Arc::new(ApiGateway::new(http.clone(), activity.clone())),
             background_api: Arc::new(tokio::sync::Semaphore::new(4)),
+            activity,
+            web_cache,
+            playlist_searches: crate::web_cache::QueryCache::new(
+                crate::web_cache::PLAYLIST_SEARCHES_KEPT,
+                crate::web_cache::PLAYLIST_SEARCH_TTL,
+            ),
             http,
             art,
             events,
@@ -1595,6 +1646,7 @@ impl Worker {
             self.events.clone(),
             self.waker.clone(),
         ));
+        let traffic_log = tokio::spawn(log_traffic(Arc::clone(&self.activity)));
         while let Some(command) = commands.recv().await {
             if self.restoring_proxy
                 && !matches!(
@@ -1769,6 +1821,20 @@ impl Worker {
                     {
                         self.on_account_checked(
                             user.product.as_deref().map(|product| product == "premium"),
+                        );
+                    }
+                    if let ApiResponse::SearchPlaylists {
+                        query,
+                        result: Ok(page),
+                        ..
+                    } = response.as_ref()
+                        && let Some(account) = self.api.account()
+                    {
+                        self.playlist_searches.insert(
+                            account.as_str(),
+                            query,
+                            page.clone(),
+                            Instant::now(),
                         );
                     }
                     self.emit(Event::Api(response));
@@ -1997,6 +2063,19 @@ impl Worker {
                         }
                     }
                 }
+                Command::LoadPlaylistList { generation } => self.load_playlist_list(generation),
+                Command::StorePlaylistList(list) => {
+                    if self
+                        .api
+                        .account()
+                        .is_some_and(|account| account.as_str() == list.account_id)
+                        && let Err(error) =
+                            crate::web_cache::write_playlist_list(&self.dirs, &list).await
+                    {
+                        log::warn!("unable to store the playlist list: {error}");
+                    }
+                }
+                Command::RefreshWebCache(scope) => self.web_cache.bypass(&scope),
                 Command::AlbumTypes(uris) => self.fetch_album_types(uris),
                 Command::AudiobookShows(uris) => {
                     self.audiobook_lookup.extend(uris);
@@ -2049,6 +2128,7 @@ impl Worker {
         if let Some(engine) = self.engine.take() {
             engine.shutdown();
         }
+        traffic_log.abort();
         drop(cache_writes);
         let _ = cache_writer.await;
     }
@@ -2075,6 +2155,10 @@ impl Worker {
         if self.web_client_id.is_some() {
             self.api
                 .set_state(ApiSource::Personal, SessionState::Authorizing);
+            // Whichever grant verifies first signs in; what the personal
+            // app serves waits a moment for it rather than going shared.
+            self.api
+                .expect_personal(crate::api::gateway::PERSONAL_GRACE);
         }
         for slot in CredentialSlot::SPOTIFY {
             let lease = self.credentials.lease(slot);
@@ -2418,6 +2502,10 @@ impl Worker {
             let result = async {
                 let code =
                     crate::auth::wait_for_code(grant.redirect_port, &flow.state, cancel_rx).await?;
+                if source == ApiSource::Personal && lease.current() {
+                    let _ = events.send(Event::PersonalApprovalReceived);
+                    waker.wake();
+                }
                 let response =
                     crate::auth::exchange_code(&http, &grant, &code, &flow.verifier).await?;
                 crate::auth::StoredToken::from_response(&grant.client_id, response, None)
@@ -2519,6 +2607,8 @@ impl Worker {
         self.authorizing_source = None;
         self.pending_authorization = None;
         self.api.clear_all();
+        self.web_cache.clear();
+        self.playlist_searches.clear();
         for slot in CredentialSlot::SPOTIFY {
             self.delete_stored_grant(slot);
         }
@@ -3295,11 +3385,28 @@ impl Worker {
             split,
         })));
         if split {
-            self.search_tasks
-                .push(self.dispatch(ApiRequest::SearchPlaylists {
+            let kept = self.api.account().and_then(|account| {
+                self.playlist_searches
+                    .get(account.as_str(), &query, Instant::now())
+            });
+            if let Some(page) = kept {
+                self.emit(Event::Api(Box::new(ApiResponse::SearchPlaylists {
                     query: query.clone(),
                     serial,
-                }));
+                    result: Ok(page),
+                })));
+            } else {
+                // The shared app's half waits a little longer than the
+                // keystroke debounce, so a pause while typing asks only
+                // the personal app; a newer search cancels it unsent.
+                self.search_tasks.push(self.dispatch_after(
+                    ApiRequest::SearchPlaylists {
+                        query: query.clone(),
+                        serial,
+                    },
+                    Some(PLAYLIST_SEARCH_DELAY),
+                ));
+            }
         }
         let request = if split {
             ApiRequest::SearchCatalogue { query, serial }
@@ -3310,38 +3417,113 @@ impl Worker {
     }
 
     fn dispatch(&self, request: ApiRequest) -> tokio::task::AbortHandle {
+        self.dispatch_after(request, None)
+    }
+
+    /// Sends `request`, after `delay` when given. Answers still fresh in
+    /// the web cache are given without asking Spotify.
+    fn dispatch_after(
+        &self,
+        request: ApiRequest,
+        delay: Option<Duration>,
+    ) -> tokio::task::AbortHandle {
         let api = Arc::clone(&self.api);
+        let web_cache = Arc::clone(&self.web_cache);
         let shared_lease = self.credentials.lease(CredentialSlot::Shared);
         let personal_lease = self.credentials.lease(CredentialSlot::Personal);
         let background_api = Arc::clone(&self.background_api);
         let background = request.background();
+        let session_sample = matches!(request, ApiRequest::PlaylistSample { .. });
         let engine = self.engine.clone();
         let commands = self.commands.clone();
         let mut session = self.session.subscribe();
         let generation = *session.borrow_and_update();
         tokio::spawn(async move {
-            let (response, expired) = tokio::select! {
-                _ = session.changed() => return,
-                result = async {
-                    let _background_permit = if background {
-                        background_api.acquire_owned().await.ok()
-                    } else {
-                        None
-                    };
-                    handle(&api, engine.as_deref(), request).await
-                } => result,
-            };
             // Apply completion on the command loop. A late response cannot
             // clear or repopulate a session created after sign-out.
-            let _ = commands.send(Command::ApiFinished {
-                generation,
-                response: Box::new(response),
-                expired,
-                shared_lease,
-                personal_lease,
-            });
+            let finish = |response: ApiResponse, expired: Option<ApiSource>| {
+                let _ = commands.send(Command::ApiFinished {
+                    generation,
+                    response: Box::new(response),
+                    expired,
+                    shared_lease: shared_lease.clone(),
+                    personal_lease: personal_lease.clone(),
+                });
+            };
+            tokio::select! {
+                _ = session.changed() => {}
+                () = async {
+                    if let Some(delay) = delay {
+                        tokio::time::sleep(delay).await;
+                    }
+                    let kept = cache_key(&request).zip(api.account());
+                    if let Some((key, account)) = &kept
+                        && let crate::web_cache::Lookup::Fresh(value) = web_cache
+                            .lookup(account.as_str(), key, crate::web_cache::now())
+                            .await
+                        && let Some(response) = cached_response(&request, value)
+                    {
+                        log::debug!("Spotify route request={key:?} source=cache");
+                        finish(response, None);
+                        return;
+                    }
+                    let (response, expired) = {
+                        let _sample_permit = if session_sample {
+                            background_api.acquire_owned().await.ok()
+                        } else {
+                            None
+                        };
+                        if background {
+                            crate::api::in_background(handle(&api, engine.as_deref(), request))
+                                .await
+                        } else {
+                            handle(&api, engine.as_deref(), request).await
+                        }
+                    };
+                    let fresh = cacheable(&response);
+                    finish(response, expired);
+                    if let (Some((key, account)), Some(value)) = (kept, fresh) {
+                        web_cache
+                            .store(account.as_str(), &key, value, crate::web_cache::now())
+                            .await;
+                    }
+                } => {}
+            }
         })
         .abort_handle()
+    }
+
+    /// Reads the account's saved playlist list, classifying its playlists
+    /// for routing before any playlist request needs to know whose it is.
+    fn load_playlist_list(&self, generation: u64) {
+        let events = self.events.clone();
+        let waker = self.waker.clone();
+        let Some(account) = self.api.account() else {
+            let _ = events.send(Event::PlaylistList {
+                account_id: String::new(),
+                generation,
+                list: None,
+            });
+            waker.wake();
+            return;
+        };
+        self.api.begin_access_seed();
+        let api = Arc::clone(&self.api);
+        let dirs = self.dirs.clone();
+        tokio::spawn(async move {
+            let account_id = account.as_str().to_string();
+            let list = crate::web_cache::read_playlist_list(&dirs, &account_id).await;
+            api.finish_access_seed(
+                &account_id,
+                list.as_ref().map_or(&[][..], |list| list.items.as_slice()),
+            );
+            let _ = events.send(Event::PlaylistList {
+                account_id,
+                generation,
+                list,
+            });
+            waker.wake();
+        });
     }
 
     fn accent(&self, url: String) {
@@ -3444,6 +3626,83 @@ fn operation_for(api: &ApiGateway, request: &ApiRequest) -> Operation {
     }
 }
 
+/// The web cache entry a request's answer is kept under, if any.
+fn cache_key(request: &ApiRequest) -> Option<crate::web_cache::Key> {
+    use crate::web_cache::Key;
+    match request {
+        ApiRequest::Discover { term, .. } => Some(Key::Discover(term.clone())),
+        ApiRequest::Recommendations { .. } => Some(Key::Recommendations),
+        ApiRequest::ArtistTopTracks { id } => Some(Key::TopTracks(id.clone())),
+        ApiRequest::RelatedArtists { id } => Some(Key::Related(id.clone())),
+        _ => None,
+    }
+}
+
+/// The answer to `request` made from a kept value.
+fn cached_response(request: &ApiRequest, value: crate::web_cache::Cached) -> Option<ApiResponse> {
+    use crate::web_cache::Cached;
+    Some(match (request, value) {
+        (ApiRequest::Discover { term, generation }, Cached::Playlists(playlists)) => {
+            ApiResponse::Discover {
+                term: term.clone(),
+                generation: *generation,
+                result: Ok(playlists),
+            }
+        }
+        (ApiRequest::Recommendations { generation, .. }, Cached::Tracks(tracks)) => {
+            ApiResponse::Recommendations {
+                generation: *generation,
+                result: Ok(tracks),
+            }
+        }
+        (ApiRequest::ArtistTopTracks { id }, Cached::Tracks(tracks)) => {
+            ApiResponse::ArtistTopTracks {
+                id: id.clone(),
+                result: Ok(tracks),
+            }
+        }
+        (ApiRequest::RelatedArtists { id }, Cached::Artists(artists)) => {
+            ApiResponse::RelatedArtists {
+                id: id.clone(),
+                result: Ok(artists),
+            }
+        }
+        _ => return None,
+    })
+}
+
+/// The value to keep from a successful answer.
+fn cacheable(response: &ApiResponse) -> Option<crate::web_cache::Cached> {
+    use crate::web_cache::Cached;
+    match response {
+        ApiResponse::Discover {
+            result: Ok(playlists),
+            ..
+        } => Some(Cached::Playlists(playlists.clone())),
+        ApiResponse::Recommendations {
+            result: Ok(tracks), ..
+        }
+        | ApiResponse::ArtistTopTracks {
+            result: Ok(tracks), ..
+        } => Some(Cached::Tracks(tracks.clone())),
+        ApiResponse::RelatedArtists {
+            result: Ok(artists),
+            ..
+        } => Some(Cached::Artists(artists.clone())),
+        _ => None,
+    }
+}
+
+/// A playlist request that does not yet know whose the playlist is.
+fn unclassified(operation: Operation) -> bool {
+    matches!(
+        operation,
+        Operation::PlaylistMetadata(crate::api::PlaylistAccess::Unknown)
+            | Operation::PlaylistItems(crate::api::PlaylistAccess::Unknown)
+            | Operation::PlaylistMutation(crate::api::PlaylistAccess::Unknown)
+    )
+}
+
 fn observe_playlists(api: &ApiGateway, response: &ApiResponse) {
     match response {
         ApiResponse::Discover {
@@ -3509,7 +3768,13 @@ async fn handle(
     engine: Option<&Engine>,
     request: ApiRequest,
 ) -> (ApiResponse, Option<ApiSource>) {
-    let operation = operation_for(api, &request);
+    let mut operation = operation_for(api, &request);
+    if unclassified(operation) {
+        // At sign-in the saved list says whose each playlist is; without
+        // it the account's own would go to the shared app.
+        api.wait_for_access_seed().await;
+        operation = operation_for(api, &request);
+    }
     // A session whose long-lived connection has dropped still answers over
     // its HTTP client, so the engine's presence is the only liveness test;
     // a read the session truly cannot make falls back to the Web API below.
@@ -6250,6 +6515,122 @@ mod cover_routing_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A kept answer comes back as the answer to the request asking for
+    /// it, with that request's generation and id.
+    #[test]
+    fn kept_answers_round_trip_to_their_requests() {
+        let playlists = vec![Playlist {
+            id: "dw".into(),
+            ..Playlist::default()
+        }];
+        let tracks = vec![Track::default()];
+        let artists = vec![Artist::default()];
+        let cases = [
+            (
+                ApiRequest::Discover {
+                    term: "Discover Weekly".into(),
+                    generation: 7,
+                },
+                ApiResponse::Discover {
+                    term: "Discover Weekly".into(),
+                    generation: 3,
+                    result: Ok(playlists),
+                },
+            ),
+            (
+                ApiRequest::Recommendations {
+                    seed_tracks: vec!["a".into()],
+                    seed_artists: Vec::new(),
+                    generation: 7,
+                },
+                ApiResponse::Recommendations {
+                    generation: 3,
+                    result: Ok(tracks.clone()),
+                },
+            ),
+            (
+                ApiRequest::ArtistTopTracks { id: "x".into() },
+                ApiResponse::ArtistTopTracks {
+                    id: "x".into(),
+                    result: Ok(tracks),
+                },
+            ),
+            (
+                ApiRequest::RelatedArtists { id: "x".into() },
+                ApiResponse::RelatedArtists {
+                    id: "x".into(),
+                    result: Ok(artists),
+                },
+            ),
+        ];
+        for (request, response) in cases {
+            assert!(cache_key(&request).is_some(), "{request:?}");
+            let value = cacheable(&response).expect("a kept value");
+            let answer = cached_response(&request, value).expect("an answer");
+            match (&request, answer) {
+                (
+                    ApiRequest::Discover { term, .. },
+                    ApiResponse::Discover {
+                        term: answered,
+                        generation,
+                        result: Ok(playlists),
+                    },
+                ) => {
+                    assert_eq!((answered.as_str(), generation), (term.as_str(), 7));
+                    assert_eq!(playlists[0].id, "dw");
+                }
+                (
+                    ApiRequest::Recommendations { .. },
+                    ApiResponse::Recommendations {
+                        generation,
+                        result: Ok(_),
+                    },
+                ) => assert_eq!(generation, 7),
+                (
+                    ApiRequest::ArtistTopTracks { .. },
+                    ApiResponse::ArtistTopTracks { id, result: Ok(_) },
+                )
+                | (
+                    ApiRequest::RelatedArtists { .. },
+                    ApiResponse::RelatedArtists { id, result: Ok(_) },
+                ) => assert_eq!(id, "x"),
+                (request, answer) => panic!("{request:?} answered by {answer:?}"),
+            }
+        }
+        // Failures and other requests are never kept.
+        assert!(
+            cacheable(&ApiResponse::RelatedArtists {
+                id: "x".into(),
+                result: Err(ApiError::RateLimited),
+            })
+            .is_none()
+        );
+        assert!(cache_key(&ApiRequest::Artist { id: "x".into() }).is_none());
+        assert!(
+            cache_key(&ApiRequest::SearchPlaylists {
+                query: "q".into(),
+                serial: 1
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn only_unclassified_playlist_requests_wait_for_the_saved_classification() {
+        use crate::api::PlaylistAccess;
+        assert!(unclassified(Operation::PlaylistItems(
+            PlaylistAccess::Unknown
+        )));
+        assert!(unclassified(Operation::PlaylistMetadata(
+            PlaylistAccess::Unknown
+        )));
+        assert!(!unclassified(Operation::PlaylistItems(
+            PlaylistAccess::Owned
+        )));
+        assert!(!unclassified(Operation::PlaylistLibrary));
+        assert!(!unclassified(Operation::Catalog));
+    }
 
     #[test]
     fn six_session_drops_in_ten_minutes_give_up() {

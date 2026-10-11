@@ -21,8 +21,57 @@ use crate::http::Http;
 
 const BASE_URL: &str = "https://api.spotify.com/v1";
 const MAX_IN_FLIGHT: usize = 6;
+/// Requests the app makes on its own (polls, Home shelves, saved-state
+/// checks) in flight at once on one Web API app. Each app has its own, so
+/// a shared app waiting out a rate limit never holds up the personal one.
+const BACKGROUND_IN_FLIGHT: usize = 4;
 const RATE_LIMIT_RETRIES: u32 = 3;
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(30);
+
+tokio::task_local! {
+    /// Set for requests nobody is waiting on: they yield to user actions
+    /// after a rate limit instead of all retrying at once.
+    static BACKGROUND: bool;
+}
+
+/// Runs `request` as background work: it takes one of its app's background
+/// slots only while it is actually talking to Spotify, never while waiting
+/// out a cooldown, and after a rate limit such requests resume one at a
+/// time until one succeeds.
+pub async fn in_background<F: std::future::Future>(request: F) -> F::Output {
+    BACKGROUND.scope(true, request).await
+}
+
+fn is_background() -> bool {
+    BACKGROUND
+        .try_with(|background| *background)
+        .unwrap_or(false)
+}
+
+/// Whether background requests must go one at a time: a rate limit was
+/// seen and no request has succeeded since.
+#[derive(Debug, Default)]
+struct Recovery(std::sync::atomic::AtomicBool);
+
+impl Recovery {
+    fn rate_limited(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    fn succeeded(&self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+
+    fn probing(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+/// What a background request holds while it is sent.
+struct BackgroundTicket<'a> {
+    _permit: tokio::sync::SemaphorePermit<'a>,
+    _probe: Option<tokio::sync::MutexGuard<'a, ()>>,
+}
 
 #[derive(Clone, Debug, Error)]
 pub enum ApiError {
@@ -336,6 +385,10 @@ pub struct NetActivity {
     in_flight: AtomicUsize,
     /// Milliseconds since `started_at` when the oldest current burst began.
     busy_since_ms: AtomicU64,
+    /// Requests sent and rate limits received since the last
+    /// [`NetActivity::take_traffic`], per app (shared, personal).
+    sent: [AtomicU64; 2],
+    limited: [AtomicU64; 2],
 }
 
 impl Default for NetActivity {
@@ -344,11 +397,57 @@ impl Default for NetActivity {
             started_at: Instant::now(),
             in_flight: AtomicUsize::new(0),
             busy_since_ms: AtomicU64::new(0),
+            sent: Default::default(),
+            limited: Default::default(),
         }
     }
 }
 
+/// Requests one app sent, and how many Spotify answered 429, in a window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Traffic {
+    pub requests: u64,
+    pub rate_limited: u64,
+}
+
+fn traffic_slot(source: ApiSource) -> usize {
+    match source {
+        ApiSource::Shared => 0,
+        ApiSource::Personal => 1,
+    }
+}
+
+/// The debug line for one window's traffic, or `None` when nothing was sent.
+pub fn traffic_line(shared: Traffic, personal: Traffic) -> Option<String> {
+    (shared != Traffic::default() || personal != Traffic::default()).then(|| {
+        format!(
+            "Spotify traffic last minute: shared requests={} rate_limited={}, personal requests={} rate_limited={}",
+            shared.requests, shared.rate_limited, personal.requests, personal.rate_limited
+        )
+    })
+}
+
 impl NetActivity {
+    fn record(&self, source: ApiSource, rate_limited: bool) {
+        let slot = traffic_slot(source);
+        self.sent[slot].fetch_add(1, Ordering::Relaxed);
+        if rate_limited {
+            self.limited[slot].fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Traffic since the last call, per app, as (shared, personal).
+    pub fn take_traffic(&self) -> (Traffic, Traffic) {
+        let take = |source| {
+            let slot = traffic_slot(source);
+            Traffic {
+                requests: self.sent[slot].swap(0, Ordering::Relaxed),
+                rate_limited: self.limited[slot].swap(0, Ordering::Relaxed),
+            }
+        };
+        (take(ApiSource::Shared), take(ApiSource::Personal))
+    }
+
     fn now_ms(&self) -> u64 {
         self.started_at.elapsed().as_millis() as u64
     }
@@ -388,6 +487,10 @@ pub struct ApiClient {
     http: Http,
     tokens: Mutex<Option<TokenProvider>>,
     limiter: Semaphore,
+    background: Semaphore,
+    /// Held by the one background request allowed out while recovering.
+    probe: tokio::sync::Mutex<()>,
+    recovery: Recovery,
     queue_writes: tokio::sync::Mutex<()>,
     cooldown_until: tokio::sync::Mutex<Instant>,
     search_limit: u32,
@@ -410,6 +513,9 @@ impl ApiClient {
             http: http.into(),
             tokens: Mutex::new(None),
             limiter: Semaphore::new(MAX_IN_FLIGHT),
+            background: Semaphore::new(BACKGROUND_IN_FLIGHT),
+            probe: tokio::sync::Mutex::new(()),
+            recovery: Recovery::default(),
             queue_writes: tokio::sync::Mutex::new(()),
             cooldown_until: tokio::sync::Mutex::new(Instant::now()),
             search_limit,
@@ -460,6 +566,32 @@ impl ApiClient {
         *until = (*until).max(Instant::now() + wait);
     }
 
+    async fn cooling_down(&self) -> bool {
+        *self.cooldown_until.lock().await > Instant::now()
+    }
+
+    /// A background slot for one request, or `None` when a rate limit
+    /// arrived while waiting for it: the caller then waits out the cooldown
+    /// holding nothing. While recovering from a rate limit only one
+    /// background request is out at a time; the rest queue for the probe
+    /// and go together once one has succeeded.
+    async fn admit_background(&self) -> Option<BackgroundTicket<'_>> {
+        let probe = if self.recovery.probing() {
+            let guard = self.probe.lock().await;
+            self.recovery.probing().then_some(guard)
+        } else {
+            None
+        };
+        let permit = self.background.acquire().await.ok()?;
+        if self.cooling_down().await {
+            return None;
+        }
+        Some(BackgroundTicket {
+            _permit: permit,
+            _probe: probe,
+        })
+    }
+
     // ---- transport -------------------------------------------------------
 
     async fn send(
@@ -499,9 +631,18 @@ impl ApiClient {
 
         let mut attempt = 0;
         let queue_write = method == Method::POST && path == "/me/player/queue";
+        let background = is_background();
         loop {
-            attempt = u32::saturating_add(attempt, 1);
             self.wait_for_cooldown().await;
+            let ticket = if background {
+                match self.admit_background().await {
+                    Some(ticket) => Some(ticket),
+                    None => continue,
+                }
+            } else {
+                None
+            };
+            attempt = u32::saturating_add(attempt, 1);
             let permit = self
                 .limiter
                 .acquire()
@@ -526,8 +667,16 @@ impl ApiClient {
             }
             let response = request.send().await?;
             let status = response.status();
+            let rate_limited = status == StatusCode::TOO_MANY_REQUESTS;
+            self.activity.record(self.source, rate_limited);
+            if rate_limited {
+                self.recovery.rate_limited();
+            } else {
+                self.recovery.succeeded();
+            }
 
             if status == StatusCode::UNAUTHORIZED && attempt == 1 {
+                drop(ticket);
                 drop(permit);
                 provider.invalidate(&token).await;
                 continue;
@@ -557,14 +706,18 @@ impl ApiClient {
                     self.source,
                     wait.as_millis()
                 );
-                drop(permit);
+                // The cooldown is in place before the slots are released, so
+                // a background request let in next waits it out first.
                 self.extend_cooldown(wait).await;
+                drop(ticket);
+                drop(permit);
                 if !queue_write && attempt > RATE_LIMIT_RETRIES {
                     return Err(ApiError::RateLimited);
                 }
                 continue;
             }
             if status.is_server_error() && method == Method::GET && attempt == 1 {
+                drop(ticket);
                 drop(permit);
                 tokio::time::sleep(Duration::from_millis(800)).await;
                 continue;
@@ -1672,5 +1825,110 @@ mod tests {
         shared.extend_cooldown(Duration::from_secs(10)).await;
         assert!(*shared.cooldown_until.lock().await > Instant::now());
         assert!(*personal.cooldown_until.lock().await <= Instant::now());
+    }
+
+    fn bare_client(source: ApiSource) -> ApiClient {
+        ApiClient::new(
+            reqwest::Client::new(),
+            Arc::new(NetActivity::default()),
+            20,
+            50,
+            source,
+        )
+    }
+
+    #[tokio::test]
+    async fn each_app_has_its_own_background_slots() {
+        let gateway =
+            super::super::ApiGateway::new(reqwest::Client::new(), Arc::new(NetActivity::default()));
+        let shared = gateway.verification_client(ApiSource::Shared);
+        let personal = gateway.verification_client(ApiSource::Personal);
+        let mut held = Vec::new();
+        for _ in 0..BACKGROUND_IN_FLIGHT {
+            held.push(shared.admit_background().await.expect("a free slot"));
+        }
+        assert_eq!(shared.background.available_permits(), 0);
+        // The shared app being full, or cooling down, leaves the personal
+        // app's background requests alone.
+        shared.extend_cooldown(Duration::from_secs(30)).await;
+        assert!(personal.admit_background().await.is_some());
+        assert_eq!(
+            personal.background.available_permits(),
+            BACKGROUND_IN_FLIGHT
+        );
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn a_background_request_holds_no_slot_while_cooling_down() {
+        let client = bare_client(ApiSource::Shared);
+        client.extend_cooldown(Duration::from_secs(30)).await;
+        assert!(client.admit_background().await.is_none());
+        assert_eq!(client.background.available_permits(), BACKGROUND_IN_FLIGHT);
+    }
+
+    #[tokio::test]
+    async fn after_a_rate_limit_background_requests_resume_one_at_a_time() {
+        let client = bare_client(ApiSource::Shared);
+        client.recovery.rate_limited();
+        let probe = client.admit_background().await.expect("the probe");
+        let mut second = Box::pin(client.admit_background());
+        std::future::poll_fn(|cx| {
+            assert!(
+                second.as_mut().poll(cx).is_pending(),
+                "only the probe goes while recovering"
+            );
+            std::task::Poll::Ready(())
+        })
+        .await;
+        // The probe got through: everyone waiting goes, without the probe.
+        client.recovery.succeeded();
+        drop(probe);
+        let second = second.await.expect("released");
+        assert!(second._probe.is_none());
+        assert!(client.admit_background().await.is_some());
+    }
+
+    #[test]
+    fn traffic_is_counted_per_app_and_reset_each_window() {
+        let activity = NetActivity::default();
+        assert_eq!(
+            traffic_line(activity.take_traffic().0, activity.take_traffic().1),
+            None
+        );
+        activity.record(ApiSource::Shared, false);
+        activity.record(ApiSource::Shared, true);
+        activity.record(ApiSource::Personal, false);
+        let (shared, personal) = activity.take_traffic();
+        assert_eq!(
+            shared,
+            Traffic {
+                requests: 2,
+                rate_limited: 1
+            }
+        );
+        assert_eq!(
+            personal,
+            Traffic {
+                requests: 1,
+                rate_limited: 0
+            }
+        );
+        assert_eq!(
+            traffic_line(shared, personal).as_deref(),
+            Some(
+                "Spotify traffic last minute: shared requests=2 rate_limited=1, personal requests=1 rate_limited=0"
+            )
+        );
+        assert_eq!(
+            activity.take_traffic(),
+            (Traffic::default(), Traffic::default())
+        );
+    }
+
+    #[tokio::test]
+    async fn only_background_work_is_marked_background() {
+        assert!(!is_background());
+        assert!(in_background(async { is_background() }).await);
     }
 }

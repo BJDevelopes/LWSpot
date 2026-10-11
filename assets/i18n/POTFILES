@@ -34,3 +34,4 @@ src/ui/winamp/playlist.rs
 src/util.rs
 src/window.rs
 src/ui/themes.rs
+src/ui/personal_app.rs

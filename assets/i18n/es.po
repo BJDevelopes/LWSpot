@@ -3422,6 +3422,92 @@ msgctxt "theme"
 msgid "Name"
 msgstr "Nombre"
 
+#. Translators: A button on a toast saying Spotify is rate limiting requests. It opens the guided setup of a personal Spotify app.
+#: src/ui/mod.rs
+msgid "Fix this"
+msgstr "Solucionar"
+
+#. Translators: A button beside the personal Spotify app's Client ID field. It opens a step-by-step setup.
+#: src/ui/settings.rs
+msgid "Guided setup"
+msgstr "Configuración guiada"
+
+#: src/ui/personal_app.rs
+msgid "A Client ID is exactly 32 characters long."
+msgstr "Un Client ID tiene exactamente 32 caracteres."
+
+#: src/ui/personal_app.rs
+msgid "A Client ID uses only the digits 0 to 9 and the letters a to f."
+msgstr "Un Client ID solo usa los dígitos del 0 al 9 y las letras de la a a la f."
+
+#: src/ui/personal_app.rs
+msgid "Use your own Spotify app"
+msgstr "Usar tu propia app de Spotify"
+
+#: src/ui/personal_app.rs
+msgid "Why? Spotify shares one request allowance among everyone who uses LWSpot's default app. Your own app gets an allowance of its own."
+msgstr "¿Por qué? Spotify reparte un único límite de solicitudes entre todas las personas que usan la app predeterminada de LWSpot. Tu propia app tiene su propio límite."
+
+#: src/ui/personal_app.rs
+msgid "Open the Spotify developer dashboard"
+msgstr "Abrir el panel de desarrolladores de Spotify"
+
+#: src/ui/personal_app.rs
+msgid "Sign in with your Spotify account. Spotify asks that it be a Premium account."
+msgstr "Inicia sesión con tu cuenta de Spotify. Spotify pide que sea una cuenta Premium."
+
+#: src/ui/personal_app.rs
+msgid "Open dashboard"
+msgstr "Abrir panel"
+
+#. Translators: "Create app" and "Web API" are labels on Spotify's English-only developer dashboard.
+#: src/ui/personal_app.rs
+msgid "Click Create app and give it any name and description; nobody else sees them. Tick Web API and accept the terms."
+msgstr "Haz clic en «Create app» y ponle cualquier nombre y descripción; nadie más los ve. Marca «Web API» y acepta las condiciones."
+
+#: src/ui/personal_app.rs
+msgid "Add the Redirect URI"
+msgstr "Añadir la Redirect URI"
+
+#. Translators: "Redirect URIs" is a label on Spotify's English-only developer dashboard.
+#: src/ui/personal_app.rs
+msgid "Paste this under Redirect URIs exactly as shown, then save the app."
+msgstr "Pégala en «Redirect URIs» tal como aparece y luego guarda la app."
+
+#. Translators: Shown on the Copy button once the Redirect URI was copied.
+#: src/ui/personal_app.rs
+msgid "Copied"
+msgstr "Copiado"
+
+#: src/ui/personal_app.rs
+msgid "Redirect URI"
+msgstr "Redirect URI"
+
+#: src/ui/personal_app.rs
+msgid "Paste your Client ID"
+msgstr "Pegar tu Client ID"
+
+#. Translators: "Client secret" is a label on Spotify's English-only developer dashboard.
+#: src/ui/personal_app.rs
+msgid "Your app's page shows it. Use the Client ID, not the Client secret."
+msgstr "La página de tu app lo muestra. Usa el Client ID, no el Client secret."
+
+#: src/ui/personal_app.rs
+msgid "Spotify opens in your browser to approve the app. LWSpot then checks that it belongs to the account you use here."
+msgstr "Spotify se abre en tu navegador para aprobar la app. Después, LWSpot comprueba que pertenece a la cuenta que usas aquí."
+
+#: src/ui/personal_app.rs
+msgid "Checking with Spotify…"
+msgstr "Comprobando con Spotify…"
+
+#: src/ui/personal_app.rs
+msgid "If your browser still shows Spotify, finish there first."
+msgstr "Si tu navegador sigue mostrando Spotify, termina allí primero."
+
+#: src/ui/personal_app.rs
+msgid "Waiting for your browser…"
+msgstr "Esperando a tu navegador…"
+
 #~ msgid "MacBook notch interactive widget"
 #~ msgstr "Widget interactivo de la muesca del MacBook"
 

@@ -322,6 +322,16 @@ impl AppDirs {
             .join(format!("{account}.json"))
     }
 
+    /// Web API answers kept per account so they are not asked for again:
+    /// the playlist list, Home's shelves, and artist pages.
+    pub fn web_api_cache_dir(&self, account_id: &str) -> PathBuf {
+        let account: String = account_id
+            .bytes()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        self.cache.join("web-api").join(account)
+    }
+
     pub fn ensure(&self) -> std::io::Result<()> {
         for dir in [&self.config, &self.state, &self.cache] {
             std::fs::create_dir_all(dir)?;

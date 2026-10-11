@@ -20,7 +20,7 @@ LWSpot  lwspot.exe
   lwspot-portable.txt   marks the copy as portable, for updates too
   data    config\             settings.json, skins, MilkDrop presets, themes
     state\              session, history, logs, add-ons, app.ron
-    cache\              audio, artwork, lyrics, playlist pages
+    cache\              audio, artwork, lyrics, playlist pages, Web API answers
 ```
 
 In the table below, read `%APPDATA%\LWSpot\config` as `data\config`,
@@ -55,6 +55,7 @@ lose them.
 | Artwork cache | `%LOCALAPPDATA%\LWSpot\cache\art\` | Always |
 | Lyrics cache | `%LOCALAPPDATA%\LWSpot\cache\lyrics\` | Always |
 | Account-scoped playlist page cache | `%LOCALAPPDATA%\LWSpot\cache\playlists\<account-id>\` | Always |
+| Account-scoped Web API cache | `%LOCALAPPDATA%\LWSpot\cache\web-api\<account>\` | Always |
 | Last run's log | `%LOCALAPPDATA%\LWSpot\data\lwspot.log` | Always |
 | Crash log | `%LOCALAPPDATA%\LWSpot\data\panic.log` | Always |
 
@@ -164,6 +165,18 @@ requests current data immediately. Partial caches resume from their next page.
 Like and Unlike change the rows immediately, and confirmed edits survive a
 restart even if Spotify's next read still reports the old state. This cache
 contains metadata, not offline audio, and can be deleted without signing out.
+
+Answers that only the shared Web API app gives are kept under `web-api\` in
+the cache folder, one folder per account (its ID in hexadecimal):
+`playlists.json` holds the library's playlist list, `home.json` the "Made
+for you" playlists (kept a day) and recommendations (four hours), and
+`artists\<artist-id>.json` an artist's top tracks and related artists (a
+day; the 200 most recently written are kept). Each file is versioned JSON,
+written atomically, and read only for its own account. A saved playlist
+list shows at sign-in and is read again in the background when it is more
+than five minutes old. Refreshing Home or an artist page asks Spotify again.
+Deleting the folder costs only those requests; it never signs you out. See
+[How it connects](how-it-connects.md#fewer-requests-to-the-shared-app).
 
 The last good playlist folder tree is kept in `session.json`, scoped to the
 account that supplied it. This keeps folders visible when local playback is
@@ -284,7 +297,7 @@ main fields are:
 | `keep_playing_in_background` | `true` | Close to tray |
 | `check_for_updates` | `true` | Ask GitHub once a day for a newer release |
 | `web_client_id` | none | Optional personal Spotify app id used alongside shared coverage |
-| `personal_app_intro_seen` | `false` | Whether the Premium personal-app introduction was dismissed or followed |
+| `personal_app_intro_seen` | `false` | Whether the Premium personal-app introduction was dismissed or followed, or the guided setup was opened |
 | `proxy_mode` | `system` | `off`, `system`, `http`, or `socks`. Files without this field stay on `system` |
 | `proxy_host` | none | Host of a manual HTTP or SOCKS5 proxy. Ignored when the mode is `off` or `system` |
 | `proxy_port` | none | Port of a manual HTTP or SOCKS5 proxy |
@@ -327,7 +340,7 @@ cargo run --features demo -- --demo
 `--demo-page` opens a page, such as `home`, `playlist:pl1`, or `artist:art0`,
 and `--demo-show` adds surfaces on top of it: a comma separated list of
 `queue`, `playing-next`, `devices`, `shortcuts`, `premium`, `create`, `duplicate`, `light`, `dark`,
-`focus`, `winamp`, `playlist`, `eq`, `eq-shade`, `compact`, `update`, `personal-app`,
+`focus`, `winamp`, `playlist`, `eq`, `eq-shade`, `compact`, `update`, `personal-app`, `personal-app-setup`,
 `collection-loading`, `shuffle-selected`, `shuffle-started`, `library-list`,
 `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
 `library-grid-wide`, `rtl`, `player-bar-spectrum`, `player-bar-waveform`, `playing-here`,
@@ -337,7 +350,8 @@ a normal, narrow, or wide sidebar and collapsed artwork for matching captures.
 `shuffle-selected` and `shuffle-started` capture the selected-mode and
 playback-started outcomes of a collection Shuffle click. `update` shows a sample
 update badge for checking its layout. `personal-app` shows the personal Spotify
-app introduction.
+app introduction, and `personal-app-setup` its guided setup with the first
+four steps done.
 `signed-out` and `connecting` show the sign-in card before and while the
 session connects.
 `player-bar-spectrum` and `player-bar-waveform` play a fixed, music-like

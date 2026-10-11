@@ -197,7 +197,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             }
             ui.add_space(20.0);
 
-            // Related.
+            // Related: asked for once this part of the page is in view.
+            if matches!(page.related, Loadable::NotLoaded)
+                && ui.is_rect_visible(egui::Rect::from_min_size(
+                    ui.cursor().min,
+                    egui::vec2(ui.available_width().max(1.0), 1.0),
+                ))
+            {
+                app.actions.push(Action::LoadRelatedArtists(id.to_string()));
+            }
             if let Loadable::Loaded(related) = &page.related
                 && !related.is_empty()
             {

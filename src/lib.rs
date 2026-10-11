@@ -43,6 +43,7 @@ pub mod ui;
 pub mod updates;
 pub mod util;
 pub mod vis;
+pub mod web_cache;
 pub mod winamp;
 pub mod window;
 pub mod zeroconf;

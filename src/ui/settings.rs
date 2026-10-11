@@ -12,7 +12,6 @@ use crate::theme::{self, Icon, Palette};
 use super::widgets;
 
 const PLAYBACK_DIRTY_ID: &str = "playback-settings-dirty";
-pub(crate) const PERSONAL_APP_FOCUS_ID: &str = "focus-personal-app-setup";
 const SETTINGS_FILTER_ID: &str = "settings-filter";
 
 /// Whether a settings row matches the filter query (case-insensitive).
@@ -162,7 +161,7 @@ fn setting_slider<N: egui::emath::Numeric>(
 }
 
 /// Forget the search text, so a flow that lands on a specific row (like
-/// the Personal App setup) always finds that row visible and focusable.
+/// the Personal App setup) always finds that row visible.
 pub(crate) fn clear_search(ctx: &egui::Context) {
     ctx.data_mut(|data| data.remove::<String>(egui::Id::new(SETTINGS_FILTER_ID)));
 }
@@ -420,40 +419,64 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ui.add_space(10.0);
             }
             let mut client_id = app.settings.web_client_id.clone().unwrap_or_default();
-            filtered_row(ui, &palette, &needle, &account, &account_rows[0], |ui| {
-                let response = Frame::new()
-                    .fill(palette.surface)
-                    .corner_radius(CornerRadius::same(6))
-                    .inner_margin(Margin::symmetric(10, 6))
-                    .show(ui, |ui| {
-                        widgets::text_edit(
-                            ui,
-                            app.locale,
-                            egui::TextEdit::singleline(&mut client_id)
-                                .id(egui::Id::new("personal-web-client-id"))
-                                .hint_text(
-                                    egui::RichText::new(gettext(locale, "Client ID"))
-                                        .color(palette.dim),
-                                )
-                                .font(theme::regular(13.0))
-                                .frame(egui::Frame::NONE)
-                                .desired_width(200.0),
-                        )
-                    })
-                    .inner;
-                if ui
-                    .data_mut(|data| data.remove_temp::<bool>(egui::Id::new(PERSONAL_APP_FOCUS_ID)))
-                    .unwrap_or(false)
-                {
-                    response.scroll_to_me(Some(Align::Center));
-                    response.request_focus();
-                }
-                if response.changed() {
-                    let trimmed = client_id.trim().to_string();
-                    app.settings.web_client_id = (!trimmed.is_empty()).then_some(trimmed);
-                    changed = true;
-                }
-            });
+            let guided = gettext(locale, "Guided setup");
+            let guided_width = if in_use {
+                0.0
+            } else {
+                ui.painter()
+                    .layout_no_wrap(guided.to_string(), theme::semibold(13.0), palette.text)
+                    .size()
+                    .x
+                    + 36.0
+                    + ui.spacing().item_spacing.x
+            };
+            let field_width = 220.0;
+            let row = &account_rows[0];
+            filtered_row_sized(
+                ui,
+                &palette,
+                &needle,
+                &account,
+                row,
+                field_width + guided_width,
+                |ui| {
+                    // The walkthrough leads from Spotify's dashboard to an
+                    // authorized app; the field stays for pasting directly.
+                    if !in_use
+                        && theme::pill_button(ui, &palette, &guided, wanted.is_none()).clicked()
+                    {
+                        app.actions.push(Action::OpenPersonalAppWalkthrough);
+                    }
+                    let response = Frame::new()
+                        .fill(palette.surface)
+                        .corner_radius(CornerRadius::same(6))
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .show(ui, |ui| {
+                            widgets::text_edit(
+                                ui,
+                                app.locale,
+                                egui::TextEdit::singleline(&mut client_id)
+                                    .id(egui::Id::new("personal-web-client-id"))
+                                    .hint_text(
+                                        egui::RichText::new(gettext(locale, "Client ID"))
+                                            .color(palette.dim),
+                                    )
+                                    .font(theme::regular(13.0))
+                                    .frame(egui::Frame::NONE)
+                                    .desired_width(200.0),
+                            )
+                        })
+                        .inner;
+                    let label = gettext(locale, "Client ID");
+                    ui.ctx()
+                        .accesskit_node_builder(response.id, |node| node.set_label(label.as_ref()));
+                    if response.changed() {
+                        let trimmed = client_id.trim().to_string();
+                        app.settings.web_client_id = (!trimmed.is_empty()).then_some(trimmed);
+                        changed = true;
+                    }
+                },
+            );
             filtered_row(ui, &palette, &needle, &account, &account_rows[1], |ui| {
                 if theme::pill_button(ui, &palette, &gettext(locale, "Setup guide"), false)
                     .clicked()
