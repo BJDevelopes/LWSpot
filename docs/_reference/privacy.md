@@ -23,7 +23,7 @@ Its developers receive nothing about you or how you use it.
   computer and never contains credentials; share it only if you choose to
   attach it to a bug report.
 
-[Settings & Files](settings-and-files.md) lists every location and what is safe
+[Settings and files](settings-and-files.md) lists every location and what is safe
 to delete. **Sign out** in Settings removes the stored credentials.
 
 ## What is sent, and to whom

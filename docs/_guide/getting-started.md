@@ -1,5 +1,5 @@
 ---
-title: Getting Started
+title: Getting started
 description: Install the app, sign in through your browser, and enable playback on this computer.
 nav_order: 2
 ---
@@ -16,8 +16,10 @@ Press **Sign in with Spotify**. Your browser opens Spotify's sign-in page.
 Approve access there, then return to LWSpot to see your library.
 LWSpot never sees your Spotify password.
 
-LWSpot remembers your sign-in in Windows Credential Manager, so you normally
-do not need to sign in each time you open the app.
+LWSpot remembers your sign-in in Windows Credential Manager, so you do not
+need to sign in each time you open the app or restart Windows. On a PC where
+Credential Manager cannot keep it, LWSpot keeps it in a file encrypted for
+your Windows user instead.
 
 ## Enable playback on this computer
 
@@ -60,11 +62,23 @@ You can rename it in Settings.
 
 ## Match your Windows theme
 
-Open **Settings → Appearance → Theme** and choose **Light**, **Dark**, or
-**Follow system**. Follow system matches the light or dark mode set in
-Windows. New installations use Follow system.
+Open **Settings → Appearance → Theme** and click **Light**, **Dark**,
+**Follow system**, or one of the other themes, each shown as a small picture
+of the app in its colours. Follow system matches the light or dark mode set in
+Windows. New installations use Follow system. The window's title bar takes the
+theme's colours too.
 
-For your own colours, see [custom themes](../_reference/settings-and-files.md#custom-themes).
+![LWSpot Home and the queue in the Light theme](../assets/images/home-light.png)
+
+**Customize** opens the theme editor: change any colour with a picker while
+the whole app shows the result, then save it as a theme of your own. It warns
+when text would be hard to read. **Import theme** and **Export theme** bring
+in or share a theme as a single `.json` file. **Accent colour** can follow the
+Windows accent colour or the playing song's cover instead of the theme's own
+(violet in Light and Dark), and on Windows 11 **Window backdrop** puts Mica or
+acrylic behind the window. See
+[custom themes](../_reference/settings-and-files.md#custom-themes) for the
+details and the file format.
 
 ## If song titles show empty boxes
 
@@ -81,9 +95,11 @@ Long titles are shortened with dots to fit the available space.
 LWSpot uses your computer's language when it has a translation for it, and
 English otherwise. To pick another language, open **Settings → Appearance →
 Language**. Each language is listed under its own name, and the change applies
-at once. Choose **System** to follow the computer again. Spanish, Turkish and
-Ukrainian are complete; other translations are in progress, and anything not yet
-translated appears in English. See [Translating LWSpot](../_reference/translating.md) to help.
+at once. Choose **System** to follow the computer again. Besides English,
+LWSpot is translated into Chinese (Simplified and Traditional), Dutch, French,
+German, Italian, Japanese, Polish, Portuguese (Brazil and Portugal), Russian,
+Spanish, Swedish, Turkish and Ukrainian. See
+[Translating LWSpot](../_reference/translating.md) to suggest corrections.
 
 ## Choosing which app opens Spotify links
 

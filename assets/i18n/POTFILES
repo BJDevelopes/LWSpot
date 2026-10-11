@@ -1,5 +1,6 @@
 src/ui/sidebar.rs
 src/i18n.rs
+src/jumplist.rs
 src/ui/player_bar.rs
 src/ui/queue.rs
 src/ui/lyrics.rs
@@ -32,3 +33,4 @@ src/ui/winamp/mod.rs
 src/ui/winamp/playlist.rs
 src/util.rs
 src/window.rs
+src/ui/themes.rs

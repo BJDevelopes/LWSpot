@@ -3,7 +3,9 @@ lwspot_version: "0.1.0"
 description: A lightweight native Spotify client for Windows.
 lang: en-US
 url: https://bjdevelopes.github.io
-baseurl: "/lwspot"
+# GitHub Pages serves the site under the repository name, which is case
+# sensitive: https://bjdevelopes.github.io/LWSpot/
+baseurl: "/LWSpot"
 logo: /assets/images/logo.svg
 image: /screenshot.png
 
@@ -103,9 +105,17 @@ jekyll_vitepress:
 
 plugins:
   - jekyll-redirect-from
+  - jekyll-relative-links
   - jekyll-vitepress-theme
 
+# Pages link to each other as Markdown files, so the same links work on
+# GitHub and on the built site.
+relative_links:
+  enabled: true
+  collections: true
+
 exclude:
+  - README.md
   - _site
   - .jekyll-cache
   - .sass-cache

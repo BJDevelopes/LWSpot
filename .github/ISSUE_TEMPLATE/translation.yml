@@ -12,8 +12,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: LWSpot version
-      description: Include the commit if you are testing a development build.
+      label: LWSpot version and how you run it
+      description: Installed, portable ZIP, or built from source. Include the commit if you are testing a development build.
     validations:
       required: true
   - type: textarea

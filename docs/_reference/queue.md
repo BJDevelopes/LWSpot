@@ -1,5 +1,5 @@
 ---
-title: The Queue's Rules
+title: The queue's rules
 description: What the queue shows, what Add to queue does, and what the app promises about both.
 nav_order: 2
 ---

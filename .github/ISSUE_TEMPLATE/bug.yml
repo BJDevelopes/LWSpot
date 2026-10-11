@@ -5,24 +5,31 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please include the log from LWSpot's last run:
+        LWSpot runs on Windows only. Please include the log from LWSpot's last run:
 
-        `%LOCALAPPDATA%\LWSpot\data\lwspot.log`
+        - Installed copy: `%LOCALAPPDATA%\LWSpot\data\lwspot.log`
+        - Portable copy (a `data` folder beside `lwspot.exe`): `data\state\lwspot.log` in that folder
 
         If the app crashed or vanished, include `panic.log` from the same folder.
+        Settings are in `%APPDATA%\LWSpot\config\settings.json` (portable:
+        `data\config\settings.json`). Never attach anything from Windows
+        Credential Manager or the `credential-storage` folder.
   - type: input
     id: version
     attributes:
-      label: LWSpot version and how you installed it
-      placeholder: "0.1.0 from the installer / the portable ZIP / built from source"
+      label: LWSpot version
+      description: Shown under Settings > About.
+      placeholder: "0.1.0"
     validations:
       required: true
   - type: dropdown
-    id: os
+    id: install
     attributes:
-      label: Operating system
+      label: How you run LWSpot
       options:
-        - Windows
+        - Installed (setup.exe)
+        - Portable ZIP
+        - Built from source
     validations:
       required: true
   - type: input

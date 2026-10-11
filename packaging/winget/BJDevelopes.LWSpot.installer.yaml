@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+# Template: fill in with update-manifests.ps1 (PACKAGING.md). Zero hashes are placeholders.
+
+PackageIdentifier: BJDevelopes.LWSpot
+PackageVersion: 0.1.0
+InstallerLocale: en-US
+MinimumOSVersion: 10.0.0.0
+InstallerType: inno
+Scope: user
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+UpgradeBehavior: install
+Protocols:
+- spotify
+# Inno Setup's uninstall entry: the installer's AppId with _is1.
+ProductCode: '{B283D42A-7E13-473D-B8A3-A2D774860344}_is1'
+ReleaseDate: 2026-01-01
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/BJDevelopes/lwspot/releases/download/v0.1.0/lwspot-v0.1.0-x86_64-pc-windows-msvc-setup.exe
+  InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+- Architecture: arm64
+  InstallerUrl: https://github.com/BJDevelopes/lwspot/releases/download/v0.1.0/lwspot-v0.1.0-aarch64-pc-windows-msvc-setup.exe
+  InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+ManifestType: installer
+ManifestVersion: 1.6.0

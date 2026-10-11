@@ -28,7 +28,7 @@ Some boundaries come from Spotify or from upstream libraries:
 - LWSpot runs on Windows only. macOS and Linux support was removed in the
   fork; use [Spotifast](https://github.com/crmne/spotifast) on those systems.
 
-[What Spotify Lets a Client Do](docs/_reference/what-spotify-allows.md)
+[What Spotify lets a client do](docs/_reference/what-spotify-allows.md)
 lists what each of the three surfaces offers and the requests none of them
 can serve, with the reason for each; a request in its last section is
 answered from there and closed.
@@ -97,7 +97,7 @@ generated prose, and large mechanical rewrites.
 commit with contributor credit; merge commits are not accepted. Do not rewrite
 published history.
 
-The same rules apply to hand-written and AI-assisted changes. The author must
+The same rules apply to every change, however it was written. The author must
 understand every line and answer review comments with specific reasoning.
 
 Code changes should include tests for behaviour that can regress. UI changes
@@ -112,11 +112,11 @@ version; rustup installs it) and Visual Studio 2022 or its Build Tools with
 the C++ workload.
 
 ```powershell
-# lwspot.exe: needs nothing else
+# lwspot.exe: needs nothing else (no vcpkg, no CMake)
 cargo build --release
 
 # The MilkDrop add-on, lwspot-milkdrop.exe
-vcpkg install glew:x64-windows-static
+vcpkg install glew:x64-windows-static     # glew:arm64-windows-static on ARM
 cargo build --release --features milkdrop --bin lwspot-milkdrop
 ```
 
@@ -129,11 +129,45 @@ installed and `VCPKG_INSTALLATION_ROOT` pointing at the vcpkg folder. The app
 and the add-on talk over the protocol in `src/milkdrop/args.rs`; raise
 `milkdrop::PROTOCOL` with any change to it.
 
+### Demo mode and screenshots
+
 To look at the interface without a Spotify account:
 
 ```powershell
 cargo run --features demo -- --demo
 ```
+
+Demo mode uses sample data, never signs in, and never writes your settings.
+`--demo-page` opens a page, `--demo-show` adds surfaces such as `queue`,
+`light`, `dark`, `themes` or `theme-editor`, and `--demo-language` picks an
+interface language. `--demo-shot <file>.png` saves the window and exits, which
+is how the screenshots in `docs/` are made:
+
+```powershell
+cargo run --features demo -- --demo-shot docs/screenshot.png --demo-size 1440x900 --demo-show dark,queue
+```
+
+`lwspot --help` lists the options, and
+[Settings and files](docs/_reference/settings-and-files.md#demo-mode) lists
+the surfaces and the commands for each screenshot. Use demo shots for the
+before/after images in a pull request, and check that nothing personal shows.
+Keep committed images under 1 MB.
+
+### Icons
+
+The icon is a white feather wearing dark headphones on a violet (`#6D5BF0`)
+rounded tile. Its source is `packaging/icons/lwspot.svg`, with a simplified
+`lwspot-small.svg` for sizes of 24 pixels and below. After changing either,
+regenerate `packaging/windows/lwspot.ico` and `docs/assets/images/logo.svg`:
+
+```powershell
+cargo run --example icon_assets
+# with PNG previews of every size:
+cargo run --example icon_assets -- --previews target\icon-previews
+```
+
+The default accent colour is the same violet in the Dark theme (`#5A47E0` in
+Light); keep the two in step.
 
 ## Checks
 
@@ -148,6 +182,9 @@ cargo test --locked --all-targets --all-features
 cargo test --locked --all-features --doc
 ```
 
+The `--all-features` commands build the MilkDrop add-on too, so they need its
+toolchain (CMake, libclang and vcpkg's GLEW). Without it, run `cargo fmt` and
+the two `--no-default-features` test commands, and let CI run the rest.
 CI runs these on Windows x64 and ARM64 runners, checks that the app and the
 MilkDrop add-on do not depend on the MSVC runtime DLLs, and compiles the Inno Setup
 installer script. Passing CI is required, but does not replace review for
@@ -159,10 +196,14 @@ It writes temporary dummy grants to Windows Credential Manager and deletes
 them afterward. The ordinary test suite uses an isolated fake store and never
 reads a real Spotify grant. Demo mode also skips credential restoration.
 
-Translation changes also need `.github/scripts/update-translations.sh --check`,
-using GNU gettext tools with Rust support and a bash shell. Run the script
-without `--check` when translatable source strings change, and review any fuzzy or missing entries in the updated PO files.
-Normal Cargo builds compile the catalogs without gettext tools. See
+All 15 translations are complete, and `tests/localization.rs` keeps them
+that way: a new or changed interface string needs a translation in every
+catalogue in `assets/i18n/` before the tests pass. Run
+`.github/scripts/update-translations.sh` (GNU gettext tools with Rust support
+and a bash shell) when translatable source strings change, fill in and review
+every new, fuzzy or missing entry, then run the script with `--check` and
+`cargo test --locked --test localization`. Normal Cargo builds compile the
+catalogues without gettext tools. See
 [Translating LWSpot](docs/_reference/translating.md) for the contributor
 workflow.
 

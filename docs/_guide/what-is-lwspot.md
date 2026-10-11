@@ -6,9 +6,9 @@ nav_order: 0
 
 ## Why LWSpot
 
-LWSpot is a lightweight native Spotify app for Windows. It opens in well
-under a second and typically uses 100–250 MB of memory, while Spotify's
-desktop app often uses 600 MB to over 1 GB. It has no browser engine.
+LWSpot is a lightweight native Spotify app for Windows. It runs as one
+process with no browser engine, and uses a fraction of the memory of
+Spotify's desktop app ([measurements below](#how-light-is-it)).
 
 LWSpot is a Windows-only fork of
 [Spotifast](https://github.com/crmne/spotifast) by Carmine Paolino.
@@ -39,8 +39,44 @@ cannot play music through LWSpot on this computer or another device.
   result, to open that page.
 - **Background playback.** Closing the window keeps the music playing from
   the system tray. Use your keyboard's media keys to play, pause, and skip.
-- **Themes.** Choose light, dark, or your own colours. Pages can also take a
-  colour from album art.
+- **Windows integration.** The Windows media overlay and lock screen show
+  what is playing, the taskbar preview has Previous, Play/Pause and Next
+  buttons, and the taskbar's right-click menu has jump list tasks. LWSpot can
+  start with Windows, optionally in the tray, F11 fills the screen, and the
+  title bar follows the theme's colours.
+- **Themes.** Choose light, dark, or one of the themes in the gallery, or
+  make your own in the theme editor and share it as a file. The accent can
+  follow Windows or the playing song's cover, and Windows 11 can show Mica or
+  acrylic through the window.
+- **Extras.** A Winamp mini player with classic skins, synced lyrics, a
+  ten-band equalizer, a player bar visualizer, and MilkDrop as an optional
+  add-on.
+- **Reliability.** Your sign-in survives restarts, playback follows your
+  default audio output when you connect headphones or Bluetooth, and audio
+  problems are explained in plain words.
+
+![The theme gallery in Settings](../assets/images/themes.png)
+
+## How light is it?
+
+These numbers come from one laptop (an MSI GF65 with Windows 11), measured in
+one session with release builds playing the same song, averaged over 60
+seconds. LWSpot had the player bar spectrum visualizer on at 30 frames a
+second.
+
+| While playing | Official Spotify app | LWSpot 0.1.0 |
+|---|---|---|
+| Memory (working set) | 1,297 MB across 8 processes | 148 MB, 1 process |
+| Private memory | 927 MB | 73 MB |
+| CPU, window visible | 22% of one core | 18.4% of one core |
+| CPU, window minimized | 2.1% of one core | 1.3% of one core |
+| CPU, window covered by other windows | not measured | about 0.6% of one core |
+
+Your numbers will vary with your hardware, library and settings. Most of the
+visible-window figure is the visualizer: each of its frames redraws the
+window, so a lower frame rate in **Settings > Appearance** uses less, and
+with it off LWSpot redraws only when something on screen changes. MilkDrop,
+when you turn it on, runs as a second process.
 
 <a id="account-safety"></a>
 
@@ -78,7 +114,8 @@ LWSpot has a limited scope:
 - LWSpot runs on Windows only.
 
 Bug reports should include `lwspot.log`, `panic.log` after a crash, and
-steps to reproduce the problem. Both are in `%LOCALAPPDATA%\LWSpot\data`. See
+steps to reproduce the problem. Both are in `%LOCALAPPDATA%\LWSpot\data`,
+or in `data\state` beside `lwspot.exe` for the portable copy. See
 the [issue tracker](https://github.com/BJDevelopes/lwspot/issues). The log
 also records the app version, Windows version, and graphics details. If the
 window fails to open, the log can help explain why, even when you started the

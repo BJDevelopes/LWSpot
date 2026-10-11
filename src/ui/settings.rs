@@ -6,7 +6,7 @@ use crate::api::models::pick_image;
 use crate::app::App;
 use crate::i18n::{gettext, ngettext, pgettext};
 use crate::model::{Action, Dialog};
-use crate::settings::{LanguageChoice, ProxyMode, ThemeChoice};
+use crate::settings::{LanguageChoice, ProxyMode};
 use crate::theme::{self, Icon, Palette};
 
 use super::widgets;
@@ -168,6 +168,85 @@ pub(crate) fn clear_search(ctx: &egui::Context) {
 }
 const PROXY_DIRTY_ID: &str = "proxy-settings-dirty";
 
+/// Off, Mica or acrylic behind the main window. The window is made for a
+/// backdrop when it opens, so a change waits for a restart, and the row
+/// says so until then.
+fn backdrop_row(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    needle: &str,
+    section: &str,
+    row: &RowText<'_>,
+) {
+    use crate::settings::Backdrop;
+    let locale = app.locale;
+    let available = crate::window::backdrop_supported() && !app.settings.custom_titlebar;
+    let choices = Backdrop::ALL.map(|choice| (choice, choice.label(locale)));
+    let choice_gap = 6.0;
+    let choices_width = choices
+        .iter()
+        .map(|(_, label)| theme::soft_button_width(ui, label))
+        .sum::<f32>()
+        + choice_gap * (choices.len() - 1) as f32;
+    filtered_row_sized(ui, palette, needle, section, row, choices_width, |ui| {
+        ui.add_enabled_ui(available, |ui| {
+            let mut choose = |ui: &mut egui::Ui, backdrop: Backdrop, label: &str| {
+                // Where it cannot be had, the row reads Off.
+                let chosen = if available {
+                    app.settings.backdrop == backdrop
+                } else {
+                    backdrop == Backdrop::Off
+                };
+                let response = theme::soft_button(ui, palette, None, label, chosen);
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::RadioButton,
+                        ui.is_enabled(),
+                        chosen,
+                        label,
+                    )
+                });
+                if response.clicked() && !chosen {
+                    app.settings.backdrop = backdrop;
+                    app.mark_settings_dirty();
+                }
+            };
+            if ui.available_width() >= choices_width {
+                // Laid right to left, so the last choice goes first.
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = choice_gap;
+                    for (backdrop, label) in choices.iter().rev() {
+                        choose(ui, *backdrop, label);
+                    }
+                });
+            } else {
+                ui.with_layout(Layout::top_down(Align::Max), |ui| {
+                    ui.spacing_mut().item_spacing.y = choice_gap;
+                    for (backdrop, label) in &choices {
+                        choose(ui, *backdrop, label);
+                    }
+                });
+            }
+        });
+    });
+    if available
+        && row.matches(needle, section)
+        && app.settings.backdrop != crate::window::backdrop()
+    {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            theme::icon(ui, Icon::Info, 15.0, palette.secondary);
+            theme::subtle(
+                ui,
+                palette,
+                &gettext(locale, "Takes effect after restarting LWSpot."),
+            );
+        });
+        ui.add_space(4.0);
+    }
+}
+
 fn section(
     ui: &mut egui::Ui,
     palette: &Palette,
@@ -204,6 +283,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         palette.text,
     );
     ui.add_space(4.0);
+    #[cfg(any(test, feature = "demo"))]
+    if let Some(filter) = app.demo_settings_filter.take() {
+        ui.data_mut(|data| data.insert_temp(egui::Id::new(SETTINGS_FILTER_ID), filter));
+    }
     let mut filter = ui
         .data(|data| data.get_temp::<String>(egui::Id::new(SETTINGS_FILTER_ID)))
         .unwrap_or_default();
@@ -507,6 +590,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 "Downloads in the background. You choose when to restart.",
             ),
         ),
+        RowText::new(
+            gettext(locale, "Start with Windows"),
+            gettext(
+                locale,
+                "Open LWSpot when you sign in to Windows. Nothing plays until you ask.",
+            ),
+        ),
     ];
     if section_matches(&needle, &playback, &playback_rows) {
         any_visible = true;
@@ -643,6 +733,55 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     changed = true;
                 }
             });
+            // Off, Open, In the tray: the Run key is the setting, so a
+            // choice is applied at once rather than saved with the others.
+            let start_choices = [
+                (crate::autostart::Mode::Off, gettext(locale, "Off")),
+                (crate::autostart::Mode::Open, gettext(locale, "Open LWSpot")),
+                (
+                    crate::autostart::Mode::Tray,
+                    gettext(locale, "Start in the tray"),
+                ),
+            ];
+            let start_choices_width = start_choices
+                .iter()
+                .map(|(_, label)| theme::soft_button_width(ui, label))
+                .sum::<f32>()
+                + choice_gap * (start_choices.len() - 1) as f32;
+            filtered_row_sized(
+                ui,
+                &palette,
+                &needle,
+                &playback,
+                &playback_rows[13],
+                start_choices_width,
+                |ui| {
+                    let current = app.autostart.mode();
+                    let mut choose = |ui: &mut egui::Ui, mode, label: &str| {
+                        if theme::soft_button(ui, &palette, None, label, current == mode).clicked()
+                            && current != mode
+                        {
+                            app.actions.push(Action::SetAutostart(mode));
+                        }
+                    };
+                    if ui.available_width() >= start_choices_width {
+                        // Laid right to left, so the last choice goes first.
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = choice_gap;
+                            for (mode, label) in start_choices.iter().rev() {
+                                choose(ui, *mode, label);
+                            }
+                        });
+                    } else {
+                        ui.with_layout(Layout::top_down(Align::Max), |ui| {
+                            ui.spacing_mut().item_spacing.y = choice_gap;
+                            for (mode, label) in &start_choices {
+                                choose(ui, *mode, label);
+                            }
+                        });
+                    }
+                },
+            );
             filtered_row(ui, &palette, &needle, &playback, &playback_rows[7], |ui| {
                 if widgets::switch(
                     ui,
@@ -810,6 +949,31 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 "How often the player bar's visualizer moves. Lower rates use fewer resources.",
             ),
         ),
+        RowText::new(
+            gettext(locale, "Accent colour"),
+            gettext(
+                locale,
+                "The colour of buttons and highlights: the theme's own, the accent colour set in Windows, or the playing song's cover. Adjusted when needed so text stays readable.",
+            ),
+        ),
+        RowText::new(gettext(locale, "Window backdrop"), {
+            if !crate::window::backdrop_supported() {
+                gettext(
+                    locale,
+                    "Mica and acrylic need Windows 11 2022 Update (22H2) or later.",
+                )
+            } else if app.settings.custom_titlebar {
+                gettext(
+                    locale,
+                    "Mica and acrylic need the Windows title bar. Turn off the custom title bar to use them.",
+                )
+            } else {
+                gettext(
+                    locale,
+                    "Let Windows' Mica or acrylic material show through the window. Text and controls stay opaque.",
+                )
+            }
+        }),
     ];
     if section_matches(&needle, &appearance, &appearance_rows) {
         any_visible = true;
@@ -827,54 +991,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 theme_buttons_width,
                 |ui| {
                     ui.with_layout(Layout::top_down(Align::Max), |ui| {
-                        let selected = app
-                            .settings
-                            .custom_theme
-                            .as_deref()
-                            .map(|filename| fastframe_theme::display_name(filename).into())
-                            .unwrap_or_else(|| app.settings.theme.label(locale));
-                        let response = egui::ComboBox::from_id_salt("appearance_theme")
-                            .selected_text(selected.as_ref())
-                            .width(200.0_f32.min(ui.available_width()))
-                            .show_ui(ui, |ui| {
-                                for choice in ThemeChoice::ALL {
-                                    if ui
-                                        .selectable_label(
-                                            app.settings.custom_theme.is_none()
-                                                && app.settings.theme == choice,
-                                            choice.label(locale).as_ref(),
-                                        )
-                                        .clicked()
-                                    {
-                                        app.actions.push(Action::SetTheme(choice));
-                                    }
-                                }
-                                if app.custom_themes.picker_themes().next().is_some() {
-                                    ui.separator();
-                                }
-                                for theme in app.custom_themes.picker_themes() {
-                                    if ui
-                                        .selectable_label(
-                                            app.settings.custom_theme.as_deref()
-                                                == Some(theme.filename.as_str()),
-                                            fastframe_theme::display_name(&theme.filename),
-                                        )
-                                        .clicked()
-                                    {
-                                        app.actions
-                                            .push(Action::SetCustomTheme(theme.filename.clone()));
-                                    }
-                                }
-                            });
-                        response.response.widget_info(|| {
-                            let mut info = egui::WidgetInfo::labeled(
-                                egui::WidgetType::ComboBox,
-                                ui.is_enabled(),
-                                theme_title.as_ref(),
-                            );
-                            info.current_text_value = Some(selected.to_string());
-                            info
-                        });
                         // The guide to writing a theme sits beside the folder
                         // it goes in, and above it when both do not fit.
                         let (guide, folder) = (&theme_guide, &themes_folder);
@@ -911,6 +1027,69 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         }
                     });
                 },
+            );
+            if appearance_rows[0].matches(&needle, &appearance) {
+                super::themes::gallery(app, ui);
+                ui.add_space(8.0);
+            }
+            {
+                use crate::settings::AccentSource;
+                let choices = AccentSource::ALL.map(|source| (source, source.label(locale)));
+                let choice_gap = 6.0;
+                let choices_width = choices
+                    .iter()
+                    .map(|(_, label)| theme::soft_button_width(ui, label))
+                    .sum::<f32>()
+                    + choice_gap * (choices.len() - 1) as f32;
+                filtered_row_sized(
+                    ui,
+                    &palette,
+                    &needle,
+                    &appearance,
+                    &appearance_rows[9],
+                    choices_width,
+                    |ui| {
+                        let mut choose = |ui: &mut egui::Ui, source: AccentSource, label: &str| {
+                            let chosen = app.settings.accent_source == source;
+                            let response = theme::soft_button(ui, &palette, None, label, chosen);
+                            response.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::RadioButton,
+                                    ui.is_enabled(),
+                                    chosen,
+                                    label,
+                                )
+                            });
+                            if response.clicked() && !chosen {
+                                app.actions.push(Action::SetAccentSource(source));
+                            }
+                        };
+                        if ui.available_width() >= choices_width {
+                            // Laid right to left, so the last choice goes first.
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = choice_gap;
+                                for (source, label) in choices.iter().rev() {
+                                    choose(ui, *source, label);
+                                }
+                            });
+                        } else {
+                            ui.with_layout(Layout::top_down(Align::Max), |ui| {
+                                ui.spacing_mut().item_spacing.y = choice_gap;
+                                for (source, label) in &choices {
+                                    choose(ui, *source, label);
+                                }
+                            });
+                        }
+                    },
+                );
+            }
+            backdrop_row(
+                app,
+                ui,
+                &palette,
+                &needle,
+                &appearance,
+                &appearance_rows[10],
             );
             filtered_row(
                 ui,

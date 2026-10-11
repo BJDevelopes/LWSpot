@@ -922,6 +922,54 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 }));
             }
             "shortcuts" => app.dialog = Some(Dialog::Shortcuts),
+            // The shared palettes in the theme gallery, without reading the
+            // person's themes folder, and Settings opened at Appearance.
+            "themes" => {
+                app.custom_themes = crate::theme::Catalog::preview(
+                    fastframe_theme::presets::themes().collect(),
+                    false,
+                );
+                app.demo_settings_filter = Some("Appearance".into());
+            }
+            "theme-editor" => {
+                let mut palette = crate::theme::Palette::dark();
+                palette.accent = egui::Color32::from_rgb(0xf2, 0x8c, 0x52);
+                palette.accent_hover = egui::Color32::from_rgb(0xf5, 0xa0, 0x6e);
+                palette.window = egui::Color32::from_rgb(0x16, 0x13, 0x1a);
+                palette.panel = egui::Color32::from_rgb(0x1d, 0x19, 0x22);
+                let mut draft = crate::theme_files::Draft::new(palette, "Ember".into());
+                draft.selected = fastframe_theme::BASE_COLORS
+                    .iter()
+                    .position(|name| *name == "accent")
+                    .unwrap_or(0);
+                app.dialog = Some(Dialog::ThemeEditor(Box::new(draft)));
+            }
+            // A theme whose text is too faint, so the editor warns.
+            "theme-editor-contrast" => {
+                let mut palette = crate::theme::Palette::light();
+                palette.text = egui::Color32::from_rgb(0xb0, 0xb4, 0xba);
+                let mut draft = crate::theme_files::Draft::new(palette, "Faded".into());
+                draft.selected = fastframe_theme::BASE_COLORS
+                    .iter()
+                    .position(|name| *name == "text")
+                    .unwrap_or(0);
+                draft.replace = Some("Faded.json".into());
+                app.dialog = Some(Dialog::ThemeEditor(Box::new(draft)));
+            }
+            "accent-windows" => {
+                app.settings.accent_source = crate::settings::AccentSource::Windows;
+            }
+            // The demo's covers come from the network, so the playing one is
+            // given a colour, as the backend would find it.
+            "accent-art" => {
+                app.settings.accent_source = crate::settings::AccentSource::AlbumArt;
+                if let Some(url) = app
+                    .now_playing()
+                    .and_then(|now| now.art_small.or(now.art_url))
+                {
+                    app.note_art_colour(url, [0xc2, 0x5b, 0x8e]);
+                }
+            }
             "premium" => app.dialog = Some(Dialog::PremiumNeeded),
             "edit" => {
                 app.dialog = Some(Dialog::EditPlaylist {
@@ -1217,6 +1265,10 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 let id = "8f2c1d0e4a6b4c3d9e7f5a1b2c3d4e5f".to_string();
                 app.settings.web_client_id = Some(id.clone());
                 app.web_app = Some(id);
+            }
+            // `filter:accent` types "accent" into the Settings search.
+            other if other.starts_with("filter:") => {
+                app.demo_settings_filter = Some(other["filter:".len()..].replace('+', " "));
             }
             _ => {}
         }
@@ -4792,7 +4844,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_theme_picker_applies_the_clicked_palette_and_exposes_its_name_and_value() {
+    fn theme_gallery_applies_the_clicked_palette_and_exposes_each_theme() {
         let (ctx, mut app) = accessible_app("custom-theme-picker");
         app.open(Page::Settings);
         ctx.data_mut(|data| {
@@ -4811,26 +4863,18 @@ mod tests {
             view_frame(&ctx, &mut app, vec![], App::frame_ui);
         }
         let painted = view_frame(&ctx, &mut app, vec![], App::frame_ui);
-        let picker = sidebar_text(&painted, "Follow system").center();
-        view_frame(
-            &ctx,
-            &mut app,
-            pointer_click(picker, egui::PointerButton::Primary),
-            App::frame_ui,
-        );
-        let painted = view_frame(&ctx, &mut app, vec![], App::frame_ui);
-        let menu_y = |name: &str| {
-            painted
-                .iter()
-                .filter(|(text, rect)| text == name && rect.center().y > picker.y)
-                .map(|(_, rect)| rect.center().y)
-                .next()
-                .expect("theme menu entry")
+        // Reading order: the built-in choices first, then the palette files
+        // by name, without `.json`.
+        let order = |name: &str| {
+            let rect = sidebar_text(&painted, name);
+            (
+                (rect.center().y / 10.0).round() as i32,
+                rect.center().x as i32,
+            )
         };
-        assert!(menu_y("Follow system") < menu_y("Light"));
-        assert!(menu_y("Light") < menu_y("Dark"));
-        // Listed by name, without `.json`.
-        assert!(menu_y("Dark") < menu_y("local"));
+        assert!(order("Follow system") < order("Light"));
+        assert!(order("Light") < order("Dark"));
+        assert!(order("Dark") < order("local"));
         let custom = sidebar_text(&painted, "local").center();
         view_frame(
             &ctx,
@@ -4846,14 +4890,202 @@ mod tests {
         );
         assert_eq!(ctx.theme(), egui::Theme::Light);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
-        let id = accessible_node(&tree, "Theme", egui::accesskit::Role::ComboBox);
-        let node = &tree
-            .nodes
-            .iter()
-            .find(|(node_id, _)| *node_id == id)
-            .unwrap()
-            .1;
-        assert_eq!(node.value(), Some("local"), "read out as shown");
+        let toggled = |tree: &egui::accesskit::TreeUpdate, name: &str| {
+            let id = accessible_node(tree, name, egui::accesskit::Role::RadioButton);
+            tree.nodes
+                .iter()
+                .find(|(node_id, _)| *node_id == id)
+                .unwrap()
+                .1
+                .toggled()
+        };
+        assert_eq!(
+            toggled(&tree, "local"),
+            Some(egui::accesskit::Toggled::True),
+            "read out as the chosen theme"
+        );
+        assert_eq!(
+            toggled(&tree, "Dark"),
+            Some(egui::accesskit::Toggled::False)
+        );
+        // A screen reader's click, or the keyboard, chooses a tile too.
+        let dark = accessible_node(&tree, "Dark", egui::accesskit::Role::RadioButton);
+        accessible_frame(
+            &ctx,
+            &mut app,
+            vec![accessible_action(
+                dark,
+                egui::accesskit::Action::Focus,
+                None,
+            )],
+        );
+        accessible_frame(
+            &ctx,
+            &mut app,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        assert!(app.settings.custom_theme.is_none());
+        assert_eq!(app.settings.theme, crate::settings::ThemeChoice::Dark);
+        assert_eq!(app.palette, crate::theme::Palette::dark());
+        app.backend.shutdown();
+    }
+
+    /// The editor draws the whole app in the colours being chosen, and
+    /// Cancel brings the theme from before back untouched.
+    #[test]
+    fn the_theme_editor_previews_live_and_cancel_restores() {
+        let (ctx, mut app) = accessible_app("theme-editor-preview");
+        app.open(Page::Settings);
+        app.apply(Action::SetTheme(crate::settings::ThemeChoice::Dark), &ctx);
+        view_frame(&ctx, &mut app, vec![], App::frame_ui);
+        assert_eq!(app.palette, crate::theme::Palette::dark());
+        app.apply(Action::OpenThemeEditor, &ctx);
+        let Some(Dialog::ThemeEditor(draft)) = &mut app.dialog else {
+            panic!("the editor opens");
+        };
+        assert_eq!(
+            draft.palette,
+            crate::theme::Palette::dark(),
+            "starts from the theme in use"
+        );
+        draft.palette.window = egui::Color32::from_rgb(0x30, 0x10, 0x40);
+        draft.palette.dark = false;
+        let edited = draft.palette;
+        view_frame(&ctx, &mut app, vec![], App::frame_ui);
+        let painted = view_frame(&ctx, &mut app, vec![], App::frame_ui);
+        assert_eq!(app.palette, edited, "the whole app previews the edit");
+        assert_eq!(ctx.theme(), egui::Theme::Light, "controls follow the base");
+        assert!(painted.iter().any(|(text, _)| text == "Customize theme"));
+        let rect = app.dialog_rect.expect("the editor drew itself");
+        assert!(
+            rect.right() <= 1280.0 && rect.left() > 400.0,
+            "beside the app: {rect:?}"
+        );
+        let tree = accessible_frame(&ctx, &mut app, vec![]);
+        accessible_node(&tree, "Accent", egui::accesskit::Role::Button);
+        app.apply(Action::CloseDialog, &ctx);
+        view_frame(&ctx, &mut app, vec![], App::frame_ui);
+        assert_eq!(
+            app.palette,
+            crate::theme::Palette::dark(),
+            "cancel restores"
+        );
+        assert_eq!(ctx.theme(), egui::Theme::Dark);
+        assert!(app.settings.custom_theme.is_none());
+        app.backend.shutdown();
+    }
+
+    /// Save writes the palette into the themes folder, selects it, and asks
+    /// before replacing a theme of the same name.
+    #[test]
+    fn the_theme_editor_saves_a_new_theme_and_asks_before_replacing() {
+        let (ctx, mut app) = accessible_app("theme-editor-save");
+        let directory = app.dirs.config.join("themes");
+        let _ = std::fs::remove_dir_all(&directory);
+        app.load_custom_themes(&crate::backend::Waker::default());
+        app.apply(Action::OpenThemeEditor, &ctx);
+        let edit = |app: &mut App, name: &str, accent: egui::Color32| {
+            let Some(Dialog::ThemeEditor(draft)) = &mut app.dialog else {
+                panic!("the editor is open");
+            };
+            draft.name = name.into();
+            draft.palette.accent = accent;
+            draft.palette
+        };
+        let finish = |ctx: &egui::Context, app: &mut App| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                app.poll_theme_files(ctx);
+                app.poll_custom_themes(ctx);
+                view_frame(ctx, app, vec![], App::frame_ui);
+                let saving =
+                    matches!(&app.dialog, Some(Dialog::ThemeEditor(draft)) if draft.saving);
+                if !saving && !app.custom_themes.loading() {
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline, "the save finished");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        };
+        let first = edit(
+            &mut app,
+            "  My: theme?  ",
+            egui::Color32::from_rgb(0xff, 0x40, 0x80),
+        );
+        app.apply(Action::SaveTheme { replace: false }, &ctx);
+        finish(&ctx, &mut app);
+        assert!(app.dialog.is_none(), "saved and closed");
+        assert_eq!(app.settings.custom_theme.as_deref(), Some("My theme.json"));
+        let saved: crate::theme::Palette = fastframe_theme::parse_palette(
+            &std::fs::read_to_string(directory.join("My theme.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved, first);
+        assert_eq!(app.palette, first);
+        assert!(app.custom_themes.find("My theme.json").is_some(), "listed");
+
+        // The same name again: nothing is written until Replace.
+        app.apply(Action::OpenThemeEditor, &ctx);
+        let second = edit(
+            &mut app,
+            "My theme",
+            egui::Color32::from_rgb(0x20, 0x80, 0xff),
+        );
+        app.apply(Action::SaveTheme { replace: false }, &ctx);
+        finish(&ctx, &mut app);
+        let Some(Dialog::ThemeEditor(draft)) = &app.dialog else {
+            panic!("still open, asking");
+        };
+        assert_eq!(draft.replace.as_deref(), Some("My theme.json"));
+        let painted = view_frame(&ctx, &mut app, vec![], App::frame_ui);
+        assert!(painted.iter().any(|(text, _)| text == "Replace"));
+        let kept: crate::theme::Palette = fastframe_theme::parse_palette(
+            &std::fs::read_to_string(directory.join("My theme.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(kept, first, "untouched before Replace");
+        app.apply(Action::SaveTheme { replace: true }, &ctx);
+        finish(&ctx, &mut app);
+        assert!(app.dialog.is_none());
+        let replaced: crate::theme::Palette = fastframe_theme::parse_palette(
+            &std::fs::read_to_string(directory.join("My theme.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(replaced, second);
+
+        // A name with nothing usable in it is refused with a reason.
+        app.apply(Action::OpenThemeEditor, &ctx);
+        edit(&mut app, " ?*: ", egui::Color32::RED);
+        app.apply(Action::SaveTheme { replace: false }, &ctx);
+        let Some(Dialog::ThemeEditor(draft)) = &app.dialog else {
+            panic!("still open");
+        };
+        assert!(draft.error.is_some() && !draft.saving);
+        app.backend.shutdown();
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    /// A demo that does not read the themes folder never writes to it.
+    #[test]
+    fn the_demo_does_not_write_into_the_real_themes_folder() {
+        let (ctx, mut app) = accessible_app("theme-editor-demo");
+        app.apply(Action::OpenThemeEditor, &ctx);
+        app.apply(Action::SaveTheme { replace: false }, &ctx);
+        let Some(Dialog::ThemeEditor(draft)) = &app.dialog else {
+            panic!("still open");
+        };
+        assert!(!draft.saving);
+        assert_eq!(
+            draft.error.as_deref(),
+            Some("The demo does not save themes.")
+        );
+        assert!(!app.dirs.config.join("themes").exists());
         app.backend.shutdown();
     }
 

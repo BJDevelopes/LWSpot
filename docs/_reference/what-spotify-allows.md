@@ -1,5 +1,5 @@
 ---
-title: What Spotify Lets a Client Do
+title: What Spotify lets a client do
 description: What Spotify's Web API and librespot provide, and what neither supports.
 nav_order: 3
 ---
@@ -39,7 +39,7 @@ Spotify-owned playlists, related artists, recommendations, or audio features.
 This is why a personal app cannot handle every request. Complete playlist
 library views stay on the shared app. Playlists other people own, and every
 playlist when there is no personal app, are read over the librespot session
-while local playback is signed in. See [How It Connects](how-it-connects.md).
+while local playback is signed in. See [How it connects](how-it-connects.md).
 
 ## librespot session
 
@@ -118,7 +118,7 @@ The Web API and librespot do not provide these features:
   would have to add them to its own audio path.
 - **Free-account playback.** Replacing Spotify audio with another source is
   also out of scope. See the
-  [contribution guide](../../CONTRIBUTING.md).
+  [contribution guide](https://github.com/BJDevelopes/LWSpot/blob/main/CONTRIBUTING.md).
 - **Friend activity, private-session status, and similar social features.**
   Spotify has no public API for them.
 - **Canvas videos and video podcasts.** librespot does not provide them.

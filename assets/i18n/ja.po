@@ -3156,6 +3156,239 @@ msgstr "LWSpot のウィンドウを開けません"
 msgid "On Windows on ARM, the OpenGL that LWSpot draws with comes from Microsoft's OpenCL, OpenGL & Vulkan Compatibility Pack. Open its Microsoft Store page to install or repair it?"
 msgstr "Windows on ARM では、LWSpot の描画に使う OpenGL は Microsoft の OpenCL, OpenGL & Vulkan Compatibility Pack から提供されます。インストールまたは修復するために Microsoft Store のページを開きますか？"
 
+#: src/ui/settings.rs:511
+msgid "Start with Windows"
+msgstr "Windowsと同時に起動"
+
+#: src/ui/settings.rs:514
+msgid "Open LWSpot when you sign in to Windows. Nothing plays until you ask."
+msgstr "WindowsにサインインするとLWSpotが開きます。操作するまで何も再生されません。"
+
+#: src/ui/settings.rs:657
+msgid "Open LWSpot"
+msgstr "LWSpotを開く"
+
+#: src/ui/settings.rs:658
+msgid "Start in the tray"
+msgstr "システムトレイで起動"
+
+#. Translators: {error} is an error message.
+#: src/app.rs:9260
+#, rust-format
+msgid "Couldn't change Start with Windows: {error}"
+msgstr "「Windowsと同時に起動」を変更できませんでした：{error}"
+
+#: src/jumplist.rs:31
+msgid "Play / Pause"
+msgstr "再生／一時停止"
+
+#: src/jumplist.rs:35
+msgid "Show LWSpot"
+msgstr "LWSpotを表示"
+
+#. Translators: An accent colour source: the playing song's cover.
+#: src/settings.rs
+msgid "Album art"
+msgstr "アルバムアート"
+
+#. Translators: The Windows 11 acrylic material: a frosted, see-through window background.
+#: src/settings.rs
+msgid "Acrylic"
+msgstr "アクリル"
+
+#. Translators: {name} is the name of a theme.
+#: src/app.rs
+#, rust-format
+msgid "Imported “{name}”"
+msgstr "「{name}」をインポートしました"
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't import the theme: {error}"
+msgstr "テーマをインポートできませんでした：{error}"
+
+#. Translators: {name} is the file a theme was saved as.
+#: src/app.rs
+#, rust-format
+msgid "Exported “{name}”"
+msgstr "「{name}」をエクスポートしました"
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't export the theme: {error}"
+msgstr "テーマをエクスポートできませんでした：{error}"
+
+#. Translators: The suggested name of a new theme in the theme editor.
+#: src/app.rs
+msgid "My theme"
+msgstr "マイテーマ"
+
+#: src/app.rs
+msgid "Give the theme a name."
+msgstr "テーマに名前を付けてください。"
+
+#: src/app.rs
+msgid "The demo does not save themes."
+msgstr "デモではテーマを保存しません。"
+
+#: src/app.rs src/ui/themes.rs
+msgid "Import theme"
+msgstr "テーマをインポート"
+
+#. Translators: The kind of file shown in the open and save dialogs for themes.
+#: src/app.rs
+msgid "Theme file"
+msgstr "テーマファイル"
+
+#: src/app.rs src/ui/themes.rs
+msgid "Export theme"
+msgstr "テーマをエクスポート"
+
+#: src/ui/settings.rs
+msgid "Accent colour"
+msgstr "アクセントカラー"
+
+#: src/ui/settings.rs
+msgid "The colour of buttons and highlights: the theme's own, the accent colour set in Windows, or the playing song's cover. Adjusted when needed so text stays readable."
+msgstr "ボタンや強調表示の色です。テーマ自体の色、Windowsで設定したアクセントカラー、再生中の曲のカバーから選べます。文字が読みやすいよう、必要に応じて調整されます。"
+
+#: src/ui/settings.rs
+msgid "Window backdrop"
+msgstr "ウィンドウの背景"
+
+#: src/ui/settings.rs
+msgid "Mica and acrylic need Windows 11 2022 Update (22H2) or later."
+msgstr "Micaとアクリルには Windows 11 2022 Update（22H2）以降が必要です。"
+
+#: src/ui/settings.rs
+msgid "Mica and acrylic need the Windows title bar. Turn off the custom title bar to use them."
+msgstr "Micaとアクリルには Windows のタイトルバーが必要です。使うにはカスタムタイトルバーをオフにしてください。"
+
+#: src/ui/settings.rs
+msgid "Let Windows' Mica or acrylic material show through the window. Text and controls stay opaque."
+msgstr "Windows の Mica またはアクリル素材をウィンドウ越しに表示します。文字とコントロールは不透明のままです。"
+
+#: src/ui/settings.rs
+msgid "Takes effect after restarting LWSpot."
+msgstr "LWSpot を再起動すると反映されます。"
+
+#. Translators: Opens the theme editor on the theme in use.
+#: src/ui/themes.rs
+msgid "Customize"
+msgstr "カスタマイズ"
+
+#: src/ui/themes.rs
+msgid "Change this theme's colours and save it as a new theme."
+msgstr "このテーマの色を変更して、新しいテーマとして保存します。"
+
+#. Translators: A colour of a theme, as named in the theme editor.
+#: src/ui/themes.rs
+msgid "Window"
+msgstr "ウィンドウ"
+
+#: src/ui/themes.rs
+msgid "Panels"
+msgstr "パネル"
+
+#: src/ui/themes.rs
+msgid "Surfaces"
+msgstr "サーフェス"
+
+#: src/ui/themes.rs
+msgid "Surfaces on hover"
+msgstr "ホバー時のサーフェス"
+
+#: src/ui/themes.rs
+msgid "Surfaces when pressed"
+msgstr "押下時のサーフェス"
+
+#: src/ui/themes.rs
+msgid "Outlines"
+msgstr "枠線"
+
+#: src/ui/themes.rs
+msgid "Text"
+msgstr "テキスト"
+
+#: src/ui/themes.rs
+msgid "Secondary text"
+msgstr "補助テキスト"
+
+#: src/ui/themes.rs
+msgid "Dim text"
+msgstr "淡色テキスト"
+
+#: src/ui/themes.rs
+msgid "Accent"
+msgstr "アクセント"
+
+#: src/ui/themes.rs
+msgid "Accent on hover"
+msgstr "ホバー時のアクセント"
+
+#: src/ui/themes.rs
+msgid "Text on accent"
+msgstr "アクセント上のテキスト"
+
+#: src/ui/themes.rs
+msgid "Danger"
+msgstr "危険"
+
+#: src/ui/themes.rs
+msgid "Warning"
+msgstr "警告"
+
+#: src/ui/themes.rs
+msgid "Menus and dialogs"
+msgstr "メニューとダイアログ"
+
+#: src/ui/themes.rs
+msgid "Shadow"
+msgstr "影"
+
+#. Translators: {ratio} is a contrast ratio such as 3.2 (read as 3.2:1).
+#: src/ui/themes.rs
+#, rust-format
+msgid "Text is hard to read on the window or panels ({ratio}:1). Aim for at least 4.5:1."
+msgstr "ウィンドウやパネル上のテキストが読みにくくなっています（{ratio}:1）。4.5:1 以上を目安にしてください。"
+
+#. Translators: {ratio} is a contrast ratio such as 2.1 (read as 2.1:1).
+#: src/ui/themes.rs
+#, rust-format
+msgid "Text on the accent is hard to read ({ratio}:1). Aim for at least 3:1."
+msgstr "アクセント上のテキストが読みにくくなっています（{ratio}:1）。3:1 以上を目安にしてください。"
+
+#: src/ui/themes.rs
+msgid "Customize theme"
+msgstr "テーマをカスタマイズ"
+
+#. Translators: {name} is the name of a theme.
+#: src/ui/themes.rs
+#, rust-format
+msgid "A theme called “{name}” already exists. Replace it?"
+msgstr "「{name}」という名前のテーマはすでにあります。置き換えますか？"
+
+#: src/ui/themes.rs
+msgid "Replace"
+msgstr "置き換える"
+
+#. Translators: Whether a theme is built on the light or the dark appearance, chosen beside it.
+#: src/ui/themes.rs
+msgid "Base"
+msgstr "ベース"
+
+#: src/ui/themes.rs
+msgid "Theme name"
+msgstr "テーマ名"
+
+#. Translators: The label of a theme's name field in the theme editor.
+#: src/ui/themes.rs
+msgctxt "theme"
+msgid "Name"
+msgstr "名前"
+
 #~ msgid "MacBook notch interactive widget"
 #~ msgstr "MacBookノッチ対話型ウィジェット"
 

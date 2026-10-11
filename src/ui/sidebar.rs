@@ -519,12 +519,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .default_size(app.settings.sidebar_width)
         .size_range(fit.range.clone())
         .show_separator_line(false)
-        .frame(Frame::new().fill(palette.panel).inner_margin(Margin {
-            left: 12,
-            right: 8,
-            top,
-            bottom: if expanded_art { 0 } else { 8 },
-        }));
+        .frame(
+            Frame::new()
+                .fill(crate::window::panel_ground(palette.panel))
+                .inner_margin(Margin {
+                    left: 12,
+                    right: 8,
+                    top,
+                    bottom: if expanded_art { 0 } else { 8 },
+                }),
+        );
     let response = panel.show(ui, |ui| {
         let art_rect = expanded_art.then(|| expanded_art_rect(ui));
         if let Some(rect) = art_rect.filter(|_| !floating_art) {
@@ -577,7 +581,7 @@ fn paint_grid_art_mask(app: &App, ui: &egui::Ui, rect: Rect) {
         ui,
         bottom_fade_rect,
         egui::Color32::TRANSPARENT,
-        app.palette.panel,
+        crate::window::panel_ground(app.palette.panel),
     );
     ui.painter().rect_filled(
         Rect::from_min_max(
@@ -585,7 +589,7 @@ fn paint_grid_art_mask(app: &App, ui: &egui::Ui, rect: Rect) {
             ui.max_rect().right_bottom(),
         ),
         0.0,
-        app.palette.panel,
+        crate::window::panel_ground(app.palette.panel),
     );
 }
 

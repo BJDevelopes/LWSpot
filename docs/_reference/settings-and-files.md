@@ -1,5 +1,5 @@
 ---
-title: Settings & Files
+title: Settings and files
 description: Configuration, credential and cache locations, and what is safe to delete.
 nav_order: 0
 ---
@@ -11,6 +11,32 @@ LWSpot keeps its files in three folders:
 - **Config:** `%APPDATA%\LWSpot\config`
 - **Data (state and logs):** `%LOCALAPPDATA%\LWSpot\data`
 - **Cache:** `%LOCALAPPDATA%\LWSpot\cache`
+
+A portable copy with a `data` folder beside `lwspot.exe` (as the portable
+ZIP comes) uses that folder instead, with the same three inside:
+
+```
+LWSpot  lwspot.exe
+  lwspot-portable.txt   marks the copy as portable, for updates too
+  data    config\             settings.json, skins, MilkDrop presets, themes
+    state\              session, history, logs, add-ons, app.ron
+    cache\              audio, artwork, lyrics, playlist pages
+```
+
+In the table below, read `%APPDATA%\LWSpot\config` as `data\config`,
+`%LOCALAPPDATA%\LWSpot\data` as `data\state`, and
+`%LOCALAPPDATA%\LWSpot\cache` as `data\cache` for such a copy. The window
+state eframe keeps (`app.ron`, in `%APPDATA%\lwspot\data` otherwise) moves
+there too. The copy needs both `lwspot-portable.txt` reading
+`lwspot-portable-v1` and the `data` folder; a copy without the folder, an
+installed copy, and a copy that cannot write to `data` (such as one under
+Program Files, which then logs a warning) use the usual folders. Credential
+Manager entries stay with the Windows user, and the encrypted fallback files
+in `data\state\credential-storage` open only for the user who wrote them:
+moving the folder keeps the copy signed in, while another PC or Windows
+account signs in again. `data\state\credential-profile` records which
+Credential Manager entries the copy uses, so a new drive letter does not
+lose them.
 
 | What | Where | Safe to delete? |
 | --- | --- | --- |
@@ -179,8 +205,25 @@ because sizing or moving such a window restores it down. A closing main window
 keeps its own geometry until the native window closes, so it cannot be resized
 to the mini player and overwrite its saved size or maximized state.
 
+**Start with Windows** is not kept in `settings.json`. It is the string
+value `LWSpot` under
+`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`, whose
+data is `"<path to lwspot.exe>" --autostart` to open the window, or
+`--autostart=tray` to start in the tray. Off removes the value. Task Manager
+and Settings > Apps > Startup turn an entry off without removing it, through
+a binary value of the same name under
+`...\CurrentVersion\Explorer\StartupApproved\Run` whose first byte is 3;
+LWSpot reads that as Off, and removes the marker when you choose a mode in
+its Settings. While the entry is on, each start rewrites the path if
+`lwspot.exe` has moved. The uninstaller removes both values when they name
+the installed copy. Demo mode never reads or writes them.
+
+The taskbar's jump list is written by each start of LWSpot, and again when
+the interface language changes. Windows keeps it with its own taskbar data.
+
 The running copy keeps its single-instance files in an `instance` folder in
-the data folder. `instance.lock` marks the running copy; Windows releases it
+the data folder, `%LOCALAPPDATA%\LWSpot\data`, for a portable copy too: one
+LWSpot runs per Windows user. `instance.lock` marks the running copy; Windows releases it
 when LWSpot quits or crashes. `instance.key` holds the loopback port and a
 random token that every request from a second launch or the `lwspot` command
 must carry. LWSpot writes them on each start; nothing in them needs keeping.
@@ -202,7 +245,9 @@ main fields are:
 | `language` | `system` | The interface language. `system` follows Windows' preferred languages and falls back to English; a tag such as `es`, `de-DE`, `pt-BR` or `zh-Hant` selects that language. An unknown tag follows the system |
 | `custom_theme` | `null` | Selected JSON filename from the `themes` folder |
 | `custom_theme_cache` | absent | Last accepted custom palette; preserves appearance if its file is missing or invalid |
-| `accent_from_art` | `true` | Tint pages with album art |
+| `accent_from_art` | `true` | Tint pages and the player bar with album art |
+| `accent_source` | `theme` | Where the accent colour comes from: `theme`, `windows` (the Windows accent colour) or `album_art` (the playing song's cover) |
+| `backdrop` | `off` | Mica or acrylic behind the main window on Windows 11 2022 Update (22H2) or later: `off`, `mica` or `acrylic`. Read when the window opens |
 | `player_bar_vis` | `off` | What moves behind the player bar while a song plays on this computer: `off`, `spectrum` or `waveform` |
 | `player_bar_vis_fps` | `30` | How many frames a second the player bar's visualizer draws: `20`, `30` or `60`; another number draws 30 |
 | `library_sort` | `{}` | Per-section Library order overrides: `library`, `recently_played`, `name`, `recently_added`, `local`, or `spotify`, where supported |
@@ -256,6 +301,11 @@ lwspot [OPTIONS] [LINK]
   -v, --verbose         More logs from librespot and the API client
 ```
 
+Two more arguments exist for Windows rather than for typing, so `--help`
+leaves them out: `--autostart[=tray]`, which the Start with Windows entry
+starts LWSpot with, and the `mini-player` verb, which the jump list's
+**Mini player** task sends to the running copy.
+
 A link goes to the running LWSpot when there is one, which then opens
 the page and brings its window forward; otherwise the app starts on it.
 Windows runs exactly this when you open a `spotify:` link. The playback
@@ -276,7 +326,7 @@ cargo run --features demo -- --demo
 
 `--demo-page` opens a page, such as `home`, `playlist:pl1`, or `artist:art0`,
 and `--demo-show` adds surfaces on top of it: a comma separated list of
-`queue`, `playing-next`, `devices`, `shortcuts`, `premium`, `create`, `duplicate`, `light`,
+`queue`, `playing-next`, `devices`, `shortcuts`, `premium`, `create`, `duplicate`, `light`, `dark`,
 `focus`, `winamp`, `playlist`, `eq`, `eq-shade`, `compact`, `update`, `personal-app`,
 `collection-loading`, `shuffle-selected`, `shuffle-started`, `library-list`,
 `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
@@ -296,6 +346,7 @@ sound on this computer with that player bar visualizer on.
 lyrics, with words or without, at the window's own size.
 `rtl` gives the first songs of `playlist:pl1` invented Hebrew and Arabic
 titles, some mixed with English, numbers, and brackets.
+`scripts` gives them Japanese, Chinese and Korean titles instead.
 `collection-loading` keeps known collection metadata and placeholder artwork
 visible while replacing the page content, with unfinished controls disabled.
 `--demo-language <TAG>` shows the interface in one of the bundled languages,
@@ -305,8 +356,16 @@ such as `es` or `ja`, in place of the saved setting and the system's language.
 making deterministic screenshots for these pages:
 
 ```powershell
-cargo run --release --features demo -- --demo-shot docs/screenshot.png --demo-page playlist:pl1 --demo-show queue
+cargo run --release --features demo -- --demo-shot docs/screenshot.png --demo-size 1440x900 --demo-show dark,queue
 ```
+
+The screenshots in these pages were made this way: `docs/screenshot.png` as
+above, `assets/images/home-light.png` with `light,queue`,
+`assets/images/themes.png` with `--demo-page settings --demo-show dark,themes`,
+`assets/images/scripts.png` with
+`--demo-page playlist:pl1 --demo-show dark,scripts,player-bar-spectrum`, and
+the full-screen lyrics with `dark,lyrics-fullscreen,player-bar-spectrum` (or
+`light,...`), scaled down to 1240 pixels wide. Keep each image under 1 MB.
 
 The image uses the current window size. `--demo-size WIDTHxHEIGHT` sets that
 size in logical pixels for a shot (for example `760x800` or `1240x800`).
@@ -319,7 +378,12 @@ window's framework state. Built-in appearance settings still apply.
 `--demo-data <DIRECTORY>` keeps demo caches and logs under that directory's
 `cache` and `state` folders, with settings read from `config`.
 Custom palettes and their cache are used only with an explicit `--demo-data`
-directory; the ordinary demo does not scan your real themes folder.
+directory; the ordinary demo does not scan your real themes folder, and the
+theme editor and Import do not write to it.
+`--demo-show themes` lists the shared palettes in the theme gallery and
+opens Settings at Appearance; `theme-editor` and `theme-editor-contrast` open
+the theme editor; `accent-windows` and `accent-art` pick an accent source; and
+`filter:<text>` types `<text>` into the Settings search (`+` for a space).
 
 ## Home shelves
 
@@ -349,23 +413,28 @@ delete the ones you do not want. LWSpot never rewrites them, and a deleted one
 stays deleted; `.installed-palettes` in the folder records which it has
 already put there.
 
-To make your own, add JSON files to the `themes` folder.
-Run `lwspot reload-themes` if the app is already open, then select it
-under **Settings → Appearance → Theme**, where it is listed by its filename
-without `.json`.
+**Settings → Appearance → Theme** shows every theme as a small picture of
+the app in its own colours: **Follow system** (light and dark side by side),
+**Light**, **Dark**, then each palette file by its filename without `.json`.
+Click a picture, or move to it with Tab and press Enter or Space, to switch;
+the theme in use has an accent ring and a tick. Screen readers hear each
+picture as a radio button with the theme's name.
 
 The default is **Follow system**, which uses the light or dark mode set in
-Windows. Saved Dark, Light and custom choices are preserved when updating. The
-picker starts with **Follow system**, **Light**, and **Dark**, then a
-separator, followed by the local palettes. Themes change colors and keep the
-app's existing fonts. **How to make a theme**, beside the picker, opens this
-section. The **Open themes folder** icon button beside the picker creates the
-folder if needed and opens it in File Explorer, using the same button style as
-the Winamp skins folder. After adding or editing a JSON file, run
-`lwspot reload-themes` to refresh the list and the selected palette without
+Windows. Saved Dark, Light and custom choices are preserved when updating.
+Themes change colors and keep the app's existing fonts. **How to make a
+theme** opens this section. **Open themes folder** creates the folder if
+needed and opens it in File Explorer, using the same button style as the
+Winamp skins folder. After adding or editing a JSON file by hand, run
+`lwspot reload-themes` to refresh the gallery and the selected palette without
 restarting playback. Choosing a built-in theme clears the custom selection.
 Whenever the colours change (a theme picked here, or the system going light or
 dark), the new colours open from the middle of the window outwards.
+The Windows title bar follows the theme too: on Windows 11 it takes the
+theme's window and text colours, and on Windows 10 it switches between light
+and dark with the theme.
+
+### Theme files
 
 For example, `themes\gruvbox.json`:
 
@@ -388,6 +457,12 @@ Supported colors are `window`, `panel`, `surface`, `surface_hover`,
 `accent_hover`, `on_accent`, `danger`, `warning`, `overlay`, and `shadow`.
 Values must be `#RRGGBB` or `#RRGGBBAA`.
 
+A custom palette's `base` controls both its inherited colors and the light or
+dark styling of standard controls. Album-art tinting and the accent colour
+source remain independent settings; turn tinting off and keep the theme's
+accent for fixed colors throughout. Palettes apply to the main
+window; Winamp skins remain separate. This first format controls colors only.
+
 Files are read in the background at launch and when `lwspot reload-themes`
 is called. The command updates the selected palette without interrupting
 playback, changing your selection or showing the window. It does not start a
@@ -406,7 +481,56 @@ built-in choice. Choosing Dark, Light or Follow system clears the custom
 selection and its cache. Editing or deleting the optional cache does not
 reset unrelated settings.
 
-A custom palette's `base` controls both its inherited colors and the light or
-dark styling of standard controls. Album-art tinting remains an independent
-setting; turn it off for fixed colors throughout. Palettes apply to the main
-window; Winamp skins remain separate. This first format controls colors only.
+### Theme editor
+
+**Customize**, under the gallery, opens the theme editor on the theme in use.
+The editor lists the sixteen colours a palette file sets; choose one to change
+it with the colour picker, or type its `#RRGGBB` value. **Base** chooses
+whether standard controls are drawn light or dark. The whole app is drawn in
+the colours being chosen while the editor is open, and **Cancel** (or Esc)
+brings back the theme from before. The editor warns when text has less than
+4.5:1 contrast with the window or panels, or text on the accent less than
+3:1 (the WCAG ratios for text and for large text).
+
+**Save** writes the theme into the `themes` folder as `<name>.json` and
+selects it. Characters Windows does not allow in a file name are left out, and
+a name Windows reserves (such as `CON`) is refused. When a theme of that name
+already exists, the editor asks before replacing it. A saved theme is an
+ordinary palette file naming its base and all sixteen colours.
+
+**Import theme** copies a palette file chosen in a file dialog into the
+`themes` folder and selects it. The file is checked first and refused, with
+the reason, if it is not a valid palette. An import never replaces a theme:
+a second `Sunset.json` comes in as `Sunset 2.json`. **Export theme** saves
+the theme in use as a palette file wherever you choose, to share it.
+
+### Accent colour
+
+**Settings → Appearance → Accent colour** chooses where buttons, switches,
+the progress bar and other highlights take their colour from, one source at a
+time:
+
+- **Theme**: the theme's own accent (the default). Light and Dark use violet
+  (`#5A47E0` and `#6D5BF0`).
+- **Windows**: the accent colour set in Windows Settings → Personalization →
+  Colors. A change there reaches LWSpot at once.
+- **Album art**: the colour of the playing song's cover. The accent blends to
+  the next song's colour over about half a second, and the last colour stays
+  until the next one is known, so it never flashes back in between. Without a
+  cover, or with a nearly grey one, the theme's accent stays.
+
+A colour from Windows or a cover keeps its hue, with its lightness adjusted
+when needed so it stands out from the window and panels by at least 3:1 and
+the text on it reads at 4.5:1 or better. **Colour from album art** is a
+separate switch: it tints page headers and the player bar with the cover.
+
+### Window backdrop
+
+On Windows 11 2022 Update (22H2) or later, **Settings → Appearance → Window
+backdrop** can put Windows' **Mica** (the wallpaper, blurred and tinted) or
+**Acrylic** (what is behind the window, frosted) behind LWSpot. The window and
+panels let it through; text, controls, menus and dialogs stay opaque, and the
+title bar takes the backdrop's own colour. The window is made see-through
+when it opens, so a change takes effect after restarting LWSpot, as the row
+says. With transparency effects turned off in Windows, the window stays
+opaque. Older Windows versions, and the custom title bar, keep the row off.

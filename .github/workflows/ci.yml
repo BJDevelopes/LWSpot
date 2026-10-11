@@ -31,8 +31,9 @@ jobs:
         os: [windows-latest, windows-11-arm]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
+          toolchain: stable
           components: rustfmt, clippy
       # Only the MilkDrop add-on (the milkdrop feature) needs these: libprojectM
       # reads OpenGL through GLEW, and projectm-sys builds against vcpkg's
@@ -42,10 +43,10 @@ jobs:
       # Native tools on each runner: the action's default is x64, which on the
       # arm64 runner would compile under emulation.
       - name: MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Formatting
@@ -90,6 +91,15 @@ jobs:
             $headers = & dumpbin /headers $binary | Out-String
             if ($headers -notmatch $machine) { throw "$binary is not built for $env:RUNNER_ARCH`:`n$headers" }
           }
+      # The winget manifests fill in from a checksums.txt of this version.
+      - name: winget manifests
+        if: runner.arch != 'ARM64'
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          $checksums = "$env:RUNNER_TEMP\checksums.txt"
+          'x86_64', 'aarch64' | ForEach-Object { ('0' * 64) + "  lwspot-v$version-$_-pc-windows-msvc-setup.exe" } | Set-Content $checksums
+          ./packaging/winget/update-manifests.ps1 -Version $version -Checksums $checksums -OutDir "$env:RUNNER_TEMP\winget"
       - name: Windows installer syntax
         shell: pwsh
         run: |

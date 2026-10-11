@@ -295,6 +295,10 @@ pub struct App {
     pub locale: crate::i18n::Locale,
     #[cfg(any(test, feature = "demo"))]
     pub demo_windows_controls: bool,
+    /// A Settings search to type before the first frame, for screenshots
+    /// of one section.
+    #[cfg(any(test, feature = "demo"))]
+    pub demo_settings_filter: Option<String>,
     applied_dark: Option<bool>,
     /// Reveals new colours from the middle of the window outwards.
     theme_transition: fastframe_theme::Transition,
@@ -302,6 +306,23 @@ pub struct App {
     /// applies, on a context that never draws, turn it off.
     pub(crate) reveal_theme_changes: bool,
     pub custom_themes: theme::Catalog,
+    /// The theme's own palette as last applied, before any accent from
+    /// Windows or the cover; a change of it is a change of theme.
+    applied_base: Option<Palette>,
+    /// Blends the accent to a new song's colour.
+    accent_fade: crate::accent::Fade,
+    /// The last accented palette, by the theme and colour it came from.
+    accent_memo: Option<((Palette, Color32, bool), Palette)>,
+    /// The Windows accent colour, `None` until read.
+    windows_accent: Option<Option<Color32>>,
+    /// The playing song's cover colour, kept while the next song's is
+    /// still being worked out so the accent never falls back in between.
+    album_accent: Option<[u8; 3]>,
+    /// Saving, importing and exporting palette files.
+    theme_jobs: crate::theme_files::Jobs,
+    /// Whether this run reads the themes folder, and so may write to it.
+    /// A demo without its own data folder leaves the person's alone.
+    themes_writable: bool,
 
     pub auth: AuthStatus,
     pub user: Option<User>,
@@ -412,6 +433,9 @@ pub struct App {
     saved_writes: HashMap<String, bool>,
     pub accents: HashMap<String, Color32>,
     accent_pending: HashSet<String>,
+    /// Each cover's colour as found, from which [`Self::accents`] are made
+    /// for the current light or dark palette.
+    art_colours: HashMap<String, [u8; 3]>,
 
     pub dialog: Option<Dialog>,
     cover_request: u64,
@@ -589,6 +613,12 @@ pub struct App {
     pub winamp: crate::winamp::WinampState,
     /// The spectrum behind the player bar, when that is chosen.
     pub player_bar_analyser: crate::vis::WideAnalyser,
+    /// Start with Windows: the user's startup entry for the running
+    /// instance, one in memory everywhere else.
+    pub autostart: crate::autostart::Autostart,
+    /// Whether this instance writes the taskbar's jump list, so a language
+    /// change writes it again in the new language.
+    jump_list: bool,
 }
 
 /// How many plays the Home shelf asks for: it shows sixteen cards.
@@ -634,6 +664,14 @@ impl fastframe_shell::Resident for App {
 
     fn window_gone(&mut self) {
         App::window_gone(self);
+    }
+
+    /// `--autostart=tray`: the tray icon is the way back to the window.
+    /// Sign-in and the engine start in `App::new`, with or without one.
+    fn start_hidden(&mut self) -> bool {
+        self.tray
+            .as_ref()
+            .is_some_and(fastframe_tray::Tray::is_shown)
     }
 
     /// Audio, media controls, the tray and polling keep running until Show or Quit.
@@ -781,9 +819,18 @@ impl App {
             locale,
             #[cfg(any(test, feature = "demo"))]
             demo_windows_controls: false,
+            #[cfg(any(test, feature = "demo"))]
+            demo_settings_filter: None,
             applied_dark: None,
             theme_transition: fastframe_theme::Transition::default(),
             reveal_theme_changes: true,
+            applied_base: None,
+            accent_fade: crate::accent::Fade::default(),
+            accent_memo: None,
+            windows_accent: None,
+            album_accent: None,
+            theme_jobs: crate::theme_files::Jobs::default(),
+            themes_writable: false,
             auth: AuthStatus::Starting,
             user: None,
             local_device_id: None,
@@ -864,6 +911,7 @@ impl App {
             saved_writes: HashMap::new(),
             accents: HashMap::new(),
             accent_pending: HashSet::new(),
+            art_colours: HashMap::new(),
             dialog: None,
             cover_request: 0,
             cover_uploads: HashMap::new(),
@@ -965,6 +1013,8 @@ impl App {
             update_receipt: None,
             winamp: crate::winamp::WinampState::new(session.winamp_pos, tap, eq),
             player_bar_analyser: crate::vis::WideAnalyser::default(),
+            autostart: crate::autostart::Autostart::in_memory(),
+            jump_list: false,
         };
         app.local.volume = app.settings.volume;
         // What was played here is on disk and needs nothing from the
@@ -1682,6 +1732,14 @@ impl App {
         self.accents.get(&url).copied()
     }
 
+    /// Keeps a cover's colour, as found by the backend (or the demo).
+    pub(crate) fn note_art_colour(&mut self, url: String, color: [u8; 3]) {
+        self.accent_pending.remove(&url);
+        let tint = self.palette.tint_from_art(color);
+        self.accents.insert(url.clone(), tint);
+        self.art_colours.insert(url, color);
+    }
+
     pub fn tint_for(&mut self, url: Option<&str>) -> Option<Color32> {
         let url = url?;
         if let Some(color) = self.accents.get(url) {
@@ -1909,11 +1967,7 @@ impl App {
                 }
                 Event::Local(state) => self.handle_local(*state),
                 Event::Api(response) => self.handle_api(*response),
-                Event::Accent { url, color } => {
-                    self.accent_pending.remove(&url);
-                    let tint = self.palette.tint_from_art(color);
-                    self.accents.insert(url, tint);
-                }
+                Event::Accent { url, color } => self.note_art_colour(url, color),
                 Event::ProxyRestored { config, password } => {
                     self.handle_proxy_restored(config, password)
                 }
@@ -2773,6 +2827,7 @@ impl App {
 
     fn tick(&mut self, ctx: &egui::Context) {
         self.poll_custom_themes(ctx);
+        self.poll_theme_files(ctx);
         let now = Instant::now();
         if self.winamp_level_reassert > 0 {
             self.winamp_level_reassert -= 1;
@@ -3298,6 +3353,7 @@ impl App {
     /// Called at launch or by the local reload command. Construction and window
     /// attachment never scan theme files.
     pub fn load_custom_themes(&mut self, waker: &Waker) {
+        self.themes_writable = true;
         let waker = waker.clone();
         self.custom_themes.start(
             self.dirs.config.join("themes"),
@@ -3311,7 +3367,22 @@ impl App {
         theme::enable_desktop_themes(&mut self.custom_themes);
     }
 
-    fn poll_custom_themes(&mut self, ctx: &egui::Context) {
+    /// Reads Start with Windows from the user's own startup list, and
+    /// points the entry at this program when it is on and names another.
+    pub fn use_system_autostart(&mut self) {
+        #[cfg(windows)]
+        {
+            self.autostart = crate::autostart::Autostart::system();
+        }
+    }
+
+    /// Writes the taskbar's jump list now and after each language change.
+    pub fn enable_jump_list(&mut self) {
+        self.jump_list = true;
+        crate::jumplist::publish(self.locale);
+    }
+
+    pub(crate) fn poll_custom_themes(&mut self, ctx: &egui::Context) {
         if self.custom_themes.poll() {
             self.adopt_custom_themes(ctx);
         }
@@ -3334,8 +3405,16 @@ impl App {
         self.settings.cached_palette()
     }
 
+    /// The palette the theme editor is showing, while it is open.
+    fn editor_palette(&self) -> Option<Palette> {
+        match &self.dialog {
+            Some(Dialog::ThemeEditor(draft)) => Some(draft.palette),
+            _ => None,
+        }
+    }
+
     fn theme_preference(&self) -> egui::ThemePreference {
-        if let Some(palette) = self.custom_palette() {
+        if let Some(palette) = self.editor_palette().or_else(|| self.custom_palette()) {
             return if palette.dark {
                 egui::ThemePreference::Dark
             } else {
@@ -3350,32 +3429,213 @@ impl App {
     }
 
     fn apply_theme(&mut self, ctx: &egui::Context) {
+        let editing = self.editor_palette();
+        if let Some(palette) = editing
+            && (ctx.theme() == egui::Theme::Dark) != palette.dark
+        {
+            ctx.set_theme(self.theme_preference());
+        }
         let dark = ctx.theme() == egui::Theme::Dark;
-        let palette = self.custom_palette().unwrap_or_else(|| {
-            if dark {
-                Palette::dark()
-            } else {
-                Palette::light()
-            }
-        });
-        if self.applied_dark != Some(dark) || self.palette != palette {
-            // The first colours need no reveal, and the mini player's window
-            // is drawn by its skin.
-            if self.reveal_theme_changes
-                && self.applied_dark.is_some()
-                && !self.settings.winamp_window
-            {
-                self.theme_transition.begin(ctx);
-                if self.theme_transition.holding(ctx) {
-                    return;
+        let base = editing
+            .or_else(|| self.custom_palette())
+            .unwrap_or_else(|| {
+                if dark {
+                    Palette::dark()
+                } else {
+                    Palette::light()
                 }
+            });
+        let base_changed = self.applied_dark != Some(dark) || self.applied_base != Some(base);
+        // The first colours need no reveal, the editor's colours follow its
+        // pickers at once, and the mini player's window is drawn by its skin.
+        if base_changed
+            && editing.is_none()
+            && self.reveal_theme_changes
+            && self.applied_dark.is_some()
+            && !self.settings.winamp_window
+        {
+            self.theme_transition.begin(ctx);
+            if self.theme_transition.holding(ctx) {
+                return;
             }
+        }
+        // The editor shows the theme exactly as it will be saved.
+        let target = match editing {
+            Some(_) => base,
+            None => {
+                self.update_accent_sources();
+                self.accented(&base)
+            }
+        };
+        let now = ctx.input(|input| input.time);
+        let (palette, moving) = self.accent_fade.step(&target, now, base_changed);
+        if moving {
+            ctx.request_repaint();
+        }
+        if base_changed || self.palette != palette {
+            let dark_changed = self.palette.dark != palette.dark || self.applied_dark.is_none();
             self.palette = palette;
             theme::apply(ctx, &self.palette);
-            crate::window::tint_title_bar(&self.palette);
+            if base_changed {
+                crate::window::tint_title_bar(&self.palette);
+                if !self.settings.winamp_window {
+                    crate::window::apply_backdrop();
+                }
+            }
             self.applied_dark = Some(dark);
-            self.accents.clear();
-            self.accent_pending.clear();
+            self.applied_base = Some(base);
+            if dark_changed {
+                // Cover tints are made for a light or a dark palette.
+                let palette = self.palette;
+                self.accents = self
+                    .art_colours
+                    .iter()
+                    .map(|(url, color)| (url.clone(), palette.tint_from_art(*color)))
+                    .collect();
+            }
+        }
+    }
+
+    /// Reads the Windows accent colour when it is wanted and not yet known
+    /// or Windows said it changed, and follows the playing song's cover.
+    fn update_accent_sources(&mut self) {
+        use crate::settings::AccentSource;
+        let changed = crate::accent::take_windows_change();
+        match self.settings.accent_source {
+            AccentSource::Theme => {}
+            AccentSource::Windows => {
+                if changed || self.windows_accent.is_none() {
+                    self.windows_accent = Some(crate::accent::windows_accent());
+                }
+            }
+            AccentSource::AlbumArt => {
+                let url = self
+                    .now_playing()
+                    .and_then(|now| now.art_small.or(now.art_url));
+                match url {
+                    None => self.album_accent = None,
+                    Some(url) => match self.art_colours.get(&url) {
+                        Some(color) => self.album_accent = Some(*color),
+                        // The last song's colour stays until this one's is known.
+                        None => {
+                            self.tint_for(Some(&url));
+                        }
+                    },
+                }
+            }
+        }
+    }
+
+    /// `base` with the accent from the chosen source, when it has one.
+    /// Worked out again only when the theme or the colour changes.
+    fn accented(&mut self, base: &Palette) -> Palette {
+        use crate::settings::AccentSource;
+        let source = match self.settings.accent_source {
+            AccentSource::Theme => None,
+            AccentSource::Windows => self.windows_accent.flatten().map(|color| (color, false)),
+            AccentSource::AlbumArt => self
+                .album_accent
+                .map(|[r, g, b]| (Color32::from_rgb(r, g, b), true)),
+        };
+        let Some((color, art)) = source else {
+            return *base;
+        };
+        if let Some((key, palette)) = &self.accent_memo
+            && *key == (*base, color, art)
+        {
+            return *palette;
+        }
+        let palette = if art {
+            crate::accent::from_art(base, [color.r(), color.g(), color.b()]).unwrap_or(*base)
+        } else {
+            crate::accent::with_accent(base, color)
+        };
+        self.accent_memo = Some(((*base, color, art), palette));
+        palette
+    }
+
+    /// The theme in use, without an accent from Windows or a cover: what
+    /// the editor starts from and what Export saves.
+    pub fn theme_palette(&self) -> Palette {
+        self.applied_base.unwrap_or(self.palette)
+    }
+
+    /// The name the theme in use is shown under.
+    fn theme_name(&self) -> String {
+        match &self.settings.custom_theme {
+            Some(filename) => fastframe_theme::display_name(filename).to_owned(),
+            None => self.settings.theme.label(self.locale).into_owned(),
+        }
+    }
+
+    /// Selects a palette file just written into the themes folder, before
+    /// the catalogue lists it, and rescans the folder.
+    fn select_written_theme(&mut self, ctx: &egui::Context, filename: String, palette: Palette) {
+        self.settings.custom_theme_cache = Some(theme::CustomTheme {
+            filename: filename.clone(),
+            palette,
+        });
+        self.settings.custom_theme = Some(filename);
+        self.mark_settings_dirty();
+        ctx.set_theme(self.theme_preference());
+        let waker = Waker::default();
+        waker.attach(ctx);
+        self.load_custom_themes(&waker);
+    }
+
+    /// Takes the results of finished theme file operations.
+    pub(crate) fn poll_theme_files(&mut self, ctx: &egui::Context) {
+        use crate::theme_files::Done;
+        for done in self.theme_jobs.finished() {
+            match done {
+                Done::Saved { filename, palette } => {
+                    if matches!(self.dialog, Some(Dialog::ThemeEditor(_))) {
+                        self.dialog = None;
+                    }
+                    self.select_written_theme(ctx, filename, palette);
+                }
+                Done::Exists { filename } => {
+                    if let Some(Dialog::ThemeEditor(draft)) = &mut self.dialog {
+                        draft.saving = false;
+                        draft.replace = Some(filename);
+                    }
+                }
+                Done::Failed(error) => {
+                    if let Some(Dialog::ThemeEditor(draft)) = &mut self.dialog {
+                        draft.saving = false;
+                        draft.error = Some(error);
+                    }
+                }
+                Done::Imported { filename, palette } => {
+                    self.toast(
+                        // Translators: {name} is the name of a theme.
+                        gettext(self.locale, "Imported “{name}”")
+                            .replace("{name}", fastframe_theme::display_name(&filename)),
+                    );
+                    self.select_written_theme(ctx, filename, palette);
+                }
+                Done::ImportFailed(error) => self.toast_error(
+                    // Translators: {error} is an error message.
+                    gettext(self.locale, "Couldn't import the theme: {error}")
+                        .replace("{error}", &error),
+                ),
+                Done::Exported { path } => {
+                    let name = path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    self.toast(
+                        // Translators: {name} is the file a theme was saved as.
+                        gettext(self.locale, "Exported “{name}”").replace("{name}", &name),
+                    );
+                }
+                Done::ExportFailed(error) => self.toast_error(
+                    // Translators: {error} is an error message.
+                    gettext(self.locale, "Couldn't export the theme: {error}")
+                        .replace("{error}", &error),
+                ),
+                Done::Cancelled => {}
+            }
         }
     }
 
@@ -3415,6 +3675,15 @@ impl App {
             let action = match command {
                 ControlCommand::Show => Some(Action::ShowWindow),
                 ControlCommand::ReloadThemes => Some(Action::ReloadThemes),
+                // From the tray there is no window to switch: open the mini
+                // player, which is what the task is for.
+                ControlCommand::ToggleMiniPlayer if self.window_hidden => {
+                    if !self.settings.winamp_window {
+                        self.actions.push(Action::ToggleWinampWindow);
+                    }
+                    Some(Action::ShowWindow)
+                }
+                ControlCommand::ToggleMiniPlayer => Some(Action::ToggleWinampWindow),
                 ControlCommand::PlayPause => Some(Action::TogglePlay),
                 ControlCommand::Play => (!playing).then_some(Action::TogglePlay),
                 ControlCommand::Pause => playing.then_some(Action::TogglePlay),
@@ -8814,7 +9083,12 @@ impl App {
                     self.settings.personal_app_intro_seen = true;
                     self.settings_dirty = true;
                 }
+                let editing = matches!(self.dialog, Some(Dialog::ThemeEditor(_)));
                 self.dialog = None;
+                if editing {
+                    // Cancelled: the theme from before comes back.
+                    ctx.set_theme(self.theme_preference());
+                }
             }
             Action::CreatePlaylist {
                 name,
@@ -9204,9 +9478,23 @@ impl App {
             }
             Action::SetLanguage(choice) => {
                 self.settings.language = choice;
-                self.locale = choice.resolve();
+                let locale = choice.resolve();
+                if self.jump_list && locale != self.locale {
+                    crate::jumplist::publish(locale);
+                }
+                self.locale = locale;
                 self.mark_settings_dirty();
                 ctx.request_repaint();
+            }
+            Action::SetAutostart(mode) => {
+                if let Err(error) = self.autostart.set(mode) {
+                    log::warn!("could not change Start with Windows: {error}");
+                    self.toast_error(
+                        // Translators: {error} is an error message.
+                        gettext(self.locale, "Couldn't change Start with Windows: {error}")
+                            .replace("{error}", &error.to_string()),
+                    );
+                }
             }
             Action::SetCustomTheme(filename) => {
                 if let Some(theme) = self.custom_themes.find(&filename) {
@@ -9221,6 +9509,83 @@ impl App {
                 let waker = Waker::default();
                 waker.attach(ctx);
                 self.load_custom_themes(&waker);
+            }
+            Action::OpenThemeEditor => {
+                let name = match &self.settings.custom_theme {
+                    Some(_) => self.theme_name(),
+                    None => gettext(self.locale, "My theme").into_owned(),
+                };
+                self.dialog = Some(Dialog::ThemeEditor(Box::new(
+                    crate::theme_files::Draft::new(self.theme_palette(), name),
+                )));
+            }
+            Action::SaveTheme { replace } => {
+                let locale = self.locale;
+                let writable = self.themes_writable;
+                let directory = self.dirs.config.join("themes");
+                let Some(Dialog::ThemeEditor(draft)) = &mut self.dialog else {
+                    return;
+                };
+                if draft.saving {
+                    return;
+                }
+                draft.replace = None;
+                let Some(filename) = theme::theme_filename(&draft.name) else {
+                    draft.error = Some(gettext(locale, "Give the theme a name.").into_owned());
+                    return;
+                };
+                if !writable {
+                    draft.error =
+                        Some(gettext(locale, "The demo does not save themes.").into_owned());
+                    return;
+                }
+                draft.error = None;
+                draft.saving = true;
+                let palette = draft.palette;
+                let waker = Waker::default();
+                waker.attach(ctx);
+                self.theme_jobs.run(
+                    move || waker.wake(),
+                    move || crate::theme_files::save(&directory, &filename, &palette, replace),
+                );
+            }
+            Action::ImportTheme => {
+                if !self.themes_writable {
+                    self.toast_error(gettext(self.locale, "The demo does not save themes."));
+                    return;
+                }
+                let directory = self.dirs.config.join("themes");
+                let title = gettext(self.locale, "Import theme").into_owned();
+                let filter = gettext(self.locale, "Theme file").into_owned();
+                let waker = Waker::default();
+                waker.attach(ctx);
+                self.theme_jobs.run(
+                    move || waker.wake(),
+                    move || crate::theme_files::pick_and_import(directory, title, filter),
+                );
+            }
+            Action::ExportTheme => {
+                let palette = self.theme_palette();
+                let name = self.theme_name();
+                let filename =
+                    theme::theme_filename(&name).unwrap_or_else(|| "Theme.json".to_owned());
+                let title = gettext(self.locale, "Export theme").into_owned();
+                let filter = gettext(self.locale, "Theme file").into_owned();
+                let waker = Waker::default();
+                waker.attach(ctx);
+                self.theme_jobs.run(
+                    move || waker.wake(),
+                    move || crate::theme_files::pick_and_export(palette, filename, title, filter),
+                );
+            }
+            Action::SetAccentSource(source) => {
+                if self.settings.accent_source != source {
+                    self.settings.accent_source = source;
+                    // Read afresh: Windows may have changed it while unused.
+                    self.windows_accent = None;
+                    self.mark_settings_dirty();
+                    ctx.request_repaint();
+                }
             }
             Action::OpenThemesFolder => {
                 self.backend.send(Command::OpenThemesFolder);
@@ -15655,6 +16020,45 @@ mod tests {
         assert!(app.custom_themes.find("old.json").is_some());
         assert!(app.settings.custom_theme.is_none());
         assert!(app.settings.custom_theme_cache.is_none());
+        std::fs::remove_dir_all(app.dirs.config.parent().unwrap()).unwrap();
+    }
+
+    /// The accent comes from one source at a time: the theme, Windows, or
+    /// the cover, never a mix, and the theme's own stays when the chosen
+    /// source has nothing to give.
+    #[test]
+    fn the_accent_comes_from_one_source_at_a_time() {
+        use crate::settings::AccentSource;
+        let mut app = test_app("accent-source");
+        let ctx = egui::Context::default();
+        app.apply(Action::SetTheme(ThemeChoice::Dark), &ctx);
+        let base = Palette::dark();
+        let blue = Color32::from_rgb(0x00, 0x78, 0xd7);
+        let red = [220, 40, 40];
+        app.windows_accent = Some(Some(blue));
+        app.album_accent = Some(red);
+        assert_eq!(app.accented(&base), base, "the theme's own by default");
+        app.apply(Action::SetAccentSource(AccentSource::Windows), &ctx);
+        assert_eq!(app.settings.accent_source, AccentSource::Windows);
+        // Read afresh when chosen, so seed it again for the check.
+        app.windows_accent = Some(Some(blue));
+        assert_eq!(app.accented(&base), crate::accent::with_accent(&base, blue));
+        app.apply(Action::SetAccentSource(AccentSource::AlbumArt), &ctx);
+        assert_eq!(
+            app.accented(&base),
+            crate::accent::from_art(&base, red).unwrap(),
+            "the cover replaces Windows' colour"
+        );
+        app.album_accent = None;
+        assert_eq!(app.accented(&base), base, "no art: the theme's accent");
+        app.apply(Action::SetAccentSource(AccentSource::Theme), &ctx);
+        app.album_accent = Some(red);
+        assert_eq!(app.accented(&base), base);
+        // With nothing playing there is no cover to take a colour from.
+        app.apply(Action::SetAccentSource(AccentSource::AlbumArt), &ctx);
+        app.apply_theme(&ctx);
+        assert!(app.album_accent.is_none());
+        assert_eq!(app.palette, base);
         std::fs::remove_dir_all(app.dirs.config.parent().unwrap()).unwrap();
     }
 
@@ -22722,6 +23126,81 @@ mod tests {
         app.handle_local(snapshot_at(35));
         assert_eq!(volume_to_percent(app.local.volume), 35);
         assert_eq!(volume_to_percent(app.settings.volume), 35);
+    }
+
+    /// The jump list's Mini player task switches windows, and from the
+    /// tray opens the mini player rather than switching an absent window.
+    #[test]
+    fn the_mini_player_task_switches_or_opens_the_mini_player() {
+        // #given
+        let mut app = headless_app();
+        let queue: std::sync::Arc<std::sync::Mutex<Vec<ControlCommand>>> = Default::default();
+        app.control_commands = Some(std::sync::Arc::clone(&queue));
+
+        // #when: a window is showing
+        app.window_hidden = false;
+        queue
+            .lock()
+            .expect("the queue")
+            .push(ControlCommand::ToggleMiniPlayer);
+        app.handle_control_commands();
+
+        // #then
+        assert!(matches!(
+            app.actions.as_slice(),
+            [Action::ToggleWinampWindow]
+        ));
+        app.actions.clear();
+
+        // #when: in the tray, with the main window chosen
+        app.window_hidden = true;
+        app.settings.winamp_window = false;
+        queue
+            .lock()
+            .expect("the queue")
+            .push(ControlCommand::ToggleMiniPlayer);
+        app.handle_control_commands();
+
+        // #then
+        assert!(matches!(
+            app.actions.as_slice(),
+            [Action::ToggleWinampWindow, Action::ShowWindow]
+        ));
+        app.actions.clear();
+
+        // #when: in the tray, with the mini player already chosen
+        app.settings.winamp_window = true;
+        queue
+            .lock()
+            .expect("the queue")
+            .push(ControlCommand::ToggleMiniPlayer);
+        app.handle_control_commands();
+
+        // #then
+        assert!(matches!(app.actions.as_slice(), [Action::ShowWindow]));
+    }
+
+    /// Settings' Start with Windows row changes the startup entry, which is
+    /// in memory for every app but the running instance's.
+    #[test]
+    fn start_with_windows_follows_the_settings_row() {
+        // #given
+        let ctx = egui::Context::default();
+        let mut app = headless_app();
+        assert_eq!(app.autostart.mode(), crate::autostart::Mode::Off);
+
+        // #when / #then
+        app.apply(Action::SetAutostart(crate::autostart::Mode::Tray), &ctx);
+        assert_eq!(app.autostart.mode(), crate::autostart::Mode::Tray);
+        app.apply(Action::SetAutostart(crate::autostart::Mode::Off), &ctx);
+        assert_eq!(app.autostart.mode(), crate::autostart::Mode::Off);
+    }
+
+    /// A tray start needs a tray to come back from.
+    #[test]
+    fn a_tray_start_without_a_tray_opens_the_window() {
+        let mut app = headless_app();
+        assert!(!fastframe_shell::Resident::start_hidden(&mut app));
     }
 
     /// What a Raycast script sends becomes the same action a menu pick or a

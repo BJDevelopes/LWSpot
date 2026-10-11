@@ -509,7 +509,7 @@ fn success_page() -> String {
         "Signed in to LWSpot",
         "You're signed in",
         "You can close this tab and go back to LWSpot.",
-        "#1ed760",
+        "#6d5bf0",
     )
 }
 

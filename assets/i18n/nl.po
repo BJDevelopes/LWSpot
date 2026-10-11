@@ -3189,6 +3189,239 @@ msgstr "LWSpot kan zijn venster niet openen"
 msgid "On Windows on ARM, the OpenGL that LWSpot draws with comes from Microsoft's OpenCL, OpenGL & Vulkan Compatibility Pack. Open its Microsoft Store page to install or repair it?"
 msgstr "Op Windows on ARM komt de OpenGL waarmee LWSpot tekent uit het OpenCL, OpenGL & Vulkan Compatibility Pack van Microsoft. De pagina in de Microsoft Store openen om het te installeren of te herstellen?"
 
+#: src/ui/settings.rs:511
+msgid "Start with Windows"
+msgstr "Starten met Windows"
+
+#: src/ui/settings.rs:514
+msgid "Open LWSpot when you sign in to Windows. Nothing plays until you ask."
+msgstr "Opent LWSpot wanneer je je aanmeldt bij Windows. Er wordt niets afgespeeld tot je erom vraagt."
+
+#: src/ui/settings.rs:657
+msgid "Open LWSpot"
+msgstr "LWSpot openen"
+
+#: src/ui/settings.rs:658
+msgid "Start in the tray"
+msgstr "Starten in het systeemvak"
+
+#. Translators: {error} is an error message.
+#: src/app.rs:9260
+#, rust-format
+msgid "Couldn't change Start with Windows: {error}"
+msgstr "Kan “Starten met Windows” niet wijzigen: {error}"
+
+#: src/jumplist.rs:31
+msgid "Play / Pause"
+msgstr "Afspelen / Pauzeren"
+
+#: src/jumplist.rs:35
+msgid "Show LWSpot"
+msgstr "LWSpot tonen"
+
+#. Translators: An accent colour source: the playing song's cover.
+#: src/settings.rs
+msgid "Album art"
+msgstr "Albumhoes"
+
+#. Translators: The Windows 11 acrylic material: a frosted, see-through window background.
+#: src/settings.rs
+msgid "Acrylic"
+msgstr "Acryl"
+
+#. Translators: {name} is the name of a theme.
+#: src/app.rs
+#, rust-format
+msgid "Imported “{name}”"
+msgstr "“{name}” geïmporteerd"
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't import the theme: {error}"
+msgstr "Kan het thema niet importeren: {error}"
+
+#. Translators: {name} is the file a theme was saved as.
+#: src/app.rs
+#, rust-format
+msgid "Exported “{name}”"
+msgstr "“{name}” geëxporteerd"
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't export the theme: {error}"
+msgstr "Kan het thema niet exporteren: {error}"
+
+#. Translators: The suggested name of a new theme in the theme editor.
+#: src/app.rs
+msgid "My theme"
+msgstr "Mijn thema"
+
+#: src/app.rs
+msgid "Give the theme a name."
+msgstr "Geef het thema een naam."
+
+#: src/app.rs
+msgid "The demo does not save themes."
+msgstr "De demo slaat geen thema's op."
+
+#: src/app.rs src/ui/themes.rs
+msgid "Import theme"
+msgstr "Thema importeren"
+
+#. Translators: The kind of file shown in the open and save dialogs for themes.
+#: src/app.rs
+msgid "Theme file"
+msgstr "Themabestand"
+
+#: src/app.rs src/ui/themes.rs
+msgid "Export theme"
+msgstr "Thema exporteren"
+
+#: src/ui/settings.rs
+msgid "Accent colour"
+msgstr "Accentkleur"
+
+#: src/ui/settings.rs
+msgid "The colour of buttons and highlights: the theme's own, the accent colour set in Windows, or the playing song's cover. Adjusted when needed so text stays readable."
+msgstr "De kleur van knoppen en markeringen: die van het thema, de accentkleur die in Windows is ingesteld, of de hoes van het nummer dat speelt. Wordt zo nodig aangepast zodat tekst leesbaar blijft."
+
+#: src/ui/settings.rs
+msgid "Window backdrop"
+msgstr "Vensterachtergrond"
+
+#: src/ui/settings.rs
+msgid "Mica and acrylic need Windows 11 2022 Update (22H2) or later."
+msgstr "Mica en acryl vereisen Windows 11 2022 Update (22H2) of nieuwer."
+
+#: src/ui/settings.rs
+msgid "Mica and acrylic need the Windows title bar. Turn off the custom title bar to use them."
+msgstr "Mica en acryl hebben de Windows-titelbalk nodig. Zet de aangepaste titelbalk uit om ze te gebruiken."
+
+#: src/ui/settings.rs
+msgid "Let Windows' Mica or acrylic material show through the window. Text and controls stay opaque."
+msgstr "Laat het Mica- of acrylmateriaal van Windows door het venster heen zien. Tekst en bedieningselementen blijven ondoorzichtig."
+
+#: src/ui/settings.rs
+msgid "Takes effect after restarting LWSpot."
+msgstr "Wordt van kracht nadat LWSpot opnieuw is gestart."
+
+#. Translators: Opens the theme editor on the theme in use.
+#: src/ui/themes.rs
+msgid "Customize"
+msgstr "Aanpassen"
+
+#: src/ui/themes.rs
+msgid "Change this theme's colours and save it as a new theme."
+msgstr "Wijzig de kleuren van dit thema en sla het op als nieuw thema."
+
+#. Translators: A colour of a theme, as named in the theme editor.
+#: src/ui/themes.rs
+msgid "Window"
+msgstr "Venster"
+
+#: src/ui/themes.rs
+msgid "Panels"
+msgstr "Panelen"
+
+#: src/ui/themes.rs
+msgid "Surfaces"
+msgstr "Vlakken"
+
+#: src/ui/themes.rs
+msgid "Surfaces on hover"
+msgstr "Vlakken bij aanwijzen"
+
+#: src/ui/themes.rs
+msgid "Surfaces when pressed"
+msgstr "Vlakken bij indrukken"
+
+#: src/ui/themes.rs
+msgid "Outlines"
+msgstr "Randen"
+
+#: src/ui/themes.rs
+msgid "Text"
+msgstr "Tekst"
+
+#: src/ui/themes.rs
+msgid "Secondary text"
+msgstr "Secundaire tekst"
+
+#: src/ui/themes.rs
+msgid "Dim text"
+msgstr "Gedimde tekst"
+
+#: src/ui/themes.rs
+msgid "Accent"
+msgstr "Accent"
+
+#: src/ui/themes.rs
+msgid "Accent on hover"
+msgstr "Accent bij aanwijzen"
+
+#: src/ui/themes.rs
+msgid "Text on accent"
+msgstr "Tekst op accent"
+
+#: src/ui/themes.rs
+msgid "Danger"
+msgstr "Gevaar"
+
+#: src/ui/themes.rs
+msgid "Warning"
+msgstr "Waarschuwing"
+
+#: src/ui/themes.rs
+msgid "Menus and dialogs"
+msgstr "Menu's en dialoogvensters"
+
+#: src/ui/themes.rs
+msgid "Shadow"
+msgstr "Schaduw"
+
+#. Translators: {ratio} is a contrast ratio such as 3.2 (read as 3.2:1).
+#: src/ui/themes.rs
+#, rust-format
+msgid "Text is hard to read on the window or panels ({ratio}:1). Aim for at least 4.5:1."
+msgstr "Tekst is slecht leesbaar op het venster of de panelen ({ratio}:1). Streef naar minstens 4,5:1."
+
+#. Translators: {ratio} is a contrast ratio such as 2.1 (read as 2.1:1).
+#: src/ui/themes.rs
+#, rust-format
+msgid "Text on the accent is hard to read ({ratio}:1). Aim for at least 3:1."
+msgstr "Tekst op het accent is slecht leesbaar ({ratio}:1). Streef naar minstens 3:1."
+
+#: src/ui/themes.rs
+msgid "Customize theme"
+msgstr "Thema aanpassen"
+
+#. Translators: {name} is the name of a theme.
+#: src/ui/themes.rs
+#, rust-format
+msgid "A theme called “{name}” already exists. Replace it?"
+msgstr "Er bestaat al een thema met de naam “{name}”. Vervangen?"
+
+#: src/ui/themes.rs
+msgid "Replace"
+msgstr "Vervangen"
+
+#. Translators: Whether a theme is built on the light or the dark appearance, chosen beside it.
+#: src/ui/themes.rs
+msgid "Base"
+msgstr "Basis"
+
+#: src/ui/themes.rs
+msgid "Theme name"
+msgstr "Themanaam"
+
+#. Translators: The label of a theme's name field in the theme editor.
+#: src/ui/themes.rs
+msgctxt "theme"
+msgid "Name"
+msgstr "Naam"
+
 #~ msgid "MacBook notch interactive widget"
 #~ msgstr "Interactieve MacBook-notch-widget"
 

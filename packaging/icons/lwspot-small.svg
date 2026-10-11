@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- LWSpot at 24 px and below: the same feather and headphones, bolder,
+       without the shaft and notch that would only blur at this size. -->
+  <rect x="2" y="2" width="124" height="124" rx="28" fill="#6D5BF0"/>
+  <g transform="rotate(16 64 66)">
+    <path fill="#FFFFFF" d="M64 18
+      C 80 28, 85 50, 82 70
+      C 79 88, 71 100, 64 108
+      C 57 100, 49 88, 46 70
+      C 43 50, 48 28, 64 18 Z"/>
+    <path d="M64 106 L 64 120" fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+    <path d="M37 52 C 37 2, 91 2, 91 52" fill="none" stroke="#21195C" stroke-width="10" stroke-linecap="round"/>
+    <rect x="26" y="44" width="21" height="31" rx="10" fill="#21195C"/>
+    <rect x="81" y="44" width="21" height="31" rx="10" fill="#21195C"/>
+  </g>
+</svg>

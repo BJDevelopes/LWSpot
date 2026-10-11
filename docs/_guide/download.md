@@ -25,26 +25,71 @@ your PC uses an ARM processor (Windows on ARM), pick the `aarch64` file.
 
 Download and run the installer. It installs LWSpot for your Windows user
 only, adds it to the Start menu, and does not need an administrator password.
+If LWSpot is running, the installer offers to close it first. LWSpot updates
+itself from then on; uninstall it from **Settings → Apps → Installed apps**.
 
 ## Portable ZIP
 
-To run LWSpot without an installer, download the ZIP file, extract it, and
-open `lwspot.exe`.
+To run LWSpot without an installer, download the ZIP file, extract it to a
+folder you can write to (your Documents, a USB drive), and open `lwspot.exe`.
 
-## SmartScreen warning
+The ZIP has an empty `data` folder beside `lwspot.exe`. While it is there,
+LWSpot keeps everything it saves in it (settings, play history, caches, logs
+and the MilkDrop add-on) instead of in your Windows profile, so you can move
+or copy the whole folder and take them along. Updates replace only
+`lwspot.exe` and leave `data` alone.
 
-The installer and the app are not yet code-signed, so Windows SmartScreen may
-warn about an unknown publisher on first run. Choose **More info**, then
-**Run anyway**. To check the file first, compare its SHA-256 checksum with
-`checksums.txt`:
+- Your Spotify sign-in belongs to your Windows user, not to the folder. The
+  copy stays signed in when you move it on the same PC, and asks you to sign
+  in again on another PC or Windows account.
+- Without the `data` folder, the copy uses the same folders as an installed
+  one. If it cannot write to `data` (for example under Program Files), it
+  uses those folders too.
+- One LWSpot runs at a time for each Windows user, portable or installed.
+
+[Settings and files](../_reference/settings-and-files.md#where-things-live)
+lists what goes where.
+
+## Check a download
+
+Each release lists `checksums.txt` with the SHA-256 checksum of every file.
+In PowerShell, in the folder you downloaded to:
 
 ```powershell
 Get-FileHash .\lwspot-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe -Algorithm SHA256
 ```
 
+The `Hash` it prints must match the line for that file in `checksums.txt`
+(PowerShell prints it in capitals). To check every file you downloaded at
+once, save `checksums.txt` in the same folder and run:
+
+```powershell
+Get-Content .\checksums.txt | ForEach-Object {
+  $hash, $name = $_ -split '\s+\*?', 2
+  if (Test-Path $name) {
+    $ok = (Get-FileHash $name -Algorithm SHA256).Hash -eq $hash
+    if ($ok) { "OK        $name" } else { "MISMATCH  $name" }
+  }
+}
+```
+
+## SmartScreen warning
+
+The installer and the app are not yet code-signed, so Windows SmartScreen may
+warn about an unknown publisher on first run. Choose **More info**, then
+**Run anyway**. Check the file's checksum first, as above. If Microsoft
+Defender reports a new release as a threat, please
+[open an issue](https://github.com/BJDevelopes/lwspot/issues) with the file
+name and the detection name; it is reported to Microsoft as a false positive.
+
 ## winget
 
-A winget package is planned but not available yet.
+A winget package is coming soon. Until it is listed, use the installer
+above. Once it is available:
+
+```powershell
+winget install BJDevelopes.LWSpot
+```
 
 ## Requirements
 

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "programs": the GitHub artifact the
+  release workflow uploads before packing, a zip holding lwspot.exe and
+  lwspot-milkdrop.exe. Paste this into the SignPath project as an artifact
+  configuration with the slug "programs" (PACKAGING.md).
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="lwspot.exe">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="lwspot-milkdrop.exe">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

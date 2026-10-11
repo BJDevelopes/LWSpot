@@ -48,6 +48,9 @@ pub enum ControlCommand {
     Show,
     /// Re-read local palette files without showing the window or restarting audio.
     ReloadThemes,
+    /// Switch between the main window and the Winamp mini player, from the
+    /// taskbar's jump list.
+    ToggleMiniPlayer,
     PlayPause,
     Play,
     Pause,
@@ -127,12 +130,9 @@ pub const NOTHING_PLAYING: &str = "stopped";
 pub const NO_DEVICES: &str = "[]";
 
 /// Where the running instance's lock and channel live: beside LWSpot's
-/// state.
+/// state in the user's profile, for a portable copy too.
 fn slot() -> fastframe_instance::Slot {
-    fastframe_instance::Slot::at(
-        crate::paths::AppDirs::discover().state.join("instance"),
-        NAME,
-    )
+    fastframe_instance::Slot::at(crate::paths::AppDirs::instance_dir(), NAME)
 }
 
 /// What the running instance said back.
@@ -271,6 +271,7 @@ fn parse(line: &str) -> Option<Request> {
     let command = match (verb, argument) {
         ("show", None) => ControlCommand::Show,
         ("reload-themes", None) => ControlCommand::ReloadThemes,
+        ("mini-player", None) => ControlCommand::ToggleMiniPlayer,
         ("playpause", None) => ControlCommand::PlayPause,
         ("play", None) => ControlCommand::Play,
         ("pause", None) => ControlCommand::Pause,
@@ -345,6 +346,11 @@ mod tests {
         assert_eq!(command("show\n"), Some(ControlCommand::Show));
         assert_eq!(command("reload-themes"), Some(ControlCommand::ReloadThemes));
         assert_eq!(command("reload-themes extra"), None);
+        assert_eq!(
+            command("mini-player"),
+            Some(ControlCommand::ToggleMiniPlayer)
+        );
+        assert_eq!(command("mini-player now"), None);
         assert_eq!(command("playpause"), Some(ControlCommand::PlayPause));
         assert_eq!(command("play"), Some(ControlCommand::Play));
         assert_eq!(command("pause"), Some(ControlCommand::Pause));

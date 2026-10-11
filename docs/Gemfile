@@ -6,3 +6,7 @@ gem "jekyll-vitepress-theme"
 
 # Lets renamed guides keep their old URLs with redirect_from.
 gem "jekyll-redirect-from", "~> 0.16"
+
+# Turns links between the Markdown files (which also work when the docs are
+# read on GitHub) into links between the built pages.
+gem "jekyll-relative-links", "~> 0.7"

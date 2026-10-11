@@ -18,6 +18,7 @@ pub mod search;
 pub mod settings;
 pub mod show;
 pub mod sidebar;
+mod themes;
 pub mod topbar;
 mod update;
 pub mod widgets;
@@ -271,7 +272,7 @@ fn central(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let tint = page_tint(app);
     egui::CentralPanel::default()
-        .frame(Frame::new().fill(palette.window))
+        .frame(Frame::new().fill(crate::window::window_ground(palette.window)))
         .show(ui, |ui| {
             let rect = ui.max_rect();
             if let Some(tint) = tint {
@@ -285,7 +286,14 @@ fn central(app: &mut App, ui: &mut egui::Ui) {
                 };
                 let top = blend(palette.window, tint, strength);
                 let header = Rect::from_min_size(rect.min, vec2(rect.width(), 340.0));
-                widgets::paint_vertical_gradient(ui, header, top, palette.window);
+                // Over a backdrop the gradient fades into the see-through
+                // ground, not over it.
+                widgets::paint_vertical_gradient(
+                    ui,
+                    header,
+                    crate::window::window_ground(top),
+                    crate::window::window_ground(palette.window),
+                );
             }
             ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
             // egui fades a scrolled page's edge into the panel's plain

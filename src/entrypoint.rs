@@ -24,6 +24,19 @@ struct Cli {
     #[arg(short, long)]
     verbose: bool,
 
+    /// Started by Windows at sign-in (Settings > Start with Windows):
+    /// `--autostart` opens the window as usual, `--autostart=tray` starts
+    /// in the tray. Written into the Run key, never typed.
+    #[arg(
+        long,
+        hide = true,
+        value_enum,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "open"
+    )]
+    autostart: Option<lwspot::autostart::Mode>,
+
     /// Start with sample data and no Spotify connection (for screenshots).
     #[cfg(feature = "demo")]
     #[arg(long)]
@@ -147,6 +160,10 @@ enum Control {
     },
     /// Bring the window of the running instance forward
     Show,
+    /// Switch between the main window and the Winamp mini player (the
+    /// taskbar jump list's Mini player task)
+    #[command(hide = true)]
+    MiniPlayer,
     /// Reload local palette files without starting the app or interrupting playback
     ReloadThemes,
 }
@@ -209,6 +226,7 @@ fn run_control(control: Control) -> i32 {
         Control::Transfer { device_id } => format!("transfer {device_id}"),
         Control::NowPlaying { .. } => "nowplaying".to_owned(),
         Control::Show => "show".to_owned(),
+        Control::MiniPlayer => "mini-player".to_owned(),
         Control::ReloadThemes => "reload-themes".to_owned(),
     };
     let printed = match single_instance::send(&verb) {
@@ -394,6 +412,7 @@ pub(crate) fn run() -> eframe::Result<()> {
     {
         eprintln!("not logging: {error}");
     }
+    paths::log_placement();
     if let Err(error) = dirs_ready {
         log::warn!("unable to create the application directories: {error}");
     }
@@ -402,6 +421,7 @@ pub(crate) fn run() -> eframe::Result<()> {
         settings.device_name = name;
     }
     lwspot::window::set_custom_titlebar(settings.custom_titlebar);
+    lwspot::window::set_backdrop(settings.backdrop);
     // Colour emoji: the fonts are found off this thread. A demo capture
     // draws every picture in the frame that shows it.
     #[cfg(feature = "demo")]
@@ -430,6 +450,10 @@ pub(crate) fn run() -> eframe::Result<()> {
     let mut app = app::App::new(&waker, dirs, settings, options);
     if guarded {
         app.enable_desktop_themes();
+        // Only the running instance reads and repairs the user's startup
+        // entry and writes the taskbar's jump list; demo mode keeps its own.
+        app.use_system_autostart();
+        app.enable_jump_list();
     }
     #[cfg(feature = "demo")]
     let load_themes = guarded || cli.demo_data.is_some();
@@ -489,7 +513,13 @@ pub(crate) fn run() -> eframe::Result<()> {
     lwspot::window::set_fixed_size(demo_inner.is_some());
     #[cfg(feature = "demo")]
     let demo_storage = app.dirs.cache.join("demo-window.ron");
-    let shell = fastframe_shell::Shell::new(app, &waker);
+    // `--autostart=tray`: no window until the tray or a launch asks for
+    // one, and nothing plays until the user does.
+    let start_in_tray = cli.autostart == Some(lwspot::autostart::Mode::Tray);
+    if let Some(mode) = cli.autostart {
+        log::info!("started by Windows at sign-in ({mode:?})");
+    }
+    let shell = fastframe_shell::Shell::new(app, &waker).start_hidden(start_in_tray);
     // Nothing needs the main thread between headless ticks, so the shell
     // sleeps until the waker wakes it.
     shell.run(|lease| {
@@ -700,6 +730,12 @@ fn native_options(
                 // Removing the native decorations lets the app surface fill
                 // the window.
                 .with_decorations(main_window_decorated(lwspot::window::custom_titlebar()))
+                // See-through only for a Mica or acrylic backdrop: an opaque
+                // window avoids black frames on some drivers (#656).
+                .with_transparent(
+                    lwspot::window::backdrop() != settings::Backdrop::Off
+                        && !lwspot::window::custom_titlebar(),
+                )
                 .with_inner_size(size)
                 .with_min_inner_size(inner_size.unwrap_or(lwspot::window::MAIN_MIN_SIZE))
                 .with_fullscreen(fullscreen);
@@ -719,7 +755,8 @@ fn native_options(
 
 fn profile_options(mut options: eframe::NativeOptions) -> eframe::NativeOptions {
     if options.persist_window {
-        options.persistence_path = eframe::storage_dir("lwspot").map(|dir| dir.join("app.ron"));
+        // A portable copy keeps this beside the rest of its data.
+        options.persistence_path = paths::window_state_file();
     }
     options
 }
@@ -761,10 +798,7 @@ mod native_window_tests {
     #[test]
     fn window_geometry_is_kept_without_touching_demo_storage() {
         let main = profile_options(native_options(false, None, None));
-        assert_eq!(
-            main.persistence_path,
-            eframe::storage_dir("lwspot").map(|dir| dir.join("app.ron"))
-        );
+        assert_eq!(main.persistence_path, paths::window_state_file());
         let demo_path = std::path::PathBuf::from("temporary/demo.ron");
         let demo = profile_options(demo_native_options(
             native_options(false, None, None),
@@ -1114,9 +1148,10 @@ impl eframe::App for Shell {
 
     /// The mini player's window is see-through where the skin leaves it
     /// out; the big window paints itself over eframe's own ground, which is
-    /// opaque because the window is not transparent (#656).
+    /// opaque because the window is not transparent (#656), unless a Mica or
+    /// acrylic backdrop is to show through it.
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        if self.app.settings.winamp_window {
+        if self.app.settings.winamp_window || lwspot::window::backdrop_shows() {
             [0.0; 4]
         } else {
             egui::Color32::from_rgb(12, 12, 12).to_normalized_gamma_f32()
@@ -1179,5 +1214,68 @@ mod tests {
 
         let bare = Cli::try_parse_from(["lwspot"]).expect("a plain launch parses");
         assert!(bare.link.is_none() && bare.control.is_none());
+        assert_eq!(bare.autostart, None);
+    }
+
+    /// The Run key's two command lines parse, and the flag never takes a
+    /// link that follows it for its value.
+    #[test]
+    fn the_autostart_flag_reads_its_mode() {
+        use lwspot::autostart::Mode;
+        // #given / #when / #then
+        let open = Cli::try_parse_from(["lwspot", "--autostart"]).expect("open parses");
+        assert_eq!(open.autostart, Some(Mode::Open));
+        assert!(open.link.is_none());
+        let tray = Cli::try_parse_from(["lwspot", "--autostart=tray"]).expect("tray parses");
+        assert_eq!(tray.autostart, Some(Mode::Tray));
+        let explicit = Cli::try_parse_from(["lwspot", "--autostart=open"]).expect("open parses");
+        assert_eq!(explicit.autostart, Some(Mode::Open));
+        assert!(Cli::try_parse_from(["lwspot", "--autostart=off"]).is_err());
+        assert!(Cli::try_parse_from(["lwspot", "--autostart=sometimes"]).is_err());
+        let linked = Cli::try_parse_from(["lwspot", "--autostart", "spotify:track:x"])
+            .expect("a link after the flag is still a link");
+        assert_eq!(linked.autostart, Some(Mode::Open));
+        assert_eq!(linked.link.as_deref(), Some("spotify:track:x"));
+
+        // What the Settings row writes into the Run key is what parses.
+        for mode in [Mode::Open, Mode::Tray] {
+            let command =
+                lwspot::autostart::command(std::path::Path::new(r"C:\LWSpot\lwspot.exe"), mode)
+                    .expect("a command for a mode that is on");
+            let (_, arguments) = command.rsplit_once('"').expect("a quoted program");
+            let mut words = vec!["lwspot"];
+            words.extend(arguments.split_whitespace());
+            let launch = Cli::try_parse_from(words).expect("the Run value parses");
+            assert_eq!(launch.autostart, Some(mode));
+        }
+    }
+
+    /// The flag and the jump list's verb are for Windows, not for --help.
+    #[test]
+    fn the_windows_only_switches_stay_out_of_help() {
+        let help = Cli::command().render_long_help().to_string();
+        assert!(!help.contains("autostart"), "{help}");
+        assert!(!help.contains("mini-player"), "{help}");
+    }
+
+    /// Every jump-list task starts this program with something it parses:
+    /// a control verb, or nothing at all for Show LWSpot.
+    #[test]
+    fn every_jump_list_task_is_a_command_line_the_program_takes() {
+        for task in lwspot::jumplist::tasks(lwspot::i18n::Locale::English) {
+            let mut words = vec!["lwspot"];
+            words.extend(task.arguments.split_whitespace());
+            let launch = Cli::try_parse_from(&words)
+                .unwrap_or_else(|error| panic!("{}: {error}", task.title));
+            assert!(launch.link.is_none(), "{}", task.title);
+            match task.arguments {
+                "" => assert!(launch.control.is_none()),
+                "play-pause" => assert!(matches!(launch.control, Some(Control::PlayPause))),
+                "next" => assert!(matches!(launch.control, Some(Control::Next))),
+                "previous" => assert!(matches!(launch.control, Some(Control::Previous))),
+                "mini-player" => assert!(matches!(launch.control, Some(Control::MiniPlayer))),
+                other => panic!("an unexpected task: {other}"),
+            }
+        }
     }
 }

@@ -433,6 +433,203 @@ pub fn set_main_window(hwnd: isize) {
     MAIN_WINDOW.store(hwnd, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// The backdrop the main window was created with, as a [`Backdrop::ALL`]
+/// index.
+static BACKDROP: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+/// Whether transparency effects are on in Windows, read again after a
+/// setting change.
+static TRANSPARENCY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// Set by the main window's procedure on a setting change.
+static TRANSPARENCY_STALE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+use crate::settings::Backdrop;
+
+/// The first Windows build with `DWMWA_SYSTEMBACKDROP_TYPE`: Windows 11
+/// 2022 Update (22H2).
+const BACKDROP_BUILD: u32 = 22621;
+
+/// The Windows build number, from the registry (the version functions
+/// answer for the version the program says it supports).
+fn windows_build() -> Option<u32> {
+    use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
+    let mut buffer = [0u16; 16];
+    let mut bytes = std::mem::size_of_val(&buffer) as u32;
+    // SAFETY: static wide names, and the output is a buffer of `bytes` bytes.
+    let read = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            windows_sys::w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"),
+            windows_sys::w!("CurrentBuildNumber"),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut bytes,
+        )
+    };
+    if read != 0 {
+        return None;
+    }
+    let length = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+    String::from_utf16_lossy(&buffer[..length])
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// Whether this Windows can put Mica or acrylic behind a window.
+pub fn backdrop_supported() -> bool {
+    static SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SUPPORTED.get_or_init(|| windows_build().is_some_and(|build| build >= BACKDROP_BUILD))
+}
+
+/// Sets the backdrop the next main window is created with: none on a
+/// Windows without one.
+pub fn set_backdrop(backdrop: Backdrop) {
+    let backdrop = if backdrop_supported() {
+        backdrop
+    } else {
+        Backdrop::Off
+    };
+    let index = Backdrop::ALL
+        .iter()
+        .position(|choice| *choice == backdrop)
+        .unwrap_or(0);
+    BACKDROP.store(index as u8, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The backdrop the main window was created with. A change of the setting
+/// takes effect when the window is next created.
+pub fn backdrop() -> Backdrop {
+    Backdrop::ALL
+        .get(usize::from(
+            BACKDROP.load(std::sync::atomic::Ordering::Relaxed),
+        ))
+        .copied()
+        .unwrap_or(Backdrop::Off)
+}
+
+/// Notes a setting change, after which transparency effects are read again.
+pub fn note_setting_change() {
+    TRANSPARENCY_STALE.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether "Transparency effects" is on in Windows Settings.
+fn transparency_effects() -> bool {
+    use std::sync::atomic::Ordering;
+    if TRANSPARENCY_STALE.swap(false, Ordering::Relaxed) {
+        use windows_sys::Win32::System::Registry::{
+            HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW,
+        };
+        let mut value: u32 = 1;
+        let mut bytes = size_of::<u32>() as u32;
+        // SAFETY: static wide names, and the output is one DWORD.
+        let read = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                windows_sys::w!(
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+                ),
+                windows_sys::w!("EnableTransparency"),
+                RRF_RT_REG_DWORD,
+                std::ptr::null_mut(),
+                (&raw mut value).cast(),
+                &mut bytes,
+            )
+        };
+        TRANSPARENCY.store(read != 0 || value != 0, Ordering::Relaxed);
+    }
+    TRANSPARENCY.load(Ordering::Relaxed)
+}
+
+/// Whether the backdrop shows through the main window now: the window was
+/// made for one and transparency effects are on. Otherwise everything is
+/// drawn opaque, as without a backdrop.
+pub fn backdrop_shows() -> bool {
+    backdrop() != Backdrop::Off && !custom_titlebar() && transparency_effects()
+}
+
+/// How much of the theme's window and panel colours covers the backdrop.
+const WINDOW_COVER: f32 = 0.55;
+const PANEL_COVER: f32 = 0.7;
+
+/// The window's ground in `color`: as it is, or letting a Mica or acrylic
+/// backdrop through. Only the large grounds (the page, the side panels and
+/// the player bar) take this; text, controls, menus and dialogs, and the
+/// places that use the window colour for text, stay opaque.
+pub fn window_ground(color: egui::Color32) -> egui::Color32 {
+    ground(color, WINDOW_COVER)
+}
+
+/// [`window_ground`] for the panels: the library, the queue, the lyrics
+/// and the player bar, which cover a little more of the backdrop.
+pub fn panel_ground(color: egui::Color32) -> egui::Color32 {
+    ground(color, PANEL_COVER)
+}
+
+fn ground(color: egui::Color32, cover: f32) -> egui::Color32 {
+    if !backdrop_shows() {
+        return color;
+    }
+    let [r, g, b, a] = color.to_srgba_unmultiplied();
+    let alpha = (f32::from(a) * cover).round() as u8;
+    egui::Color32::from_rgba_unmultiplied(r, g, b, alpha)
+}
+
+/// Asks Windows for the chosen backdrop behind the main window, under a
+/// frame stretched over the whole client area so it shows wherever the app
+/// draws nothing opaque. Not for the mini player, whose skin is its shape.
+pub fn apply_backdrop() {
+    let hwnd = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
+    if hwnd == 0 || custom_titlebar() {
+        return;
+    }
+    backdrop_behind(hwnd as windows_sys::Win32::Foundation::HWND);
+}
+
+fn backdrop_behind(hwnd: windows_sys::Win32::Foundation::HWND) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE, DwmSetWindowAttribute,
+    };
+    /// `MARGINS`, which windows-sys keeps behind a feature this crate does
+    /// not otherwise need.
+    #[repr(C)]
+    struct Margins {
+        left: i32,
+        right: i32,
+        top: i32,
+        bottom: i32,
+    }
+    #[link(name = "dwmapi")]
+    unsafe extern "system" {
+        fn DwmExtendFrameIntoClientArea(
+            hwnd: windows_sys::Win32::Foundation::HWND,
+            margins: *const Margins,
+        ) -> i32;
+    }
+    let kind = match backdrop() {
+        Backdrop::Off => return,
+        Backdrop::Mica => DWMSBT_MAINWINDOW,
+        Backdrop::Acrylic => DWMSBT_TRANSIENTWINDOW,
+    };
+    let sheet = Margins {
+        left: -1,
+        right: -1,
+        top: -1,
+        bottom: -1,
+    };
+    // SAFETY: hwnd is the live main window, on the thread that owns it, and
+    // both values point at readable memory of the size passed.
+    unsafe {
+        DwmExtendFrameIntoClientArea(hwnd, &raw const sheet);
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_SYSTEMBACKDROP_TYPE as u32,
+            (&raw const kind).cast(),
+            size_of::<i32>() as u32,
+        );
+    }
+}
+
 /// The Windows title-bar colours for a palette, as COLORREF (0x00BBGGRR):
 /// the caption in the window colour, so the bar reads as the top of the
 /// app, and the caption text in the text colour.
@@ -457,7 +654,14 @@ pub fn tint_title_bar(palette: &crate::theme::Palette) {
     }
     let hwnd = hwnd as windows_sys::Win32::Foundation::HWND;
     let dark: i32 = palette.dark.into();
-    let (caption, text) = title_bar_colors(palette);
+    // Over a backdrop the caption is left to Windows, so the backdrop shows
+    // through it too; dark mode still picks its dark or light tint.
+    let (caption, text) = if backdrop() == Backdrop::Off {
+        title_bar_colors(palette)
+    } else {
+        use windows_sys::Win32::Graphics::Dwm::DWMWA_COLOR_DEFAULT;
+        (DWMWA_COLOR_DEFAULT, DWMWA_COLOR_DEFAULT)
+    };
     let set = |attribute: i32, value: *const std::ffi::c_void, size: usize| {
         // SAFETY: hwnd is the live main window (set once it exists, on the
         // thread that owns it), and value points at `size` readable bytes.

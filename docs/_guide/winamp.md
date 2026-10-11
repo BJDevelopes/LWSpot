@@ -1,5 +1,5 @@
 ---
-title: The Winamp Mini Player
+title: The Winamp mini player
 description: Use classic Winamp 2 skins with an analyser, equalizer, and playlist.
 nav_order: 4
 ---

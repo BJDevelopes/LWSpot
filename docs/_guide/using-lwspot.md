@@ -1,5 +1,5 @@
 ---
-title: Everyday Use
+title: Everyday use
 description: Play music, arrange playlists, find lyrics, and make LWSpot your own.
 nav_order: 3
 ---
@@ -277,7 +277,7 @@ token known to your user. Use the command rather than the port itself.
 ## Updates
 
 The installer and the portable ZIP both update from inside LWSpot. Click the
-green update button to download a release, then choose when to restart and
+update button in the top bar to download a release, then choose when to restart and
 install it. Settings can enable automatic background downloads; restarting
 always waits for your click. Closing the update window keeps a download
 running. You can also check for a new release from Settings.
@@ -375,14 +375,24 @@ the player bar, update immediately, and are disabled when there is no song or
 the device refuses controls. The icons follow the system appearance and
 display scaling.
 
+Right-clicking the taskbar button, or LWSpot's pinned icon, opens its jump list:
+**Play / Pause**, **Next**, **Previous**, **Mini player** and **Show LWSpot**
+under Tasks. The first three control the running LWSpot like the media keys.
+**Mini player** switches between the main window and the Winamp mini player,
+and opens the mini player when LWSpot is in the tray. **Show LWSpot** brings
+the window forward, or starts LWSpot from a pinned icon when it is not
+running. The tasks follow the interface language. Each one starts
+`lwspot.exe` with the matching command-line verb, which hands it to the
+running copy.
+
 Clicking or double-clicking the tray icon shows and raises LWSpot. Use
 **Show or hide LWSpot** in the tray menu to hide it again.
 
 Closing to the tray removes the window and its preview. Reopening the main
 window or switching to the Winamp window creates its controls again. Media
 keys and the Windows media overlay (the now-playing controls Windows shows
-when you press a media or volume key) continue working while the window is
-closed.
+when you press a media or volume key, and on the lock screen) continue
+working while the window is closed.
 
 For the Winamp mini player, turn off **Show in taskbar** under
 **Settings > Winamp skins**, or **Show in taskbar** in its options menu.
@@ -396,6 +406,41 @@ The mini player starts on the current desktop if its saved title bar is
 outside every connected monitor's work area. Positions on connected secondary
 monitors still restore. Reinstalling preserves settings; it is not needed to
 recover a position left on an unplugged display.
+
+## Starting with Windows
+
+**Start with Windows** under **Settings > Playback on this computer** has
+three choices:
+
+- **Off**, the default: LWSpot starts only when you open it.
+- **Open LWSpot**: LWSpot opens its window when you sign in to Windows.
+- **Start in the tray**: LWSpot starts with only its tray icon. Click the
+  icon, use the jump list, or launch LWSpot to open the window.
+
+Either way nothing plays until you press play. LWSpot signs in and becomes a
+Spotify Connect device as usual, so you can also start music from your phone.
+
+The choice is Windows' own startup list, not a file of LWSpot's, so it also
+appears in Task Manager under **Startup apps** and in **Settings > Apps >
+Startup** as LWSpot. Turning it off there shows **Off** in LWSpot's Settings
+the next time it starts; choosing a mode in LWSpot again turns it back on. A
+portable copy moved to another folder points the entry at its new location
+when it next starts. Uninstalling removes the entry when it belongs to the
+installed copy.
+
+## Audio output
+
+Music played on this computer goes to the Windows default output. When the
+default changes, for example when you plug in headphones or connect
+Bluetooth headphones, LWSpot moves playback to the new device and keeps
+playing. Choose the output in Windows' sound settings or from the volume
+icon on the taskbar.
+
+When LWSpot cannot play on a device, it says why in plain words, for example
+that no output device was found, that another app is using the device
+exclusively, or that the device was disconnected, and what to try next. An
+error it does not recognise shows the Windows error code to quote in a bug
+report.
 
 ## Keeping the mini player above other windows
 

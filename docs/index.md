@@ -20,13 +20,15 @@ hero:
   image:
     src: /screenshot.png
     alt: "LWSpot Home with the playlist library, recommendations, queue, and player visible"
-    width: 2018
-    height: 1198
+    width: 1800
+    height: 1080
 
 features:
   - icon: ⚡
     title: Lightweight
-    details: Opens in well under a second and typically uses just 100–250 MB of memory.
+    details: One process with no browser engine. About 150 MB of memory while playing on our test laptop, where Spotify's app used about 1.3 GB.
+    link: /what-is-lwspot/#how-light-is-it
+    link_text: See the measurements
   - icon: 🔊
     title: Spotify Connect
     details: Listen on your computer with smooth transitions between songs, or control music on a speaker, phone, or TV. Playback needs Spotify Premium.
@@ -35,7 +37,7 @@ features:
     details: Browse playlists, Liked Songs, albums, artists, and podcasts. Search the catalogue and edit playlists you own.
   - icon: 🎨
     title: Themes
-    details: Choose light, dark, follow Windows, or use your own colours.
+    details: Pick from a gallery or make your own in the theme editor. Take the accent from Windows or the playing cover, with Mica or acrylic on Windows 11.
   - icon: 📻
     title: Winamp mini player
     details: Bring back the classic Winamp look, with skins, a playlist, sound controls, and animations that move to your music.
@@ -47,8 +49,8 @@ features:
     link: /milkdrop/
     link_text: Open the guide
   - icon: ⌨️
-    title: Desktop controls
-    details: Use keyboard shortcuts, media keys, the Windows media overlay, and taskbar buttons. Keep the music playing from the tray after you close the window.
+    title: Made for Windows
+    details: Media keys, the Windows media overlay, taskbar buttons, and a jump list. Keep the music playing from the tray, start with Windows, or press F11 for full screen.
   - icon: 🔓
     title: Open source
     details: Free to use, study, and improve. A fork of Spotifast by Carmine Paolino, under the MIT License.

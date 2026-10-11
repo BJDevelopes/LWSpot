@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer": the GitHub artifact holding
+  the Inno Setup installer, renamed lwspot-setup.exe by the release workflow
+  so this file does not change with the version. Paste this into the
+  SignPath project as an artifact configuration with the slug "installer"
+  (PACKAGING.md).
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="lwspot-setup.exe">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

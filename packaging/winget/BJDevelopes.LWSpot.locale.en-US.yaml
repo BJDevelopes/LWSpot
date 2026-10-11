@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+# Template: fill in with update-manifests.ps1 (PACKAGING.md).
+
+PackageIdentifier: BJDevelopes.LWSpot
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: LWSpot contributors
+PublisherUrl: https://github.com/BJDevelopes
+PublisherSupportUrl: https://github.com/BJDevelopes/lwspot/issues
+Author: LWSpot contributors
+PackageName: LWSpot
+PackageUrl: https://github.com/BJDevelopes/lwspot
+License: MIT
+LicenseUrl: https://github.com/BJDevelopes/lwspot/blob/main/LICENSE
+Copyright: Copyright (c) 2026 Carmine Paolino, Copyright (c) 2026 LWSpot contributors
+CopyrightUrl: https://github.com/BJDevelopes/lwspot/blob/main/LICENSE
+ShortDescription: A lightweight native Spotify client for Windows.
+Description: |-
+  LWSpot is a Spotify client for Windows written in Rust, with no browser
+  engine. It plays music through librespot (Spotify Premium is needed for
+  playback), controls other Spotify Connect devices, and includes synced
+  lyrics, a ten-band equalizer, a Winamp-style mini player with classic
+  skins, and optional MilkDrop visuals. It is a fork of Spotifast.
+Moniker: lwspot
+Tags:
+- spotify
+- music
+- music-player
+- spotify-connect
+- lyrics
+- equalizer
+- winamp
+- milkdrop
+ReleaseNotesUrl: https://github.com/BJDevelopes/lwspot/releases/tag/v0.1.0
+Documentation:
+- DocumentLabel: User guide
+  DocumentUrl: https://github.com/BJDevelopes/lwspot/blob/main/docs/_guide/using-lwspot.md
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

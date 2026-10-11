@@ -901,6 +901,8 @@ pub enum Dialog {
     PremiumNeeded,
     /// Introduce personal Spotify apps to eligible listeners once.
     PersonalAppIntro,
+    /// The theme editor; the app is drawn in its colours while it is open.
+    ThemeEditor(Box<crate::theme_files::Draft>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1109,9 +1111,23 @@ pub enum Action {
     SetTheme(crate::settings::ThemeChoice),
     /// Draw the interface in this language from the next frame on.
     SetLanguage(crate::settings::LanguageChoice),
+    /// What happens when the user signs in to Windows.
+    SetAutostart(crate::autostart::Mode),
     OpenThemesFolder,
     SetCustomTheme(String),
     ReloadThemes,
+    /// Opens the theme editor on the theme in use.
+    OpenThemeEditor,
+    /// Writes the editor's theme into the themes folder; `replace` confirms
+    /// replacing a file of the same name.
+    SaveTheme {
+        replace: bool,
+    },
+    /// Copies a palette file chosen in a file dialog into the themes folder.
+    ImportTheme,
+    /// Saves the theme in use as a palette file where the person chooses.
+    ExportTheme,
+    SetAccentSource(crate::settings::AccentSource),
     SetLibrarySort {
         shelf: crate::settings::LibraryShelf,
         sort: crate::settings::LibrarySort,

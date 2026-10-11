@@ -47,6 +47,56 @@ pub enum ThemeChoice {
     System,
 }
 
+/// Where the accent colour (buttons, highlights, switches) comes from.
+/// One source at a time: the theme's own, the Windows accent colour, or
+/// the playing song's cover.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccentSource {
+    #[default]
+    Theme,
+    Windows,
+    AlbumArt,
+}
+
+impl AccentSource {
+    pub const ALL: [AccentSource; 3] = [Self::Theme, Self::Windows, Self::AlbumArt];
+
+    pub fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
+        use crate::i18n::gettext;
+        match self {
+            Self::Theme => gettext(locale, "Theme"),
+            Self::Windows => "Windows".into(),
+            Self::AlbumArt => gettext(locale, "Album art"),
+        }
+    }
+}
+
+/// What shows through the main window's background on Windows 11.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Backdrop {
+    /// The theme's opaque colours.
+    #[default]
+    Off,
+    /// The desktop wallpaper, blurred and tinted (Mica).
+    Mica,
+    /// Whatever is behind the window, frosted (acrylic).
+    Acrylic,
+}
+
+impl Backdrop {
+    pub const ALL: [Backdrop; 3] = [Self::Off, Self::Mica, Self::Acrylic];
+
+    pub fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
+        match self {
+            Self::Off => crate::i18n::gettext(locale, "Off"),
+            Self::Mica => "Mica".into(),
+            Self::Acrylic => crate::i18n::gettext(locale, "Acrylic"),
+        }
+    }
+}
+
 /// Whether a Home shelf is drawn. Hidden shelves still refresh normally.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -260,6 +310,11 @@ pub struct Settings {
     pub home: HomeSettings,
     /// Tint the interface with the colour of the playing album's art.
     pub accent_from_art: bool,
+    /// Where the accent colour comes from. Older files keep the theme's.
+    pub accent_source: AccentSource,
+    /// Mica or acrylic behind the main window on Windows 11. Read when the
+    /// window is created, so a change takes effect after a restart.
+    pub backdrop: Backdrop,
     /// A spectrum or waveform of the playing song behind the player bar.
     pub player_bar_vis: PlayerBarVis,
     /// How many frames a second the player bar's visualizer draws, one of
@@ -425,6 +480,8 @@ impl Default for Settings {
             custom_theme_cache: None,
             home: HomeSettings::default(),
             accent_from_art: true,
+            accent_source: AccentSource::Theme,
+            backdrop: Backdrop::Off,
             player_bar_vis: PlayerBarVis::Off,
             player_bar_vis_fps: PLAYER_BAR_VIS_DEFAULT_FPS,
             volume: (u16::MAX as u32 * 70 / 100) as u16,
@@ -972,6 +1029,39 @@ mod tests {
             Locale::English,
             "tests pin English"
         );
+    }
+
+    /// Files from before the accent and backdrop choices load with both
+    /// off, and each choice survives a save.
+    #[test]
+    fn accent_source_and_backdrop_default_off_and_round_trip() {
+        use super::{AccentSource, Backdrop};
+        let older: Settings =
+            serde_json::from_value(serde_json::json!({"theme": "dark", "volume": 37})).unwrap();
+        assert_eq!(older.accent_source, AccentSource::Theme);
+        assert_eq!(older.backdrop, Backdrop::Off);
+        assert_eq!(older.volume, 37);
+        for source in AccentSource::ALL {
+            for backdrop in Backdrop::ALL {
+                let settings = Settings {
+                    accent_source: source,
+                    backdrop,
+                    ..Default::default()
+                };
+                let text = serde_json::to_string(&settings).unwrap();
+                let saved: Settings = serde_json::from_str(&text).unwrap();
+                assert_eq!(saved.accent_source, source);
+                assert_eq!(saved.backdrop, backdrop);
+            }
+        }
+        let text = serde_json::to_string(&Settings {
+            accent_source: AccentSource::AlbumArt,
+            backdrop: Backdrop::Mica,
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(text.contains("\"accent_source\":\"album_art\""));
+        assert!(text.contains("\"backdrop\":\"mica\""));
     }
 
     #[test]

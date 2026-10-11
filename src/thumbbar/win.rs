@@ -44,8 +44,8 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateIconIndirect, DefWindowProcW, DestroyIcon, GWLP_WNDPROC, GetPropW,
     HICON, ICONINFO, RegisterWindowMessageW, RemovePropW, SM_CXSMICON, SPI_GETHIGHCONTRAST,
-    SetPropW, SetWindowLongPtrW, SystemParametersInfoW, WM_COMMAND, WM_DISPLAYCHANGE, WM_NCDESTROY,
-    WM_SETTINGCHANGE, WM_THEMECHANGED, WNDPROC,
+    SetPropW, SetWindowLongPtrW, SystemParametersInfoW, WM_COMMAND, WM_DISPLAYCHANGE,
+    WM_DWMCOLORIZATIONCOLORCHANGED, WM_NCDESTROY, WM_SETTINGCHANGE, WM_THEMECHANGED, WNDPROC,
 };
 use windows_sys::core::{GUID, HRESULT};
 
@@ -619,7 +619,7 @@ fn wide(text: &str) -> Vec<u16> {
 
 /// Sits in front of the window's own procedure, for the two messages the
 /// toolbar needs: the taskbar button appearing, and a button being pressed.
-/// It also notes theme and display changes for the next frame. Everything
+/// It also notes theme, accent colour and display changes for the next frame. Everything
 /// else goes straight on to the procedure this one replaced.
 unsafe extern "system" fn procedure(
     hwnd: HWND,
@@ -651,6 +651,14 @@ unsafe extern "system" fn procedure(
     }
     if message == WM_SETTINGCHANGE || message == WM_THEMECHANGED {
         hook.appearance_changed.store(true, Ordering::Relaxed);
+        // A new accent colour in Windows Settings arrives as a setting
+        // change ("ImmersiveColorSet") as well as the colour message below.
+        crate::accent::note_windows_change();
+        crate::window::note_setting_change();
+        (hook.wake)();
+    }
+    if message == WM_DWMCOLORIZATIONCOLORCHANGED {
+        crate::accent::note_windows_change();
         (hook.wake)();
     }
     // winit sizes nothing on its own when a display comes or goes, so the

@@ -1,0 +1,62 @@
+name: Docs
+
+# Builds docs/ with Jekyll and publishes it to GitHub Pages at
+# https://bjdevelopes.github.io/LWSpot/. Pages needs a public repository on a
+# free plan, so while the repository is private the build still runs (it
+# catches broken pages) but nothing is deployed. One-time setup: Settings >
+# Pages > Build and deployment > Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/docs.yml"]
+  pull_request:
+    paths: ["docs/**", ".github/workflows/docs.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1
+        with:
+          ruby-version: "3.4"
+      # Not bundler-cache: it installs in frozen mode, and a gem added to the
+      # Gemfile on a machine without Ruby would fail against the old lockfile.
+      - name: Install gems
+        run: bundle install --jobs 4
+      - name: Build
+        env:
+          JEKYLL_ENV: production
+        run: bundle exec jekyll build --destination "$RUNNER_TEMP/site"
+      - name: Upload the site
+        if: github.event_name != 'pull_request' && !github.event.repository.private
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ runner.temp }}/site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && !github.event.repository.private
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

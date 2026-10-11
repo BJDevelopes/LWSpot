@@ -47,9 +47,11 @@ impl Palette {
             text: Color32::from_rgb(0xf2, 0xf4, 0xf6),
             secondary: Color32::from_rgb(0xa9, 0xb1, 0xbc),
             dim: Color32::from_rgb(0x6e, 0x77, 0x84),
-            accent: Color32::from_rgb(0x1e, 0xd7, 0x60),
-            accent_hover: Color32::from_rgb(0x3c, 0xe8, 0x7a),
-            on_accent: Color32::from_rgb(0x0a, 0x14, 0x0e),
+            // LWSpot violet, the icon's: 3.9:1 against the window, and
+            // white text on it reads at 4.8:1.
+            accent: Color32::from_rgb(0x6d, 0x5b, 0xf0),
+            accent_hover: Color32::from_rgb(0x80, 0x70, 0xf4),
+            on_accent: Color32::WHITE,
             danger: Color32::from_rgb(0xf5, 0x71, 0x7f),
             warning: Color32::from_rgb(0xf2, 0xb8, 0x5c),
             overlay: Color32::from_rgb(0x22, 0x27, 0x2e),
@@ -69,8 +71,10 @@ impl Palette {
             text: Color32::from_rgb(0x14, 0x17, 0x1a),
             secondary: Color32::from_rgb(0x53, 0x5b, 0x66),
             dim: Color32::from_rgb(0x8b, 0x93, 0x9e),
-            accent: Color32::from_rgb(0x15, 0xa6, 0x4a),
-            accent_hover: Color32::from_rgb(0x12, 0x8f, 0x40),
+            // A deeper violet on light surfaces: 5.7:1 against the window,
+            // 6.2:1 for white text on it.
+            accent: Color32::from_rgb(0x5a, 0x47, 0xe0),
+            accent_hover: Color32::from_rgb(0x4b, 0x39, 0xcf),
             on_accent: Color32::WHITE,
             danger: Color32::from_rgb(0xd6, 0x3b, 0x4c),
             warning: Color32::from_rgb(0xb8, 0x7a, 0x14),
@@ -130,6 +134,100 @@ impl fastframe_theme::Palette for Palette {
         }
         true
     }
+}
+
+impl Palette {
+    /// The colour a palette file calls `name`, one of
+    /// [`fastframe_theme::BASE_COLORS`].
+    pub fn get(&self, name: &str) -> Option<Color32> {
+        Some(match name {
+            "window" => self.window,
+            "panel" => self.panel,
+            "surface" => self.surface,
+            "surface_hover" => self.surface_hover,
+            "surface_active" => self.surface_active,
+            "outline" => self.outline,
+            "text" => self.text,
+            "secondary" => self.secondary,
+            "dim" => self.dim,
+            "accent" => self.accent,
+            "accent_hover" => self.accent_hover,
+            "on_accent" => self.on_accent,
+            "danger" => self.danger,
+            "warning" => self.warning,
+            "overlay" => self.overlay,
+            "shadow" => self.shadow,
+            _ => return None,
+        })
+    }
+
+    /// A palette file for this palette, as `fastframe_theme::parse_palette`
+    /// reads it: the base and every colour, `#rrggbb`, or `#rrggbbaa` for a
+    /// colour that is not opaque.
+    pub fn to_json(&self) -> String {
+        let mut text = format!(
+            "{{\n  \"base\": \"{}\",\n  \"colors\": {{\n",
+            if self.dark { "dark" } else { "light" }
+        );
+        let names = fastframe_theme::BASE_COLORS;
+        for (index, name) in names.iter().enumerate() {
+            let color = self.get(name).unwrap_or_default();
+            let [r, g, b, a] = color.to_srgba_unmultiplied();
+            let alpha = if a == 255 {
+                String::new()
+            } else {
+                format!("{a:02x}")
+            };
+            let comma = if index + 1 < names.len() { "," } else { "" };
+            text.push_str(&format!(
+                "    \"{name}\": \"#{r:02x}{g:02x}{b:02x}{alpha}\"{comma}\n"
+            ));
+        }
+        text.push_str("  }\n}\n");
+        text
+    }
+}
+
+/// The longest theme name, in characters, kept for a file name.
+const THEME_NAME_LIMIT: usize = 60;
+
+/// The palette file a theme called `name` is saved as: the name without the
+/// characters Windows refuses in a file name, spaces collapsed, and
+/// `.json` added. `None` when nothing usable is left, for a name Windows
+/// reserves (`CON`, `NUL`, `COM1`), or for the live Omarchy palette's name.
+pub fn theme_filename(name: &str) -> Option<String> {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let mut stem = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    // A name typed with `.json` keeps one.
+    if stem.to_ascii_lowercase().ends_with(".json") {
+        stem.truncate(stem.len() - 5);
+    }
+    let stem: String = stem
+        .trim_start_matches('.')
+        .chars()
+        .take(THEME_NAME_LIMIT)
+        .collect();
+    let stem = stem.trim_end_matches(['.', ' ']).trim();
+    if stem.is_empty() {
+        return None;
+    }
+    let device = stem.split('.').next().unwrap_or(stem).to_ascii_uppercase();
+    let reserved = matches!(device.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (device.len() == 4
+            && (device.starts_with("COM") || device.starts_with("LPT"))
+            && device.as_bytes()[3].is_ascii_digit());
+    let filename = format!("{stem}.json");
+    (!reserved && !filename.eq_ignore_ascii_case(fastframe_theme::omarchy::FILENAME))
+        .then_some(filename)
 }
 
 /// Adds the shared palettes to a normal launch, installed into the themes
@@ -388,6 +486,7 @@ fastframe_icons::icons! {
         Compass => "compass",
         Copy => lucide "copy",
         Disc => "disc-3",
+        Download => "download",
         Ellipsis => lucide "ellipsis",
         Expand => "expand",
         ExternalLink => lucide "external-link",
@@ -417,6 +516,7 @@ fastframe_icons::icons! {
         Music => "music",
         Pause => lucide "pause",
         PauseFilled => "pause-filled",
+        Palette => "palette",
         PanelLeft => lucide "panel-left",
         Pin => lucide "pin",
         PinOff => lucide "pin-off",
@@ -445,6 +545,7 @@ fastframe_icons::icons! {
         Tablet => "tablet",
         Trash => lucide "trash-2",
         TrendingUp => "trending-up",
+        Upload => "upload",
         Tv => "tv",
         User => lucide "user",
         Users => lucide "users",
@@ -534,8 +635,8 @@ pub fn play_glyph_offset(icon: Icon, icon_size: f32) -> Vec2 {
     }
 }
 
-/// The app's mark, the same picture as the app icon: the polished green
-/// disc with the play triangle, rasterised once per size by
+/// The app's mark, the same picture as the app icon: the feather in
+/// headphones on its violet tile, rasterised once per size by
 /// `util::app_icon_rgba` and drawn wherever the app shows its logo.
 pub fn logo(ui: &egui::Ui, center: egui::Pos2, diameter: f32) {
     let ppp = ui.ctx().pixels_per_point();
@@ -927,6 +1028,53 @@ mod tests {
         assert!(!light.dark);
         assert_eq!(light.accent, Color32::from_rgb(140, 63, 165));
         assert_eq!(light.window, Palette::light().window);
+    }
+
+    /// A theme's name becomes a file name Windows accepts and the themes
+    /// folder lists, or nothing at all.
+    #[test]
+    fn theme_names_become_safe_file_names() {
+        for (name, expected) in [
+            ("Sunset", Some("Sunset.json")),
+            ("  Late   night  ", Some("Late night.json")),
+            ("My: theme?", Some("My theme.json")),
+            ("a/b\\c", Some("a b c.json")),
+            ("Nord.json", Some("Nord.json")),
+            ("Nord.JSON", Some("Nord.json")),
+            ("..hidden", Some("hidden.json")),
+            ("trailing dots...", Some("trailing dots.json")),
+            ("Rosé Piné 夜", Some("Rosé Piné 夜.json")),
+            ("tab\tand\nnewline", Some("tab and newline.json")),
+            ("", None),
+            ("   ", None),
+            ("?*<>|", None),
+            (".json", None),
+            ("...", None),
+            ("CON", None),
+            ("nul", None),
+            ("com1", None),
+            ("LPT9.json", None),
+            ("Lpt", Some("Lpt.json")),
+            ("Console", Some("Console.json")),
+            ("omarchy", None),
+        ] {
+            assert_eq!(theme_filename(name).as_deref(), expected, "{name:?}");
+        }
+        let long = "x".repeat(200);
+        let filename = theme_filename(&long).unwrap();
+        assert_eq!(filename.chars().count(), THEME_NAME_LIMIT + ".json".len());
+    }
+
+    #[test]
+    fn every_palette_colour_has_a_name() {
+        use fastframe_theme::Palette as _;
+        let mut palette = Palette::light();
+        for (index, name) in fastframe_theme::BASE_COLORS.iter().enumerate() {
+            let color = Color32::from_rgb(index as u8, 2, 3);
+            palette.set(name, color);
+            assert_eq!(palette.get(name), Some(color), "{name}");
+        }
+        assert_eq!(palette.get("typo"), None);
     }
 
     #[test]

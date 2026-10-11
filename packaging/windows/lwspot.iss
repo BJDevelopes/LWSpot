@@ -7,7 +7,8 @@
 ; Arch is x86_64 or aarch64, as in the Rust target triple, so the installer
 ; is named like the zip next to it. It needs no administrator rights: the
 ; program goes to the user's own Programs folder with a Start menu entry,
-; and a running copy is closed before an update replaces it.
+; and a running copy is closed before an update replaces it or the
+; uninstaller removes it.
 
 #ifndef Version
   #error Version must be defined on the ISCC command line
@@ -56,7 +57,7 @@ SetupIconFile=lwspot.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=yes
+CloseApplications=force
 RestartApplications=no
 UninstallDisplayIcon={app}\{#AppExeName}
 ; The file version has to be numbers: a release candidate's -rc1 comes off.
@@ -125,28 +126,87 @@ begin
 end;
 #endif
 
-// A running copy holds lwspot.exe open, so uninstalling would delete
-// everything but the executable and leave the app running (spotifast#753).
-// Stop only the copy installed here, never a portable one elsewhere. Its
-// MilkDrop window runs from the downloaded add-on, which would hold that
-// file open in turn: stop the add-on started from this user's add-ons folder.
-function InitializeUninstall(): Boolean;
+// A path as a PowerShell string: single quotes, with any quote in it (a
+// user name such as O'Brien) doubled.
+function PowerShellString(Value: String): String;
+begin
+  Result := Value;
+  StringChangeEx(Result, '''', '''''', True);
+  Result := '''' + Result + '''';
+end;
+
+// Runs a PowerShell command without a window and returns its exit code, or
+// -1 if PowerShell could not be started.
+function RunPowerShell(Command: String): Integer;
 var
   ResultCode: Integer;
 begin
-  Result := True;
-  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    '-NoProfile -NonInteractive -Command "Get-Process lwspot -ErrorAction SilentlyContinue | ' +
-    'Where-Object { $_.Path -eq ''' + ExpandConstant('{app}\{#AppExeName}') + ''' } | ' +
-    'Stop-Process -Force; ' +
-    'Get-Process lwspot-milkdrop -ErrorAction SilentlyContinue | ' +
-    'Where-Object { $_.Path -eq ''' + ExpandConstant('{localappdata}\LWSpot\data\addons\lwspot-milkdrop.exe') + ''' } | ' +
-    'Stop-Process -Force; Start-Sleep -Milliseconds 500"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' + Command + '"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Result := ResultCode
+  else
+    Result := -1;
 end;
 
+// The copy installed here and the MilkDrop add-on it downloads, found by
+// their full paths: never a portable copy elsewhere, nor the update helper,
+// which runs this setup from a copy of lwspot.exe in a folder of its own.
+// Win32_Process reports the path of a process of either architecture.
+function InstalledProcesses(): String;
+begin
+  Result := 'Get-CimInstance Win32_Process | Where-Object { ' +
+    '$_.ExecutablePath -eq ' + PowerShellString(ExpandConstant('{app}\{#AppExeName}')) + ' -or ' +
+    '$_.ExecutablePath -eq ' + PowerShellString(ExpandConstant('{localappdata}\LWSpot\data\addons\lwspot-milkdrop.exe')) + ' }';
+end;
+
+function InstalledCopyRunning(): Boolean;
+begin
+  Result := RunPowerShell('if (' + InstalledProcesses + ') { exit 1 } else { exit 0 }') = 1;
+end;
+
+procedure StopInstalledCopy();
+begin
+  RunPowerShell('$running = @(' + InstalledProcesses + '); ' +
+    '$running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; ' +
+    'if ($running.Count -gt 0) { Start-Sleep -Milliseconds 500 }');
+end;
+
+// Installing over a running copy (spotifast#753). Restart Manager
+// (CloseApplications=force above) comes first: it lists a running LWSpot on
+// the Preparing to Install page and closes it when the user agrees, and an
+// update or a winget install, which run silently, close it without asking.
+// LWSpot saves its state when Windows asks it to end its session, and is
+// stopped if it does not exit. If the installed copy still runs here,
+// Restart Manager could not close it or was told not to: stop it, asking
+// first unless Setup is silent. PrepareToInstall would run before Restart
+// Manager and so skip its orderly close.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep <> ssInstall then
+    Exit;
+  if not FileExists(ExpandConstant('{app}\{#AppExeName}')) then
+    Exit;
+  if not InstalledCopyRunning then
+    Exit;
+  if WizardSilent or
+     (MsgBox('LWSpot is still running. Close it so Setup can replace it?',
+       mbConfirmation, MB_YESNO) = IDYES) then
+    StopInstalledCopy;
+end;
+
+// A running copy holds lwspot.exe open, so uninstalling would delete
+// everything but the executable and leave the app running (spotifast#753).
+// It is stopped once the user has confirmed the uninstall, with the
+// add-on's window, which would hold that file open in turn.
+//
 // The spotify: scheme key is shared with whatever else opens the links, so
 // uninstalling takes it away only while it still names this program.
+//
+// Start with Windows (Settings > Playback on this computer) is written by the
+// app, not by [Registry] above, so it is removed here: the Run value, and
+// the marker Task Manager keeps beside it when the entry is turned off there.
+// A portable copy may have taken the entry over; that one is left alone.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Command: String;
@@ -154,9 +214,16 @@ var
 begin
   if CurUninstallStep <> usUninstall then
     Exit;
+  StopInstalledCopy;
+  Exe := Lowercase(ExpandConstant('{app}\{#AppExeName}'));
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#AppIdentity}', Command) and
+     (Pos(Exe, Lowercase(Command)) > 0) then
+  begin
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#AppIdentity}');
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run', '{#AppIdentity}');
+  end;
   if not RegQueryStringValue(HKCU, 'Software\Classes\spotify\shell\open\command', '', Command) then
     Exit;
-  Exe := Lowercase(ExpandConstant('{app}\{#AppExeName}'));
   if Pos(Exe, Lowercase(Command)) > 0 then
     RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\spotify');
 end;

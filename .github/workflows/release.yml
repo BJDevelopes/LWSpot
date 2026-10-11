@@ -14,8 +14,15 @@ jobs:
   build:
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    # SignPath reads the artifacts it signs through the Actions API.
+    permissions:
+      contents: read
+      actions: read
     env:
       CMAKE_GENERATOR: Ninja
+      # Code signing is off until the SignPath Foundation accepts the
+      # project and the repository variable is set (PACKAGING.md).
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -34,8 +41,9 @@ jobs:
             pe-machine: AA64 machine \(ARM64\)
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
       # The repository pins its toolchain; add the target's standard library to
       # the toolchain the pin actually resolves to.
@@ -52,7 +60,7 @@ jobs:
       - name: GLEW for libprojectM
         run: vcpkg install glew:${{ matrix.vcpkg-triplet }}
       - name: MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: ${{ matrix.msvc-arch }}
       - name: Build the MilkDrop add-on
@@ -79,15 +87,65 @@ jobs:
             if ($version -notmatch "^$name \d+\.\d+\.\d+") { throw "Unexpected --version output: $version" }
           }
 
+      # Optional code signing through SignPath, in this order: the two
+      # programs first, so the zips and the installer carry signed copies;
+      # then the installer itself; checksums.txt is written last, by the
+      # publish job. SignPath takes and returns GitHub artifacts; what it
+      # signs inside each is set by the artifact configurations in
+      # packaging/signpath, copied into the SignPath project.
+      - name: Collect the programs to sign
+        if: env.SIGN == 'true'
+        shell: bash
+        run: |
+          mkdir -p unsigned/programs
+          cp "target/${{ matrix.target }}/release/lwspot.exe" \
+            "target/${{ matrix.target }}/release/lwspot-milkdrop.exe" unsigned/programs/
+      - name: Upload the programs to sign
+        id: unsigned-programs
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-programs-${{ matrix.target }}
+          path: unsigned/programs/
+          if-no-files-found: error
+      - name: Sign the programs
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@ced31329c0317e779dad2eec2a7c3bb46ea1343e # v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'lwspot' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: programs
+          github-artifact-id: ${{ steps.unsigned-programs.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/programs
+      - name: Use the signed programs
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          foreach ($name in 'lwspot', 'lwspot-milkdrop') {
+            $signed = "signed\programs\$name.exe"
+            $status = (Get-AuthenticodeSignature $signed).Status
+            if ($status -ne 'Valid') { throw "$signed is not validly signed: $status" }
+            Copy-Item $signed "target\${{ matrix.target }}\release\$name.exe" -Force
+            $version = (& "target\${{ matrix.target }}\release\$name.exe" --version | Out-String).Trim()
+            if ($version -notmatch "^$name \d+\.\d+\.\d+") { throw "Unexpected --version output after signing: $version" }
+          }
+
       # Asset names follow fastframe-update's release contract:
       # lwspot-<tag>-<target>.zip and lwspot-<tag>-<target>-setup.exe.
+      # The data folder makes the copy keep its settings and caches beside
+      # itself (src/paths.rs); an update replaces only lwspot.exe, so the
+      # folder and what is in it stay.
       - name: Portable zip
         shell: bash
         run: |
           name="lwspot-${GITHUB_REF_NAME}-${{ matrix.target }}"
-          mkdir -p "dist/$name"
+          mkdir -p "dist/$name/data"
           cp "target/${{ matrix.target }}/release/lwspot.exe" README.md LICENSE \
             packaging/lwspot-portable.txt "dist/$name/"
+          cp packaging/portable-data-README.txt "dist/$name/data/README.txt"
           cd dist && 7z a "$name.zip" "$name"
 
       # The MilkDrop add-on on its own, as the app downloads it:
@@ -115,9 +173,47 @@ jobs:
             "/DOutputDir=$PWD\dist" packaging\windows\lwspot.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # The installer goes to SignPath under a fixed name, so its artifact
+      # configuration does not depend on the version.
+      - name: Collect the installer to sign
+        if: env.SIGN == 'true'
+        shell: bash
+        run: |
+          mkdir -p unsigned/installer
+          cp dist/*-setup.exe unsigned/installer/lwspot-setup.exe
+      - name: Upload the installer to sign
+        id: unsigned-installer
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-installer-${{ matrix.target }}
+          path: unsigned/installer/
+          if-no-files-found: error
+      - name: Sign the installer
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@ced31329c0317e779dad2eec2a7c3bb46ea1343e # v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'lwspot' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/installer
+      - name: Use the signed installer
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          $signed = 'signed\installer\lwspot-setup.exe'
+          $status = (Get-AuthenticodeSignature $signed).Status
+          if ($status -ne 'Valid') { throw "$signed is not validly signed: $status" }
+          $setup = Get-ChildItem dist\*-setup.exe
+          Copy-Item $signed $setup.FullName -Force
+
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.target }}
+          name: release-${{ matrix.target }}
           path: |
             dist/*.zip
             dist/*-setup.exe
@@ -128,19 +224,77 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+      # Only the release files: the build jobs' unsigned uploads (when
+      # signing is on) are not part of the release.
       - uses: actions/download-artifact@v7
         with:
           path: dist
+          pattern: release-*
           merge-multiple: true
-      # The updater verifies every download against checksums.txt.
+      # The updater verifies every download against checksums.txt, so it is
+      # written from the final, signed files.
       - name: Checksums
         working-directory: dist
         run: sha256sum -- *.zip *-setup.exe > checksums.txt && cat checksums.txt
-      - uses: softprops/action-gh-release@v2
+      # The release text is the tag's section of CHANGELOG.md
+      # ("## [X.Y.Z] - date" up to the next "## ["). A tag without one, such
+      # as a release candidate, gets notes generated from the pull requests.
+      - name: Release notes
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v heading="## [$version]" '
+            /^## \[/ { if (found) exit; if (index($0, heading) == 1) { found = 1; next } }
+            found && /^\[.+\]: http/ { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md" || true
+          if grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "path=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_OUTPUT"
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CHANGELOG.md section for $version; generating notes"
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: dist/*
           name: LWSpot ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.generate == 'true' }}
           # A tag with a suffix (v0.1.0-rc1) is a pre-release: it stays off
           # "latest", so the app's update check never offers it.
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # Opens the pull request to microsoft/winget-pkgs for a new stable
+  # release. Off until the repository variable WINGET_SUBMIT is "true",
+  # which only makes sense once the first version has been accepted there
+  # by hand (PACKAGING.md): wingetcreate updates an existing package.
+  # WINGET_TOKEN is a classic personal access token with the public_repo
+  # scope, of an account with a fork of microsoft/winget-pkgs.
+  winget:
+    name: winget pull request
+    needs: publish
+    if: vars.WINGET_SUBMIT == 'true' && !contains(github.ref_name, '-')
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Submit to winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $base = "https://github.com/${{ github.repository }}/releases/download/$env:GITHUB_REF_NAME"
+          $x64 = "$base/lwspot-$env:GITHUB_REF_NAME-x86_64-pc-windows-msvc-setup.exe|x64"
+          $arm64 = "$base/lwspot-$env:GITHUB_REF_NAME-aarch64-pc-windows-msvc-setup.exe|arm64"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe update BJDevelopes.LWSpot --version $version --urls $x64 $arm64 `
+            --submit --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

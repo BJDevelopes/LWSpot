@@ -34,6 +34,7 @@ Issue numbers below refer to `crmne/spotifast`.
       Upstream 0.12.0 without MilkDrop: `spotifast.exe` 28.5 MB (release, MSVC).
       Measured 2026-10-10 (release build, MSI GF65 laptop, 12 threads), see Phase 2.
       The MilkDrop add-on build needs vcpkg + GLEW + libclang; the app does not.
+      Cold start time was not measured, so no startup figure is published.
 
 Phase 0 also removed: the macOS notch, menu bar and Touch Bar code, Linux
 desktop integration (MPRIS, Wayland/X11, Omarchy themes, PulseAudio),
@@ -121,13 +122,16 @@ After Phase 2 (2026-10-10, release build, same machine and states):
 
 ## Phase 3: Native Windows
 
-- [ ] Start with Windows, optionally to the tray (#122).
+- [~] Start with Windows, optionally to the tray (#122). Settings > Playback on
+      this computer writes the per-user Run key; Task Manager's off switch reads
+      as Off, and a moved copy points the entry at itself on its next start.
 - [~] Real fullscreen for the main window (F11) (#675).
-- [ ] Jump list entries (play/pause, next, mini player).
-- [ ] Discord status: first test whether Discord's built-in Spotify connection
+- [~] Jump list entries (play/pause, next, previous, mini player, show), in the
+      interface language, through the command-line verbs.
+- [ ] Discord status (deferred 2026-10-10, revisit with the user): first test whether Discord's built-in Spotify connection
       already shows LWSpot playback; if not, add Discord Rich Presence (local IPC,
       opt-in, needs our own Discord application ID).
-- [ ] Optional Last.fm scrobbling.
+- [ ] Optional Last.fm scrobbling. Deferred (2026-10-10): needs a Last.fm API account.
 - [ ] Jam: joining a Jam has no public API (Web API or librespot). Test whether
       LWSpot works as the playback device for a Jam started on a phone.
 
@@ -136,32 +140,63 @@ After Phase 2 (2026-10-10, release build, same machine and states):
 Built on the existing palette system (Light, Dark, Follow Windows, and JSON
 palettes in the themes folder with eight shared presets).
 
-- [ ] Theme gallery: a grid of live previews in Settings replacing the theme
+- [x] Theme gallery: a grid of live previews in Settings replacing the theme
       dropdown, one click to switch.
-- [ ] In-app theme editor: start from any theme, adjust colours with pickers
+- [x] In-app theme editor: start from any theme, adjust colours with pickers
       and a live preview, save as a new theme file. Import and export a theme
       as a single `.json` file to share.
-- [ ] Album-art colours (opt-in): derive the accent, and optionally the player
+- [x] Album-art colours (opt-in): derive the accent, and optionally the player
       bar tint, from the current cover; contrast-checked so text stays legible.
 - [~] Windows title bar painted in the theme's colours (Windows 11 caption and
       text colours, dark mode on Windows 10), updated on every theme change.
-- [ ] Follow the Windows accent colour (opt-in) and react to changes live.
-- [ ] Mica / acrylic backdrop on Windows 11 (#336), with an opaque fallback on
-      Windows 10 and when transparency effects are off.
+- [x] Follow the Windows accent colour (opt-in) and react to changes live.
+- [~] Mica / acrylic backdrop on Windows 11 (#336), with an opaque fallback on
+      Windows 10 and when transparency effects are off. Needs a check on
+      NVIDIA for the black frames of #656 (the window is see-through only
+      while a backdrop is chosen).
 
 ## Phase 4: Install and distribution
 
-- [ ] Installer closes or asks to close a running LWSpot before (un)installing (#753).
-      Uninstall side written in `lwspot.iss` (stops only the installed copy); untested.
-- [ ] True portable mode: data next to the exe (#703).
-- [ ] winget manifest and release automation (#176).
+- [~] Installer closes or asks to close a running LWSpot before (un)installing (#753).
+      Install: Restart Manager (`CloseApplications=force`) lists and closes it,
+      then a fallback stops the installed copy by path (asking first when
+      interactive). Uninstall: stopped after the user confirms. Only the
+      installed copy and its add-on are touched. Compiled by CI only; needs a
+      real install over a running copy.
+- [~] True portable mode: data next to the exe (#703). The portable ZIP ships
+      an empty `data` folder; with the marker and a writable `data`, config,
+      state and cache live in `data\{config,state,cache}` (eframe's `app.ron`
+      and the MilkDrop add-on too). Unwritable falls back to the profile with
+      a log line. Sign-in stays per Windows user; the credential profile is
+      pinned so a new drive letter keeps it. One instance per user.
+- [~] winget manifest and release automation (#176). Manifests (schema 1.6.0)
+      and `update-manifests.ps1` in `packaging/winget`; a `winget` release job
+      (wingetcreate) behind `WINGET_SUBMIT`. The first submission is by hand.
 - [ ] Apply to SignPath; submit releases to Microsoft for false-positive review (#817).
+      Optional SignPath signing in the release workflow (behind
+      `SIGNPATH_ORGANIZATION_ID`), artifact configurations in
+      `packaging/signpath`, and the application and Defender submission steps
+      in PACKAGING.md. Applying waits for the public repository and v0.1.0.
+- [x] First release prep: CHANGELOG.md (its section becomes the release
+      notes) and the RELEASING.md checklist.
 
 ## Phase 5: Polish
 
 - [ ] Scrollbars overlapping carousel cards; hide-until-hover option (#700).
 - [ ] Sign-in card scrollbar (#782).
-- [ ] New LWSpot icon and identity (#697).
+- [x] New LWSpot icon and identity (#697). See Identity below.
+
+## Identity
+
+- [x] New icon: a white feather (light weight) wearing dark headphones on a
+      violet (`#6D5BF0`) rounded tile. Source `packaging/icons/lwspot.svg`,
+      with `lwspot-small.svg` for 24 px and below; `packaging/windows/lwspot.ico`
+      and `docs/assets/images/logo.svg` are generated by
+      `cargo run --example icon_assets`. The app draws its window and tray
+      icons from the same SVGs.
+- [x] Violet default accent (`#6D5BF0` in Dark, `#5A47E0` in Light) in place
+      of the Spotify-like green inherited from upstream.
+- [x] README, user guide and screenshots updated to the new look.
 
 ## Not fixable by a client
 

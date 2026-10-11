@@ -1,5 +1,5 @@
 ---
-title: Make It Even Faster
+title: Make it even faster
 description: "Scrolling performance and reducing loading delays with your own Spotify connection."
 nav_order: 6
 ---
@@ -12,8 +12,13 @@ position once per sort instead of repeatedly searching the full saved order.
 This reduces the work each frame needs for large libraries while preserving
 your chosen sort, pins, and folders.
 
-The main window draws as needed and uses the system's frame pacing. The
-MilkDrop frame-rate setting applies to its separate visualizer window.
+The main window draws only when something on it changes, and uses the
+system's frame pacing. The player bar visualizer is the exception: each of its
+frames redraws the window. To save power, turn it off or lower **Visualizer
+frame rate** in **Settings > Appearance** (20, 30 or 60 frames a second). It
+stops on its own while the window is minimized, in the tray, covered by other
+windows, or on another virtual desktop. The MilkDrop frame-rate setting
+applies to its separate window.
 
 ## API rate limits
 

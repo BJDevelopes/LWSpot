@@ -101,6 +101,11 @@ flate2 = "1"
 # text (src/ui/winamp/pixel_text.rs). Already compiled for the SVG icons
 # through egui_extras and resvg, so this adds no code to the build.
 tiny-skia = "0.11"
+# Rasterising the app icon from packaging/icons/lwspot.svg for the window,
+# tray and in-app logo (src/util.rs), and the .ico (examples/icon_assets.rs).
+# The same version egui_extras already compiles for SVG icons, so this adds
+# no code to the build.
+resvg = { version = "0.45", default-features = false }
 # MilkDrop, as libprojectM reimplements it, for the MilkDrop window
 # (src/milkdrop.rs). Only the lwspot-milkdrop add-on links it.
 projectm-sys = { version = "1.2.2", default-features = false, features = ["static"], optional = true }

@@ -11,6 +11,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     let Some(dialog) = app.dialog.clone() else {
         return;
     };
+    if matches!(dialog, Dialog::ThemeEditor(_)) {
+        super::themes::editor(app, ctx);
+        return;
+    }
     let palette = app.palette;
     let locale = app.locale;
     let frame = Frame::new()
@@ -198,6 +202,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         }
                     });
                 }
+                // Drawn by `themes::editor` above.
+                Dialog::ThemeEditor(_) => {}
                 Dialog::PremiumNeeded => {
                     theme::text(
                         ui,
@@ -301,7 +307,7 @@ fn duplicate_message(
     message.replace("{playlist}", playlist_name)
 }
 
-fn text_field(
+pub(super) fn text_field(
     ui: &mut egui::Ui,
     palette: &theme::Palette,
     locale: crate::i18n::Locale,

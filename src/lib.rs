@@ -1,9 +1,11 @@
 //! LWSpot's internals, exposed so diagnostics and tests can reach them.
 
+pub mod accent;
 pub mod api;
 pub mod app;
 pub mod auth;
 pub mod autoscroll;
+pub mod autostart;
 pub mod backend;
 pub mod bidi;
 pub mod credentials;
@@ -15,6 +17,7 @@ pub mod history;
 pub mod http;
 pub mod i18n;
 pub mod images;
+pub mod jumplist;
 pub mod liked;
 pub mod limiter;
 pub mod link;
@@ -34,6 +37,7 @@ pub mod sink;
 pub mod skin;
 pub mod system_fonts;
 pub mod theme;
+pub mod theme_files;
 pub mod thumbbar;
 pub mod ui;
 pub mod updates;
