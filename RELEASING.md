@@ -45,13 +45,12 @@ release workflow builds and how winget and code signing are set up.
        of it building the MilkDrop add-on).
 6. [ ] Check the release page lists all of these, with the right version in
        every name:
-       - `lwspot-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe`
-       - `lwspot-vX.Y.Z-aarch64-pc-windows-msvc-setup.exe`
+       - `lwspot-vX.Y.Z-setup.exe` (one installer for every PC)
        - `lwspot-vX.Y.Z-x86_64-pc-windows-msvc.zip`
        - `lwspot-vX.Y.Z-aarch64-pc-windows-msvc.zip`
        - `lwspot-milkdrop-vX.Y.Z-x86_64-pc-windows-msvc.zip`
        - `lwspot-milkdrop-vX.Y.Z-aarch64-pc-windows-msvc.zip`
-       - `checksums.txt`, with a line for each of the six files above
+       - `checksums.txt`, with a line for each of the five files above
 7. [ ] Check the release notes are the CHANGELOG section.
 
 ## Smoke test
@@ -61,11 +60,20 @@ On a Windows PC (and on an ARM PC when one is available):
 - [ ] Download the installer, check its hash against `checksums.txt`
       (`Get-FileHash <file> -Algorithm SHA256`), install, sign in and play a
       song.
+- [ ] The installer put the build for this processor in place: in Task
+      Manager's Details tab (add the Architecture column), `lwspot.exe` shows
+      ARM64 on an ARM PC and x64 on any other. On an ARM PC with a copy
+      installed from an x64 installer, installing over it switches it to
+      ARM64, keeping settings and sign-in.
 - [ ] With LWSpot running, run the installer again: its Preparing to
       Install page offers to close LWSpot, and the install then succeeds.
 - [ ] Update: install the previous release, start it, and accept the update
       it offers (Settings, or the update badge). It restarts as the new
       version with settings and sign-in intact. Skip for the first release.
+      For v0.1.1, an installed v0.1.0 cannot update itself (it looks for the
+      per-processor installers v0.1.0 had): test the update with a portable
+      v0.1.0 copy, and check that running the v0.1.1 installer over an
+      installed v0.1.0 keeps settings and sign-in.
 - [ ] Turn MilkDrop on: the add-on downloads and its window opens.
 - [ ] The new icon shows in the Start menu, the taskbar, the tray and the
       installer, and the jump list (right-click the taskbar button) lists its
@@ -91,7 +99,7 @@ On a Windows PC (and on an ARM PC when one is available):
       [PACKAGING.md](PACKAGING.md#winget)). Once the package is accepted,
       set the repository variable `WINGET_SUBMIT` to `true` so later stable
       releases open the winget-pkgs pull request themselves.
-- [ ] Code signing: until releases are signed, submit both installers and
+- [ ] Code signing: until releases are signed, submit the installer and
       `lwspot.exe` to Microsoft for a false-positive review if Defender
       flags them (see [PACKAGING.md](PACKAGING.md#microsoft-defender-false-positives)).
       Apply to the SignPath Foundation once the repository is public and has

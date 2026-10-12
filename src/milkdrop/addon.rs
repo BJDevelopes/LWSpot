@@ -680,7 +680,7 @@ mod tests {
         let sum = hex(&Sha256::digest(zip));
         let name = zip_name("1.0.0", "x86_64-pc-windows-msvc");
         let manifest = format!(
-            "{}  lwspot-v1.0.0-x86_64-pc-windows-msvc.zip\n{sum}  {name}\n{}  lwspot-v1.0.0-x86_64-pc-windows-msvc-setup.exe\n",
+            "{}  lwspot-v1.0.0-x86_64-pc-windows-msvc.zip\n{sum}  {name}\n{}  lwspot-v1.0.0-setup.exe\n",
             "0".repeat(64),
             "1".repeat(64)
         );

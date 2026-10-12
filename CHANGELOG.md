@@ -7,6 +7,18 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-12
+
+### Changed
+
+- One installer for every PC: it installs the x64 or ARM version
+  automatically, whichever matches your processor.
+- The release page leads with a "Which file do I need?" guide.
+
+A copy installed with the 0.1.0 installer doesn't update to 0.1.1 by
+itself: run the 0.1.1 installer once over it. Your settings and sign-in are
+kept. Portable copies update as usual.
+
 ## [0.1.0] - 2026-10-11
 
 The first release of LWSpot, a Windows-only fork of
@@ -97,5 +109,6 @@ being the lightest and most reliable Spotify client on Windows.
 - macOS and Linux support, and their packages. Use
   [Spotifast](https://github.com/crmne/spotifast) on those systems.
 
-[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/BJDevelopes/lwspot/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/BJDevelopes/lwspot/releases/tag/v0.1.0

@@ -1,31 +1,28 @@
-﻿; The Windows installer, built with Inno Setup 6.3 or later from a release
-; binary (the release workflow does this on every tag):
+﻿; The Windows installer, built with Inno Setup 6.3 or later from the two
+; release binaries (the release workflow does this on every tag):
 ;
-;   iscc /DVersion=0.9.1 /DArch=x86_64 /DBinary=...\lwspot.exe ^
+;   iscc /DVersion=0.9.1 /DBinaryX64=...\x86_64\lwspot.exe ^
+;        /DBinaryArm64=...\aarch64\lwspot.exe ^
 ;        /DOutputDir=dist packaging\windows\lwspot.iss
 ;
-; Arch is x86_64 or aarch64, as in the Rust target triple, so the installer
-; is named like the zip next to it. It needs no administrator rights: the
-; program goes to the user's own Programs folder with a Start menu entry,
-; and a running copy is closed before an update replaces it or the
-; uninstaller removes it.
+; One installer for every PC: it carries both builds and installs the ARM64
+; one on an ARM processor and the x64 one everywhere else, so a copy
+; installed from it, and every update to it, runs natively. It needs no
+; administrator rights: the program goes to the user's own Programs folder
+; with a Start menu entry, and a running copy is closed before an update
+; replaces it or the uninstaller removes it.
 
 #ifndef Version
   #error Version must be defined on the ISCC command line
 #endif
-#ifndef Arch
-  #error Arch must be defined on the ISCC command line (x86_64 or aarch64)
+#ifndef BinaryX64
+  #error BinaryX64 must be defined on the ISCC command line (the x86_64 lwspot.exe)
 #endif
-#ifndef Binary
-  #error Binary must be defined on the ISCC command line
+#ifndef BinaryArm64
+  #error BinaryArm64 must be defined on the ISCC command line (the aarch64 lwspot.exe)
 #endif
 #ifndef OutputDir
   #error OutputDir must be defined on the ISCC command line
-#endif
-#if Arch == "aarch64"
-  #define InnoArch "arm64"
-#else
-  #define InnoArch "x64compatible"
 #endif
 
 #define AppName "LWSpot"
@@ -47,12 +44,14 @@ DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-ArchitecturesAllowed={#InnoArch}
-ArchitecturesInstallIn64BitMode={#InnoArch}
+; x64compatible is an x64 PC or an ARM64 one that runs x64 programs
+; (Windows 11); arm64 adds ARM64 PCs on Windows 10.
+ArchitecturesAllowed=x64compatible or arm64
+ArchitecturesInstallIn64BitMode=x64compatible or arm64
 MinVersion=10.0
 LicenseFile=..\..\LICENSE
 OutputDir={#OutputDir}
-OutputBaseFilename=lwspot-v{#Version}-{#Arch}-pc-windows-msvc-setup
+OutputBaseFilename=lwspot-v{#Version}-setup
 SetupIconFile=lwspot.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -73,7 +72,9 @@ VersionInfoVersion={#NumericVersion}.0
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "{#Binary}"; DestDir: "{app}"; Flags: ignoreversion
+; The build for this PC's processor, under the same name either way.
+Source: "{#BinaryArm64}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Check: InstallArm64Build; Flags: ignoreversion
+Source: "{#BinaryX64}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Check: InstallX64Build; Flags: ignoreversion
 Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "lwspot-installer.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -110,21 +111,17 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait
 Type: filesandordirs; Name: "{localappdata}\LWSpot\data\addons"
 
 [Code]
-#if Arch == "x86_64"
-// x64compatible lets this installer run on an ARM PC under emulation, and a
-// copy installed from it keeps updating to x64. The ARM installer has
-// everything this one has and runs natively, so point to it. A silent
-// install (an update) goes ahead without asking.
-function InitializeSetup(): Boolean;
+// Which lwspot.exe [Files] installs: the ARM64 build on an ARM processor,
+// where it runs natively, and the x64 build everywhere else.
+function InstallArm64Build(): Boolean;
 begin
-  Result := True;
-  if IsArm64 and not WizardSilent then
-    Result := MsgBox('This PC has an ARM processor. The ARM installer ' +
-      '(aarch64) runs natively, faster and on less battery.' + #13#10#13#10 +
-      'Install the version for Intel and AMD processors anyway?',
-      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+  Result := IsArm64;
 end;
-#endif
+
+function InstallX64Build(): Boolean;
+begin
+  Result := not InstallArm64Build;
+end;
 
 // A path as a PowerShell string: single quotes, with any quote in it (a
 // user name such as O'Brien) doubled.

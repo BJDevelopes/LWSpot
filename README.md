@@ -95,9 +95,9 @@ Download the latest release from
 
 | File | Use it for |
 |---|---|
-| `lwspot-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe` | Installer for most PCs (Intel and AMD). Installs for your user only; no administrator rights needed. |
-| `lwspot-vX.Y.Z-x86_64-pc-windows-msvc.zip` | Portable copy for most PCs. Extract and run `lwspot.exe`; it keeps its settings and caches in the `data` folder beside it. |
-| `lwspot-vX.Y.Z-aarch64-pc-windows-msvc-setup.exe` / `.zip` | The same, for Windows on ARM. |
+| `lwspot-vX.Y.Z-setup.exe` | The installer, for every PC: it installs the version for your processor (Intel, AMD or ARM). Installs for your user only; no administrator rights needed. |
+| `lwspot-vX.Y.Z-x86_64-pc-windows-msvc.zip` | Portable copy for most PCs (Intel and AMD). Extract and run `lwspot.exe`; it keeps its settings and caches in the `data` folder beside it. |
+| `lwspot-vX.Y.Z-aarch64-pc-windows-msvc.zip` | The same, for Windows on ARM. |
 | `checksums.txt` | SHA-256 checksums for every download. |
 
 The installer is not code-signed yet, so SmartScreen may warn about an unknown

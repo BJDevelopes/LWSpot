@@ -2,7 +2,7 @@
 # Template: fill in with update-manifests.ps1 (PACKAGING.md).
 
 PackageIdentifier: BJDevelopes.LWSpot
-PackageVersion: 0.1.0
+PackageVersion: 0.1.1
 PackageLocale: en-US
 Publisher: LWSpot contributors
 PublisherUrl: https://github.com/BJDevelopes
@@ -31,7 +31,7 @@ Tags:
 - equalizer
 - winamp
 - milkdrop
-ReleaseNotesUrl: https://github.com/BJDevelopes/lwspot/releases/tag/v0.1.0
+ReleaseNotesUrl: https://github.com/BJDevelopes/lwspot/releases/tag/v0.1.1
 Documentation:
 - DocumentLabel: User guide
   DocumentUrl: https://github.com/BJDevelopes/lwspot/blob/main/docs/_guide/using-lwspot.md

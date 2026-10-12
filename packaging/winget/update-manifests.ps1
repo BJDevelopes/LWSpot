@@ -3,8 +3,10 @@
 Fills the winget manifests in this folder for one LWSpot release.
 
 .DESCRIPTION
-Sets the version, installer URLs, release date and SHA-256 hashes of the
+Sets the version, installer URL, release date and SHA-256 hash of the
 three manifests (BJDevelopes.LWSpot*.yaml) from the release's checksums.txt.
+The x64 and arm64 entries both name the one installer, which installs the
+build for the processor it runs on.
 With -OutDir the filled manifests are written there, ready to copy into
 manifests\b\BJDevelopes\LWSpot\<version>\ of a microsoft/winget-pkgs fork;
 otherwise the files here are updated in place.
@@ -52,19 +54,17 @@ foreach ($line in $text -split "`r?`n") {
     }
 }
 
-# winget architecture -> Rust target triple in the asset name.
-$targets = [ordered]@{ x64 = 'x86_64'; arm64 = 'aarch64' }
-$installers = @{}
-foreach ($architecture in $targets.Keys) {
-    $name = "lwspot-$tag-$($targets[$architecture])-pc-windows-msvc-setup.exe"
-    if (-not $hashes.ContainsKey($name)) {
-        throw "checksums.txt has no line for $name"
-    }
-    $installers[$architecture] = @{
-        Url    = "$repository/releases/download/$tag/$name"
-        Sha256 = $hashes[$name]
-    }
+# One installer for every PC: it installs the build for the processor it
+# runs on, so the x64 and arm64 entries name the same file.
+$name = "lwspot-$tag-setup.exe"
+if (-not $hashes.ContainsKey($name)) {
+    throw "checksums.txt has no line for $name"
 }
+$installer = @{
+    Url    = "$repository/releases/download/$tag/$name"
+    Sha256 = $hashes[$name]
+}
+$installers = @{ x64 = $installer; arm64 = $installer }
 
 if (-not (Test-Path $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir | Out-Null

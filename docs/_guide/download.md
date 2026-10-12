@@ -11,22 +11,29 @@ check that a file has not been damaged or changed.
 
 ## Choose a download
 
-Pick the file for your PC. Most PCs use an Intel or AMD processor (x64). If
-your PC uses an ARM processor (Windows on ARM), pick the `aarch64` file.
-
 | You want | Intel or AMD PCs (most PCs) | ARM PCs |
 |---|---|---|
-| Installer | `lwspot-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe` | `lwspot-vX.Y.Z-aarch64-pc-windows-msvc-setup.exe` |
+| Installer | `lwspot-vX.Y.Z-setup.exe` | the same file |
 | Portable ZIP | `lwspot-vX.Y.Z-x86_64-pc-windows-msvc.zip` | `lwspot-vX.Y.Z-aarch64-pc-windows-msvc.zip` |
 
-`X.Y.Z` is the version number.
+`X.Y.Z` is the version number. The installer is the same for every PC: it
+installs the version for your processor. For the portable ZIP, pick the file
+for your PC. Most PCs use an Intel or AMD processor (x64). If your PC uses an
+ARM processor (Windows on ARM), pick the `aarch64` file. Not sure? Open
+**Settings → System → About**: "x64-based processor" means Intel or AMD,
+"ARM-based processor" means ARM.
+
+You don't need the `lwspot-milkdrop-...zip` files: LWSpot downloads the
+MilkDrop add-on itself the first time you turn it on.
 
 ## Installer
 
 Download and run the installer. It installs LWSpot for your Windows user
 only, adds it to the Start menu, and does not need an administrator password.
-If LWSpot is running, the installer offers to close it first. LWSpot updates
-itself from then on; uninstall it from **Settings → Apps → Installed apps**.
+On an ARM PC it installs the ARM version, which runs natively; on any other
+PC, the x64 version. If LWSpot is running, the installer offers to close it
+first. LWSpot updates itself from then on; uninstall it from
+**Settings → Apps → Installed apps**.
 
 ## Portable ZIP
 
@@ -56,7 +63,7 @@ Each release lists `checksums.txt` with the SHA-256 checksum of every file.
 In PowerShell, in the folder you downloaded to:
 
 ```powershell
-Get-FileHash .\lwspot-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe -Algorithm SHA256
+Get-FileHash .\lwspot-vX.Y.Z-setup.exe -Algorithm SHA256
 ```
 
 The `Hash` it prints must match the line for that file in `checksums.txt`

@@ -76,10 +76,11 @@ jobs:
             $imports = & dumpbin /dependents $binary | Out-String
             $runtime = $imports | Select-String -Pattern 'MSVCP[0-9_]*\.dll|VCRUNTIME[0-9_]*\.dll'
             if ($runtime) { throw "$name imports an MSVC runtime:`n$runtime" }
-            # The updater picks its download by the running executable's
-            # architecture, so a binary of the wrong one under this name would
-            # keep every copy installed from it on the wrong architecture. The
-            # app picks the add-on's download the same way.
+            # A portable copy's updater picks its download by the running
+            # executable's architecture, and the installer installs this
+            # binary on this processor, so a binary of the wrong one under
+            # this name would keep those copies on the wrong architecture.
+            # The app picks the add-on's download the same way.
             $headers = & dumpbin /headers $binary | Out-String
             if ($headers -notmatch '${{ matrix.pe-machine }}') { throw "$binary is not built for ${{ matrix.target }}:`n$headers" }
             # The app uses an add-on only when this names its own version.
@@ -89,10 +90,11 @@ jobs:
 
       # Optional code signing through SignPath, in this order: the two
       # programs first, so the zips and the installer carry signed copies;
-      # then the installer itself; checksums.txt is written last, by the
-      # publish job. SignPath takes and returns GitHub artifacts; what it
-      # signs inside each is set by the artifact configurations in
-      # packaging/signpath, copied into the SignPath project.
+      # then the installer itself, in the installer job; checksums.txt is
+      # written last, by the publish job. SignPath takes and returns GitHub
+      # artifacts; what it signs inside each is set by the artifact
+      # configurations in packaging/signpath, copied into the SignPath
+      # project.
       - name: Collect the programs to sign
         if: env.SIGN == 'true'
         shell: bash
@@ -133,11 +135,12 @@ jobs:
             if ($version -notmatch "^$name \d+\.\d+\.\d+") { throw "Unexpected --version output after signing: $version" }
           }
 
-      # Asset names follow fastframe-update's release contract:
-      # lwspot-<tag>-<target>.zip and lwspot-<tag>-<target>-setup.exe.
-      # The data folder makes the copy keep its settings and caches beside
-      # itself (src/paths.rs); an update replaces only lwspot.exe, so the
-      # folder and what is in it stay.
+      # Asset names follow fastframe-update's release contract (vendored in
+      # vendor/fastframe-update): lwspot-<tag>-<target>.zip here, and
+      # lwspot-<tag>-setup.exe from the installer job. The data folder makes
+      # the copy keep its settings and caches beside itself (src/paths.rs);
+      # an update replaces only lwspot.exe, so the folder and what is in it
+      # stay.
       - name: Portable zip
         shell: bash
         run: |
@@ -159,17 +162,69 @@ jobs:
           cp "target/${{ matrix.target }}/release/lwspot-milkdrop.exe" LICENSE "dist/$name/"
           cd "dist/$name" && 7z a -tzip -mm=Deflate "../$name.zip" lwspot-milkdrop.exe LICENSE
 
+      # The universal installer is built from both targets' lwspot.exe by
+      # the installer job, signed when signing is on.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: program-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/lwspot.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # One installer for every PC: it carries both builds and installs the one
+  # for the processor it runs on (packaging/windows/lwspot.iss).
+  installer:
+    name: universal installer
+    needs: build
+    runs-on: windows-latest
+    # SignPath reads the artifacts it signs through the Actions API.
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: program-x86_64-pc-windows-msvc
+          path: programs/x86_64
+      - uses: actions/download-artifact@v7
+        with:
+          name: program-aarch64-pc-windows-msvc
+          path: programs/aarch64
+      # The build jobs checked each program on its own processor; this
+      # checks that each one reached its place in the installer. The machine
+      # field of the PE header: 0x8664 for x64, 0xAA64 for ARM64.
+      - name: Check the programs
+        shell: pwsh
+        run: |
+          foreach ($program in @(
+              @{ Path = 'programs\x86_64\lwspot.exe'; Machine = 0x8664 },
+              @{ Path = 'programs\aarch64\lwspot.exe'; Machine = 0xAA64 })) {
+            $bytes = [IO.File]::ReadAllBytes($program.Path)
+            $header = [BitConverter]::ToInt32($bytes, 0x3C)
+            $machine = [BitConverter]::ToUInt16($bytes, $header + 4)
+            if ($machine -ne $program.Machine) { throw ("{0} has machine 0x{1:X4}" -f $program.Path, $machine) }
+          }
+          $version = (& programs\x86_64\lwspot.exe --version | Out-String).Trim()
+          if ($version -notmatch '^lwspot \d+\.\d+\.\d+') { throw "Unexpected --version output: $version" }
+
       # Inno Setup ships with the runner image. PowerShell, because bash on
       # Windows rewrites /D... arguments as paths.
       - name: Installer
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart("v")
-          $arch = "${{ matrix.target }}".Split("-")[0]
           $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
           if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-          & $iscc "/DVersion=$version" "/DArch=$arch" `
-            "/DBinary=$PWD\target\${{ matrix.target }}\release\lwspot.exe" `
+          & $iscc "/DVersion=$version" `
+            "/DBinaryX64=$PWD\programs\x86_64\lwspot.exe" `
+            "/DBinaryArm64=$PWD\programs\aarch64\lwspot.exe" `
             "/DOutputDir=$PWD\dist" packaging\windows\lwspot.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -186,7 +241,7 @@ jobs:
         if: env.SIGN == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: unsigned-installer-${{ matrix.target }}
+          name: unsigned-installer
           path: unsigned/installer/
           if-no-files-found: error
       - name: Sign the installer
@@ -213,15 +268,13 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.target }}
-          path: |
-            dist/*.zip
-            dist/*-setup.exe
+          name: release-installer
+          path: dist/*-setup.exe
           if-no-files-found: error
 
   publish:
     name: GitHub release
-    needs: build
+    needs: [build, installer]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -230,18 +283,28 @@ jobs:
             CHANGELOG.md
             packaging/release-download-guide.md
           sparse-checkout-cone-mode: false
-      # Only the release files: the build jobs' unsigned uploads (when
-      # signing is on) are not part of the release.
+      # Only the release files: the programs the installer was built from
+      # and the unsigned uploads (when signing is on) are not part of the
+      # release.
       - uses: actions/download-artifact@v7
         with:
           path: dist
           pattern: release-*
           merge-multiple: true
-      # The updater verifies every download against checksums.txt, so it is
-      # written from the final, signed files.
+      # The updater verifies every download against checksums.txt (the
+      # installer, the portable zips and the MilkDrop add-on), so it is
+      # written from the final, signed files, once all of them are here.
       - name: Checksums
         working-directory: dist
-        run: sha256sum -- *.zip *-setup.exe > checksums.txt && cat checksums.txt
+        run: |
+          for name in "lwspot-${GITHUB_REF_NAME}-setup.exe" \
+            "lwspot-${GITHUB_REF_NAME}-x86_64-pc-windows-msvc.zip" \
+            "lwspot-${GITHUB_REF_NAME}-aarch64-pc-windows-msvc.zip" \
+            "lwspot-milkdrop-${GITHUB_REF_NAME}-x86_64-pc-windows-msvc.zip" \
+            "lwspot-milkdrop-${GITHUB_REF_NAME}-aarch64-pc-windows-msvc.zip"; do
+            test -f "$name" || { echo "Missing release file: $name"; exit 1; }
+          done
+          sha256sum -- *.zip *-setup.exe > checksums.txt && cat checksums.txt
       # The release text is the tag's section of CHANGELOG.md
       # ("## [X.Y.Z] - date" up to the next "## ["). A tag without one, such
       # as a release candidate, gets notes generated from the pull requests.
@@ -298,9 +361,10 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart("v")
           $base = "https://github.com/${{ github.repository }}/releases/download/$env:GITHUB_REF_NAME"
-          $x64 = "$base/lwspot-$env:GITHUB_REF_NAME-x86_64-pc-windows-msvc-setup.exe|x64"
-          $arm64 = "$base/lwspot-$env:GITHUB_REF_NAME-aarch64-pc-windows-msvc-setup.exe|arm64"
+          # One installer for both architectures: it installs the build for
+          # the processor it runs on.
+          $setup = "$base/lwspot-$env:GITHUB_REF_NAME-setup.exe"
           Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
-          .\wingetcreate.exe update BJDevelopes.LWSpot --version $version --urls $x64 $arm64 `
+          .\wingetcreate.exe update BJDevelopes.LWSpot --version $version --urls "$setup|x64" "$setup|arm64" `
             --submit --token $env:WINGET_TOKEN
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

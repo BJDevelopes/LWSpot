@@ -98,14 +98,18 @@ jobs:
         run: |
           $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
           $checksums = "$env:RUNNER_TEMP\checksums.txt"
-          'x86_64', 'aarch64' | ForEach-Object { ('0' * 64) + "  lwspot-v$version-$_-pc-windows-msvc-setup.exe" } | Set-Content $checksums
+          ('0' * 64) + "  lwspot-v$version-setup.exe" | Set-Content $checksums
           ./packaging/winget/update-manifests.ps1 -Version $version -Checksums $checksums -OutDir "$env:RUNNER_TEMP\winget"
+      # The release installer carries an x64 and an ARM64 build; this
+      # compiles the script with this job's debug build in both places, to
+      # catch syntax errors.
       - name: Windows installer syntax
+        if: runner.arch != 'ARM64'
         shell: pwsh
         run: |
           $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
           $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
           if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-          $arch = if ($env:RUNNER_ARCH -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
-          & $iscc "/DVersion=$version" "/DArch=$arch" "/DBinary=$PWD\target\debug\lwspot.exe" "/DOutputDir=$env:RUNNER_TEMP\lwspot-installer-check" packaging\windows\lwspot.iss
+          $binary = "$PWD\target\debug\lwspot.exe"
+          & $iscc "/DVersion=$version" "/DBinaryX64=$binary" "/DBinaryArm64=$binary" "/DOutputDir=$env:RUNNER_TEMP\lwspot-installer-check" packaging\windows\lwspot.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

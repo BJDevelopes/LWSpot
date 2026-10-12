@@ -51,38 +51,51 @@ For each target it:
    `LICENSE`, deflated. The app downloads this the first time MilkDrop is
    turned on and checks it against `checksums.txt`, so its name must keep
    this form.
-6. Builds the installer with Inno Setup from
-   [`packaging/windows/lwspot.iss`](packaging/windows/lwspot.iss). The
-   installer is per-user: it installs to
-   `%LOCALAPPDATA%\Programs\LWSpot\lwspot.exe` with a Start menu entry and
-   needs no administrator rights. Its `AppId` must never change, because
-   Windows uses it to tell an update from a new program.
-7. When code signing is set up, has SignPath sign the installer.
+6. Uploads its `lwspot.exe` (the signed one when signing is on) for the
+   installer.
 
-The `publish` job then collects both targets' files, writes `checksums.txt`
-with their SHA-256 hashes (so from the signed files when signing is on), and
-creates the GitHub release. The `winget` job follows for stable releases when
-it is turned on ([winget](#winget)).
+The `installer` job then builds one installer for every PC with Inno Setup
+from [`packaging/windows/lwspot.iss`](packaging/windows/lwspot.iss), on
+`windows-latest`, from both targets' `lwspot.exe`. It first checks that each
+program is built for its processor (the PE header's machine field) and that
+the x64 one's `--version` prints `lwspot X.Y.Z`. The installer carries both
+programs and installs the ARM64 one on an ARM processor and the x64 one
+everywhere else, so an installed copy always runs natively and its updates,
+the same installer, keep it that way. It is per-user: it installs to
+`%LOCALAPPDATA%\Programs\LWSpot\lwspot.exe` with a Start menu entry and
+needs no administrator rights. Its `AppId` must never change, because
+Windows uses it to tell an update from a new program. When code signing is
+set up, the job has SignPath sign the installer.
+
+The `publish` job then collects the installer and both targets' zips, writes
+`checksums.txt` with their SHA-256 hashes (so from the signed files when
+signing is on), and creates the GitHub release. The `winget` job follows for
+stable releases when it is turned on ([winget](#winget)).
 
 ## Release files
 
 Asset names follow the updater's release contract, so do not rename them:
 
 ```
+lwspot-vX.Y.Z-setup.exe
 lwspot-vX.Y.Z-x86_64-pc-windows-msvc.zip
-lwspot-vX.Y.Z-x86_64-pc-windows-msvc-setup.exe
 lwspot-vX.Y.Z-aarch64-pc-windows-msvc.zip
-lwspot-vX.Y.Z-aarch64-pc-windows-msvc-setup.exe
 lwspot-milkdrop-vX.Y.Z-x86_64-pc-windows-msvc.zip
 lwspot-milkdrop-vX.Y.Z-aarch64-pc-windows-msvc.zip
 checksums.txt
 ```
 
-The in-app updater picks the file for its own architecture and install type
-and verifies it against `checksums.txt` before installing. The app fetches
-the MilkDrop add-on of its own version and architecture the same way, from
-`releases/download/vX.Y.Z/`, so a release without it leaves MilkDrop
-unavailable to that version. Until code signing is set up, the releases are
+The in-app updater picks the file for its install type (an installed copy
+takes the installer, a portable copy the zip for its own architecture) and
+verifies it against `checksums.txt` before installing. The installer has
+had one name for every processor since v0.1.1; LWSpot carries a copy of
+fastframe-update with that one change in `vendor/fastframe-update`
+([vendor/README.md](vendor/README.md)). A copy installed from v0.1.0 looks
+for the per-processor installers of that release, so it cannot update
+itself to v0.1.1 or later: running the new installer once over it moves it
+on. The app fetches the MilkDrop add-on of its own version and architecture
+the same way, from `releases/download/vX.Y.Z/`, so a release without it
+leaves MilkDrop unavailable to that version. Until code signing is set up, the releases are
 not code-signed, so SmartScreen may warn on first run.
 
 ## Portable copies
@@ -138,34 +151,40 @@ they name the installed copy, and the downloaded add-ons folder.
 
 ## Building the installer locally
 
-With Inno Setup 6.3 or later installed, build a release binary and run:
+With Inno Setup 6.3 or later installed, build a release binary for each
+processor and run:
 
 ```powershell
-cargo build --release
-iscc /DVersion=0.1.0 /DArch=x86_64 /DBinary=$PWD\target\release\lwspot.exe /DOutputDir=dist packaging\windows\lwspot.iss
+rustup target add aarch64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc --no-default-features --bin lwspot
+cargo build --release --target aarch64-pc-windows-msvc --no-default-features --bin lwspot
+iscc /DVersion=0.1.1 `
+  /DBinaryX64=$PWD\target\x86_64-pc-windows-msvc\release\lwspot.exe `
+  /DBinaryArm64=$PWD\target\aarch64-pc-windows-msvc\release\lwspot.exe `
+  /DOutputDir=dist packaging\windows\lwspot.iss
 ```
 
-`Arch` is `x86_64` or `aarch64`, matching the Rust target triple. CI also
-compiles the installer script on every push and pull request to catch syntax
-errors.
+`BinaryX64` and `BinaryArm64` are the `lwspot.exe` the installer puts on an
+x64 and an ARM PC. CI also compiles the installer script on every push and
+pull request to catch syntax errors, with its debug build in both places.
 
 ## winget
 
 The manifests for the `BJDevelopes.LWSpot` package are in
 [`packaging/winget`](packaging/winget), in the three-file layout of manifest
 schema 1.6.0: `BJDevelopes.LWSpot.yaml` (version),
-`BJDevelopes.LWSpot.installer.yaml` (the x64 and arm64 installers, type
-`inno`, scope `user`) and `BJDevelopes.LWSpot.locale.en-US.yaml`. The
-version, URLs and hashes in them are placeholders until filled from a
-release:
+`BJDevelopes.LWSpot.installer.yaml` (x64 and arm64 entries that both name
+the one installer, type `inno`, scope `user`) and
+`BJDevelopes.LWSpot.locale.en-US.yaml`. The version, URLs and hashes in them
+are placeholders until filled from a release:
 
 ```powershell
 cd packaging\winget
-.\update-manifests.ps1 -Version 0.1.0 -OutDir ..\..\dist\winget
+.\update-manifests.ps1 -Version 0.1.1 -OutDir ..\..\dist\winget
 ```
 
 The script reads that release's `checksums.txt` from GitHub (or a local file
-with `-Checksums`) and fails if either installer is missing from it.
+with `-Checksums`) and fails if the installer is missing from it.
 
 ### First submission (by hand)
 
@@ -178,8 +197,8 @@ the automation below can only update a package that already exists.
    `winget settings --enable LocalManifestFiles` once, from an administrator
    prompt).
 3. Fork [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs),
-   copy the three files to `manifests/b/BJDevelopes/LWSpot/0.1.0/`, and open
-   a pull request. Alternatively, `wingetcreate submit ..\..\dist\winget`
+   copy the three files to `manifests/b/BJDevelopes/LWSpot/<version>/`, and
+   open a pull request. Alternatively, `wingetcreate submit ..\..\dist\winget`
    opens it for you. Answer the moderators' questions on the pull request
    until it is merged.
 
@@ -204,8 +223,9 @@ submit that version by hand.
 Releases are signed through [SignPath](https://signpath.io) when the
 repository variable `SIGNPATH_ORGANIZATION_ID` is set; without it the signing
 steps are skipped and the release is unsigned, as now. The order is: sign
-`lwspot.exe` and `lwspot-milkdrop.exe`, pack the zips and build the installer
-from the signed programs, sign the installer, then write `checksums.txt`.
+`lwspot.exe` and `lwspot-milkdrop.exe` in each `build` job, pack the zips
+and, in the `installer` job, build the installer from the signed programs,
+sign the installer, then write `checksums.txt`.
 Inno Setup's uninstaller inside the installer stays unsigned, since Inno
 Setup can only sign it while compiling.
 
@@ -232,8 +252,8 @@ To turn signing on once the project is accepted:
 4. Add the repository variable `SIGNPATH_ORGANIZATION_ID` with the
    organization ID shown in SignPath.
 5. Release a pre-release tag (`vX.Y.Z-rc1`) and check that SignPath received
-   both requests, that an approver approved them if the policy asks for it,
-   and that the files on the release page show a valid signature
+   the requests (each target's programs, then the installer), that an
+   approver approved them if the policy asks for it, and that the files on the release page show a valid signature
    (`Get-AuthenticodeSignature`).
 6. After the first signed release, consider giving the updater a publisher
    key (`publisher_key` in `src/updates.rs`) so later versions refuse
@@ -293,7 +313,7 @@ flagged:
 1. Go to [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/wdsi/filesubmission)
    and sign in with a Microsoft account.
 2. Choose **Software developer**, product **Microsoft Defender Antivirus
-   (Windows 10/11)**, and upload the flagged file: each installer, and
+   (Windows 10/11)**, and upload the flagged file: the installer, and
    `lwspot.exe` from each portable ZIP (zip several files into one upload if
    needed).
 3. Select **Incorrectly detected as malware/malicious**, name the detection
