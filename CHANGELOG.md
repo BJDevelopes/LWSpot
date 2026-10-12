@@ -78,10 +78,13 @@ being the lightest and most reliable Spotify client on Windows.
 
 - Playback follows a change of the default audio device, such as connecting
   Bluetooth headphones, instead of failing.
-- Audio playing in one ear, or unbalanced, after a Spotify Connect handoff or
-  a volume or equalizer change.
-- Black-frame flicker on some NVIDIA graphics, and full-screen lyrics
-  flickering on a portrait monitor.
+- Audio on a mono output (such as a Bluetooth headset in hands-free mode)
+  now mixes both channels instead of keeping only the left one. This may help
+  with audio in one ear after a Spotify Connect handoff; the log now records
+  each output's channel count so remaining cases can be found.
+- Full-screen lyrics flickering on a portrait monitor. The main window now
+  clears to an opaque colour, which may help with black-frame flicker on some
+  NVIDIA graphics (not yet confirmed).
 - Having to sign in again after a reboot. When Windows Credential Manager
   cannot keep the sign-in, LWSpot keeps it in a file encrypted for your
   Windows user instead.

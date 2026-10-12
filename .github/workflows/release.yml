@@ -226,7 +226,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: CHANGELOG.md
+          sparse-checkout: |
+            CHANGELOG.md
+            packaging/release-download-guide.md
           sparse-checkout-cone-mode: false
       # Only the release files: the build jobs' unsigned uploads (when
       # signing is on) are not part of the release.
@@ -254,6 +256,10 @@ jobs:
             found { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md" || true
           if grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            # A "Which file do I need?" guide above the changelog section.
+            sed "s/{TAG}/${GITHUB_REF_NAME}/g" packaging/release-download-guide.md               > "$RUNNER_TEMP/release-body.md"
+            cat "$RUNNER_TEMP/release-notes.md" >> "$RUNNER_TEMP/release-body.md"
+            mv "$RUNNER_TEMP/release-body.md" "$RUNNER_TEMP/release-notes.md"
             echo "path=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_OUTPUT"
             echo "generate=false" >> "$GITHUB_OUTPUT"
           else
