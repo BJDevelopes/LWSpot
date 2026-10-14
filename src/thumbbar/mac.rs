@@ -227,7 +227,13 @@ impl ThumbBar {
     }
 
     /// Shows `state` in the menu; nothing is touched while it is unchanged.
+    /// The theme does not matter to a menu of words, and the window and the
+    /// background pass read it differently, so it is left out.
     pub fn sync(&mut self, shown: ThumbState) {
+        let shown = ThumbState {
+            dark: false,
+            ..shown
+        };
         let changed = STATE.with_borrow_mut(|state| match state {
             Some(attached) if attached.shown != Some(shown) => {
                 attached.shown = Some(shown);

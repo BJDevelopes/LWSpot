@@ -553,6 +553,10 @@ pub(crate) fn run() -> eframe::Result<()> {
     // sleeping there leaves both unresponsive and the app "not responding".
     #[cfg(target_os = "macos")]
     let shell = shell.interruptible_idle(lwspot::headless::idle, lwspot::headless::interrupt);
+    // The app menu says "About LWSpot", "Hide LWSpot" and "Quit LWSpot",
+    // not the executable's lower-case name.
+    #[cfg(target_os = "macos")]
+    lwspot::window::name_process("LWSpot");
     shell.run(|lease| {
         let creator_waker = waker.clone();
         #[cfg(feature = "demo")]

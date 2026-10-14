@@ -178,11 +178,10 @@ pub async fn wait_for_code(
 
     loop {
         tokio::select! {
-            accepted = listener.accept() => {
+            // At the limit, new connections wait in the listen queue.
+            accepted = listener.accept(), if connections.len() < MAX_CONNECTIONS => {
                 let (stream, _) = accepted.context("redirect listener failed")?;
-                if connections.len() < MAX_CONNECTIONS {
-                    connections.spawn(answer(stream, expected_state.to_owned()));
-                }
+                connections.spawn(answer(stream, expected_state.to_owned()));
             }
             Some(answered) = connections.join_next() => match answered {
                 Ok(Ok(code)) => return Ok(code),
@@ -193,8 +192,10 @@ pub async fn wait_for_code(
                 Ok(Err(error)) => log::debug!("ignored request on the redirect listener: {error}"),
                 Err(_) => {}
             },
-            _ = cancel.changed() => {
-                if *cancel.borrow() { bail!("sign-in cancelled"); }
+            changed = cancel.changed() => {
+                // A dropped sender cancels too: nobody can end the wait
+                // otherwise, and `changed` would return at once forever.
+                if changed.is_err() || *cancel.borrow() { bail!("sign-in cancelled"); }
             }
             _ = &mut deadline => bail!("sign-in timed out; try again"),
         }

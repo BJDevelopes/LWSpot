@@ -644,6 +644,11 @@ impl<N: Native> ProtectedStore for Durable<N> {
             return self.fall_back(key, secret, Error::Unavailable);
         }
         if let Err(error) = self.native.write(key, secret) {
+            // There is no fallback file off Windows, and the fallback path
+            // would first delete the item the store still holds.
+            if cfg!(not(windows)) {
+                return Err(error);
+            }
             return self.fall_back(key, secret, error);
         }
         match self.native.persistence(key) {
@@ -667,6 +672,72 @@ impl<N: Native> ProtectedStore for Durable<N> {
     fn delete(&mut self, key: &str) -> Result<(), Error> {
         let fallback = self.delete_fallback(key);
         self.native.delete(key).and(fallback)
+    }
+}
+
+/// macOS: what the Keychain holds, as this process last read or wrote it.
+///
+/// An ad-hoc-signed app is a new app to the Keychain after each update, so
+/// every read of an item asks for the login password until the person
+/// chooses Always Allow, and so does every write (the Keychain looks the
+/// item up first). Here each item is read once per run, a write that would
+/// change nothing is skipped, and the check after a save is answered from
+/// memory. One LWSpot runs per profile, so nothing else changes the items
+/// meanwhile.
+#[cfg(target_os = "macos")]
+struct Remembering<S> {
+    inner: S,
+    known: std::collections::HashMap<String, Option<Vec<u8>>>,
+}
+
+#[cfg(target_os = "macos")]
+impl<S> Remembering<S> {
+    fn new(inner: S) -> Self {
+        Self {
+            inner,
+            known: std::collections::HashMap::new(),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl<S: ProtectedStore> ProtectedStore for Remembering<S> {
+    fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+        if let Some(known) = self.known.get(key) {
+            return Ok(known.clone());
+        }
+        let secret = self.inner.read(key)?;
+        self.known.insert(key.to_owned(), secret.clone());
+        Ok(secret)
+    }
+
+    fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error> {
+        if self
+            .known
+            .get(key)
+            .is_some_and(|known| known.as_deref() == Some(secret))
+        {
+            return Ok(());
+        }
+        let written = self.inner.write(key, secret);
+        match &written {
+            Ok(()) => {
+                self.known.insert(key.to_owned(), Some(secret.to_vec()));
+            }
+            Err(_) => {
+                self.known.remove(key);
+            }
+        }
+        written
+    }
+
+    fn delete(&mut self, key: &str) -> Result<(), Error> {
+        self.known.remove(key);
+        let deleted = self.inner.delete(key);
+        if deleted.is_ok() {
+            self.known.insert(key.to_owned(), None);
+        }
+        deleted
     }
 }
 
@@ -711,6 +782,8 @@ impl Store {
             native: NativeStore::default(),
             folder: dirs.state.join("credential-storage"),
         };
+        #[cfg(target_os = "macos")]
+        let backend = Remembering::new(backend);
         Self::with_backend(dirs, Box::new(backend))
     }
 
@@ -1114,6 +1187,57 @@ impl Lease {
 
 #[cfg(test)]
 mod tests {
+    /// The Keychain is read once per item, an unchanged save is not sent,
+    /// and a failed write is not remembered.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_mac_store_reads_each_item_once_and_skips_unchanged_saves() {
+        #[derive(Default)]
+        struct Counting {
+            values: std::collections::HashMap<String, Vec<u8>>,
+            reads: u32,
+            writes: u32,
+            fail_writes: bool,
+        }
+        impl ProtectedStore for Counting {
+            fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+                self.reads += 1;
+                Ok(self.values.get(key).cloned())
+            }
+            fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error> {
+                self.writes += 1;
+                if self.fail_writes {
+                    return Err(Error::Denied);
+                }
+                self.values.insert(key.to_owned(), secret.to_vec());
+                Ok(())
+            }
+            fn delete(&mut self, key: &str) -> Result<(), Error> {
+                self.values.remove(key);
+                Ok(())
+            }
+        }
+        let mut inner = Counting::default();
+        inner.values.insert("k".into(), b"one".to_vec());
+        let mut store = Remembering::new(inner);
+        assert_eq!(store.read("k").unwrap().as_deref(), Some(b"one".as_slice()));
+        assert_eq!(store.read("k").unwrap().as_deref(), Some(b"one".as_slice()));
+        assert_eq!(store.inner.reads, 1);
+        store.write("k", b"one").unwrap();
+        assert_eq!(store.inner.writes, 0, "an unchanged save is not sent");
+        store.write("k", b"two").unwrap();
+        assert_eq!(store.read("k").unwrap().as_deref(), Some(b"two".as_slice()));
+        assert_eq!((store.inner.reads, store.inner.writes), (1, 1));
+        store.inner.fail_writes = true;
+        assert_eq!(store.write("k", b"three"), Err(Error::Denied));
+        store.inner.fail_writes = false;
+        assert_eq!(store.read("k").unwrap().as_deref(), Some(b"two".as_slice()));
+        assert_eq!(store.inner.reads, 2, "a failed write is not remembered");
+        store.delete("k").unwrap();
+        assert_eq!(store.read("k").unwrap(), None);
+        assert_eq!(store.inner.reads, 2);
+    }
+
     use super::*;
     use std::collections::HashMap;
 

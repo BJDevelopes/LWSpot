@@ -146,7 +146,13 @@ impl Drop for Key {
     }
 }
 
+/// Whether Low Power Mode is on. Its own autorelease pool: this thread has
+/// none, and the shared process info comes back autoreleased.
 fn low_power_mode() -> bool {
+    objc2::rc::autoreleasepool(|_| read_low_power_mode())
+}
+
+fn read_low_power_mode() -> bool {
     let Some(class) = AnyClass::get(c"NSProcessInfo") else {
         return false;
     };

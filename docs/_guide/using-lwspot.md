@@ -234,6 +234,10 @@ Winamp skins do not yet have equivalent accessibility coverage.
 
 A focused text field keeps its usual keys for its own text.
 
+On a Mac, `Ctrl` is `Cmd` and `Alt` is `Option` (the shortcuts list in the
+app shows them that way), and Home is `Shift+Cmd+H`, because `Cmd+H` hides
+an app on a Mac.
+
 ## Controlling it from the command line
 
 The `lwspot` command controls the copy already running. Each verb prints

@@ -5668,8 +5668,6 @@ dependencies = [
 [[package]]
 name = "souvlaki"
 version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5855c8f31521af07d896b852eaa9eca974ddd3211fc2ae292e58dda8eb129bc8"
 dependencies = [
  "base64",
  "block",
@@ -7473,7 +7471,6 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 [[package]]
 name = "winit"
 version = "0.30.13"
-source = "git+https://github.com/crmne/winit?rev=ed7caa9023f10b397f5b6ec8284a840cbd8a6f65#ed7caa9023f10b397f5b6ec8284a840cbd8a6f65"
 dependencies = [
  "ahash",
  "android-activity",

@@ -169,3 +169,85 @@ pub fn take_over_app_events() {
 pub fn take_quit_request() -> bool {
     QUIT_REQUESTED.swap(false, std::sync::atomic::Ordering::AcqRel)
 }
+
+/// Whether LWSpot is running without a window (closed to the menu bar).
+static WINDOWLESS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Tells [`install_terminate_handler`]'s handler whether a window is open.
+pub fn set_windowless(windowless: bool) {
+    WINDOWLESS.store(windowless, std::sync::atomic::Ordering::Release);
+}
+
+/// `NSTerminateCancel` and `NSTerminateNow`.
+const TERMINATE_CANCEL: usize = 0;
+const TERMINATE_NOW: usize = 1;
+
+/// `applicationShouldTerminate:`, added to winit's application delegate.
+/// Quit from the app menu or ⌘Q while windowless would end the process at
+/// once; instead it becomes the app's own Quit, which saves and shuts down,
+/// and AppKit's terminate is cancelled. Log out, restart and Dock Quit come
+/// as quit events, which [`take_over_app_events`] handles, so this never
+/// holds those up. With a window, AppKit goes ahead as usual.
+unsafe extern "C-unwind" fn should_terminate(
+    _this: *mut AnyObject,
+    _cmd: objc2::runtime::Sel,
+    _sender: *mut AnyObject,
+) -> usize {
+    if !WINDOWLESS.load(std::sync::atomic::Ordering::Acquire) {
+        return TERMINATE_NOW;
+    }
+    log::info!("quit from the app menu while windowless");
+    QUIT_REQUESTED.store(true, std::sync::atomic::Ordering::Release);
+    HANDLER.with_borrow(|handler| {
+        if let Some(handler) = handler {
+            (handler.ivars().wake)();
+        }
+    });
+    TERMINATE_CANCEL
+}
+
+/// Adds [`should_terminate`] to winit's application delegate, once. Call on
+/// the main thread with a window open (the delegate exists then).
+pub fn install_terminate_handler() {
+    static INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if INSTALLED.load(std::sync::atomic::Ordering::Acquire) {
+        return;
+    }
+    let Some(mtm) = objc2::MainThreadMarker::new() else {
+        return;
+    };
+    let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+    // SAFETY: `delegate` returns the application delegate or nil.
+    let delegate: *mut AnyObject = unsafe { msg_send![&app, delegate] };
+    if delegate.is_null() {
+        return;
+    }
+    // SAFETY: a live object's class; the method's types match
+    // `should_terminate` (an NSUInteger returned, the receiver, the
+    // selector and one object). class_addMethod leaves an existing method
+    // alone and returns NO.
+    let added = unsafe {
+        let class: *const objc2::runtime::AnyClass = objc2::ffi::object_getClass(delegate);
+        let imp: objc2::runtime::Imp = std::mem::transmute::<
+            unsafe extern "C-unwind" fn(
+                *mut AnyObject,
+                objc2::runtime::Sel,
+                *mut AnyObject,
+            ) -> usize,
+            objc2::runtime::Imp,
+        >(should_terminate);
+        objc2::ffi::class_addMethod(
+            class.cast_mut(),
+            sel!(applicationShouldTerminate:),
+            imp,
+            c"Q@:@".as_ptr(),
+        )
+        .as_bool()
+    };
+    if !added {
+        log::warn!(
+            "the application delegate already decides on quitting; ⌘Q without a window will not save"
+        );
+    }
+    INSTALLED.store(true, std::sync::atomic::Ordering::Release);
+}

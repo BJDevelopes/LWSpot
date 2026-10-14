@@ -39,6 +39,24 @@ pub fn report_missing_opengl(locale: crate::i18n::Locale) {
     }
 }
 
+/// Gives the process the name AppKit's menus use, before they are made.
+#[cfg(target_os = "macos")]
+pub fn name_process(name: &str) {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, AnyObject};
+    let Some(class) = AnyClass::get(c"NSProcessInfo") else {
+        return;
+    };
+    let name = objc2_foundation::NSString::from_str(name);
+    // SAFETY: the shared process info, and an NSString for its name.
+    unsafe {
+        let info: *mut AnyObject = msg_send![class, processInfo];
+        if !info.is_null() {
+            let _: () = msg_send![info, setProcessName: &*name];
+        }
+    }
+}
+
 /// Whether the app is hidden (⌘H, or Hide in its menu). Its windows are then
 /// not visible, so focusing one does nothing until the app is unhidden.
 #[cfg(target_os = "macos")]

@@ -349,6 +349,8 @@ pub struct App {
     /// inside AppKit's launch, so a Mac app cannot begin with no window and
     /// open one later (see `entrypoint::run`).
     pub hide_first_window: bool,
+    /// Whether the window is in the Dock or taskbar, as last seen.
+    window_minimized: bool,
     /// The window should close but the process should stay in the tray.
     pub hide_intent: bool,
     /// The outer loop should recreate the hidden window.
@@ -774,10 +776,15 @@ impl fastframe_shell::Resident for App {
     /// Audio, media controls, the tray and polling keep running until Show or Quit.
     fn headless_frame(&mut self, ctx: &egui::Context) -> fastframe_shell::Headless {
         use fastframe_shell::Headless;
-        // AppKit puts its own reopen handler back when its loop starts, which
-        // the shell's idle does between these ticks; one call takes it back.
+        // The handlers taken over when the window went stay in place; this
+        // is a cheap safety net in case AppKit puts its own back.
         #[cfg(target_os = "macos")]
         crate::url_events::take_over_app_events();
+        // Without a window this runs between AppKit's loops, outside any
+        // autorelease pool; give it one so what it autoreleases is freed.
+        #[cfg(target_os = "macos")]
+        objc2::rc::autoreleasepool(|_| self.background_frame(ctx));
+        #[cfg(not(target_os = "macos"))]
         self.background_frame(ctx);
         if self.quit_requested {
             Headless::Quit
@@ -896,6 +903,7 @@ impl App {
             progress_bar_px: 0.0,
             window_hidden: false,
             hide_first_window: false,
+            window_minimized: false,
             hide_intent: false,
             wants_show: false,
             switch_intent: false,
@@ -1156,6 +1164,11 @@ impl App {
         // A new window starts titled "LWSpot"; name the playing song
         // again rather than trust what the replaced window was told.
         self.window_title.clear();
+        #[cfg(target_os = "macos")]
+        {
+            crate::url_events::set_windowless(false);
+            crate::url_events::install_terminate_handler();
+        }
         if let Some(tray) = &mut self.tray {
             if self.hide_first_window {
                 // Make the item without bringing the app forward.
@@ -1269,6 +1282,7 @@ impl App {
         // process without asking anyone.
         #[cfg(target_os = "macos")]
         {
+            crate::url_events::set_windowless(true);
             crate::url_events::take_over_app_events();
             self.save_state();
         }
@@ -3856,7 +3870,8 @@ impl App {
             let action = match event {
                 Event::Show => Action::ShowWindow,
                 Event::Toggle | Event::Menu(TRAY_SHOW) => {
-                    if self.window_hidden || crate::window::app_hidden() {
+                    // A minimized window is out of sight too: bring it back.
+                    if self.window_hidden || self.window_minimized || crate::window::app_hidden() {
                         Action::ShowWindow
                     } else {
                         Action::HideWindow
@@ -10734,6 +10749,8 @@ impl App {
     /// Runs background work with or without a main window.
     pub fn background_frame(&mut self, ctx: &egui::Context) {
         self.adopt_desktop();
+        self.window_minimized =
+            !self.window_hidden && ctx.input(|input| input.viewport().minimized.unwrap_or(false));
         // Quit from the Dock, or at log out, restart or shut down, while
         // there was no window (see `url_events`).
         #[cfg(target_os = "macos")]
