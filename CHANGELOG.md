@@ -61,7 +61,7 @@ version's section below as its release notes, so write it for listeners.
   a song), and a Keychain item is read once per session and not written
   again when nothing changed.
 - While Spotify asks LWSpot to slow down and every request is only waiting
-  for it, the "Waiting for Spotify…" spinner and the Loading… rows stand
+  for it, the "Waiting for Spotify…" spinner stands
   still instead of redrawing the window 30 times a second (it used about a
   fifth of a CPU core on a Mac), and spinners elsewhere draw at half the
   rate.
