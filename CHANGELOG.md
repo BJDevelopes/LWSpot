@@ -7,6 +7,8 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-14
+
 ### Fixed
 
 - The mini player no longer runs off the bottom of the screen when its
@@ -204,7 +206,8 @@ being the lightest and most reliable Spotify client on Windows.
 - macOS and Linux support, and their packages. Use
   [Spotifast](https://github.com/crmne/spotifast) on those systems.
 
-[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/BJDevelopes/lwspot/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/BJDevelopes/lwspot/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/BJDevelopes/lwspot/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/BJDevelopes/lwspot/compare/v0.1.0...v0.1.1
