@@ -54,6 +54,10 @@ version's section below as its release notes, so write it for listeners.
 - On a Mac, Now Playing no longer leaks each song's cover art (about 140 KB
   a song), and a Keychain item is read once per session and not written
   again when nothing changed.
+- While Spotify asks LWSpot to slow down, the "Waiting for Spotify…"
+  spinner stands still instead of redrawing the window 30 times a second
+  (it used about a fifth of a CPU core on a Mac), and spinners elsewhere
+  draw at half the rate.
 
 ## [0.1.2] - 2026-10-13
 

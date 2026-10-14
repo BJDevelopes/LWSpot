@@ -389,6 +389,9 @@ pub struct NetActivity {
     /// [`NetActivity::take_traffic`], per app (shared, personal).
     sent: [AtomicU64; 2],
     limited: [AtomicU64; 2],
+    /// Milliseconds since `started_at` when the latest Retry-After cooldown
+    /// ends; requests in flight before then are only waiting it out.
+    cooling_until_ms: AtomicU64,
 }
 
 impl Default for NetActivity {
@@ -399,6 +402,7 @@ impl Default for NetActivity {
             busy_since_ms: AtomicU64::new(0),
             sent: Default::default(),
             limited: Default::default(),
+            cooling_until_ms: AtomicU64::new(0),
         }
     }
 }
@@ -460,6 +464,22 @@ impl NetActivity {
 
     fn end(&self) {
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    fn note_cooldown(&self, until: Instant) {
+        let until_ms = until.saturating_duration_since(self.started_at).as_millis() as u64;
+        self.cooling_until_ms.fetch_max(until_ms, Ordering::SeqCst);
+    }
+
+    /// How long until a Spotify cooldown ends, while one is running. During
+    /// it, requests in flight are only waiting, so there is nothing to
+    /// animate.
+    pub fn cooldown_left(&self) -> Option<Duration> {
+        let left = self
+            .cooling_until_ms
+            .load(Ordering::SeqCst)
+            .saturating_sub(self.now_ms());
+        (left > 0).then(|| Duration::from_millis(left))
     }
 
     /// Requests have been in flight continuously for at least `for_at_least`.
@@ -564,6 +584,7 @@ impl ApiClient {
     async fn extend_cooldown(&self, wait: Duration) {
         let mut until = self.cooldown_until.lock().await;
         *until = (*until).max(Instant::now() + wait);
+        self.activity.note_cooldown(*until);
     }
 
     async fn cooling_down(&self) -> bool {
@@ -1924,6 +1945,22 @@ mod tests {
             activity.take_traffic(),
             (Traffic::default(), Traffic::default())
         );
+    }
+
+    #[test]
+    fn a_cooldown_is_reported_until_it_ends_and_the_latest_one_wins() {
+        let activity = NetActivity::default();
+        assert_eq!(activity.cooldown_left(), None);
+        let now = Instant::now();
+        activity.note_cooldown(now + Duration::from_secs(30));
+        // An earlier end noted later does not cut the wait short.
+        activity.note_cooldown(now + Duration::from_secs(5));
+        let left = activity.cooldown_left().expect("cooling down");
+        assert!(left > Duration::from_secs(25) && left <= Duration::from_secs(30));
+        // One that has already ended reports nothing.
+        let ended = NetActivity::default();
+        ended.note_cooldown(Instant::now());
+        assert_eq!(ended.cooldown_left(), None);
     }
 
     #[tokio::test]

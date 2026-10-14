@@ -892,26 +892,46 @@ fn soft_button_inner(
     (response, dismissed)
 }
 
+/// How often a spinner moves. Each of its frames redraws the whole window,
+/// so a spinner on screen costs as much as a visualizer; 15 frames a second
+/// keeps it moving at half the cost of 30.
+const SPINNER_FRAME: std::time::Duration = std::time::Duration::from_millis(66);
+/// Turns a second; slow enough that 15 frames still read as smooth.
+const SPINNER_TURNS: f64 = 0.8;
+
 /// An animated busy indicator paced independently of the graphics driver.
 pub fn spinner(ui: &mut egui::Ui, size: f32, color: Color32) -> Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     if ui.is_rect_visible(rect) {
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(33));
-        let radius = size / 2.0 - 2.0;
-        let start = ui.input(|input| input.time) * std::f64::consts::TAU * 1.2;
-        let sweep = 250_f64.to_radians();
-        let points = (0..20)
-            .map(|index| {
-                let angle = start + sweep * f64::from(index) / 19.0;
-                let (sin, cos) = angle.sin_cos();
-                rect.center() + radius * egui::vec2(cos as f32, sin as f32)
-            })
-            .collect();
-        ui.painter()
-            .add(egui::Shape::line(points, Stroke::new(2.0, color)));
+        ui.ctx().request_repaint_after(SPINNER_FRAME);
+        let start = ui.input(|input| input.time) * std::f64::consts::TAU * SPINNER_TURNS;
+        spinner_arc(ui, rect, size, color, start);
     }
     response
+}
+
+/// The spinner standing still, for a wait whose end is known (a Spotify
+/// cooldown): it draws nothing more until something else asks for a frame.
+pub fn spinner_still(ui: &mut egui::Ui, size: f32, color: Color32) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        spinner_arc(ui, rect, size, color, -std::f64::consts::FRAC_PI_2);
+    }
+    response
+}
+
+fn spinner_arc(ui: &egui::Ui, rect: egui::Rect, size: f32, color: Color32, start: f64) {
+    let radius = size / 2.0 - 2.0;
+    let sweep = 250_f64.to_radians();
+    let points = (0..20)
+        .map(|index| {
+            let angle = start + sweep * f64::from(index) / 19.0;
+            let (sin, cos) = angle.sin_cos();
+            rect.center() + radius * egui::vec2(cos as f32, sin as f32)
+        })
+        .collect();
+    ui.painter()
+        .add(egui::Shape::line(points, Stroke::new(2.0, color)));
 }
 
 /// Truncated single-line text in a given font and colour.
