@@ -1,0 +1,36 @@
+[package]
+name = "fastframe-shell"
+description = "Keep an egui app running without a window, recreate the window on demand, and bring back windows restored off-screen"
+version = "0.4.1"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+authors = ["Carmine Paolino <carmine@paolino.me>"]
+repository = "https://github.com/crmne/fastframe"
+homepage = "https://github.com/crmne/fastframe"
+readme = "README.md"
+keywords = ["egui", "eframe", "tray", "background", "desktop"]
+categories = ["gui"]
+
+[dependencies]
+# `Waker` repaints through the window's context; recovery asks it to move.
+egui = { version = "0.36.1", default-features = false }
+# `Frame::winit_window`, for the window and monitor positions recovery reads.
+eframe = { version = "0.36.1", default-features = false, features = ["glow", "wayland", "x11"] }
+# One warning when a window is moved back on screen.
+log = { version = "0.4", features = ["std"] }
+
+# The workspace lints.
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+print_stdout = "warn"
+print_stderr = "warn"

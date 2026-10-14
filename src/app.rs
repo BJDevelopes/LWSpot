@@ -777,7 +777,7 @@ impl fastframe_shell::Resident for App {
         // AppKit puts its own reopen handler back when its loop starts, which
         // the shell's idle does between these ticks; one call takes it back.
         #[cfg(target_os = "macos")]
-        crate::url_events::take_over_reopen();
+        crate::url_events::take_over_app_events();
         self.background_frame(ctx);
         if self.quit_requested {
             Headless::Quit
@@ -1264,9 +1264,14 @@ impl App {
         self.hide_intent = false;
         self.wants_show = false;
         // A Dock click is now the way back (with the menu-bar item, which a
-        // crowded menu bar or the notch can hide).
+        // crowded menu bar or the notch can hide), and quit events end the
+        // app in order. Save now too: a quit from the app menu ends the
+        // process without asking anyone.
         #[cfg(target_os = "macos")]
-        crate::url_events::take_over_reopen();
+        {
+            crate::url_events::take_over_app_events();
+            self.save_state();
+        }
     }
 
     /// Whether closing the window keeps the app in the tray rather than
@@ -3851,7 +3856,7 @@ impl App {
             let action = match event {
                 Event::Show => Action::ShowWindow,
                 Event::Toggle | Event::Menu(TRAY_SHOW) => {
-                    if self.window_hidden {
+                    if self.window_hidden || crate::window::app_hidden() {
                         Action::ShowWindow
                     } else {
                         Action::HideWindow
@@ -10172,6 +10177,10 @@ impl App {
                     // No window exists; the outer loop creates one.
                     self.wants_show = true;
                 } else {
+                    // A hidden Mac app's windows cannot take focus.
+                    if crate::window::app_hidden() {
+                        crate::window::unhide_app();
+                    }
                     // A minimized window has to be restored before it can be
                     // focused: Focus alone leaves it in the taskbar, and
                     // no frames are drawn while it is down there, so nothing
@@ -10725,6 +10734,24 @@ impl App {
     /// Runs background work with or without a main window.
     pub fn background_frame(&mut self, ctx: &egui::Context) {
         self.adopt_desktop();
+        // Quit from the Dock, or at log out, restart or shut down, while
+        // there was no window (see `url_events`).
+        #[cfg(target_os = "macos")]
+        {
+            if crate::url_events::take_quit_request() {
+                self.actions.push(Action::Quit);
+            }
+            // The Dock menu works with or without a window.
+            let mut dock = crate::thumbbar::ThumbBar::new();
+            let state = self.thumb_state(false);
+            for command in dock.drain_commands() {
+                if let Some(action) = command.action(&state) {
+                    self.actions.push(action);
+                }
+            }
+            dock.set_locale(self.locale);
+            dock.sync(state);
+        }
         if self.hide_first_window && !self.window_hidden {
             self.hide_first_window = false;
             if self

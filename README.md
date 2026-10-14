@@ -4,7 +4,7 @@
 
 <h1 align="center">LWSpot</h1>
 
-<p align="center"><strong>A lightweight native Spotify client for Windows.</strong></p>
+<p align="center"><strong>A lightweight native Spotify client for Windows and macOS.</strong></p>
 
 <p align="center">
   <a href="https://github.com/BJDevelopes/lwspot/releases"><strong>Download</strong></a> ·
@@ -19,10 +19,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6D5BF0" alt="MIT license"></a>
 </p>
 
-LWSpot is a Spotify client for Windows, written in Rust with
+LWSpot is a Spotify client for Windows and macOS, written in Rust with
 [egui](https://github.com/emilk/egui). It plays music through
 [librespot](https://github.com/librespot-org/librespot) and has no browser
-engine, so it runs as one small process. It is a Windows-only fork of
+engine, so it runs as one small process. It is a fork of
 [Spotifast](https://github.com/crmne/spotifast).
 
 While playing with its window open, LWSpot uses about **4x less CPU than the
@@ -118,7 +118,14 @@ On macOS 14 or earlier, Control-click LWSpot in Applications and choose
 **Open** instead. LWSpot needs nothing else installed. It keeps your sign-in in the login
 Keychain, shows its controls in the menu bar and the Dock icon's menu, opens
 `spotify:` links, and works with the media keys and Control Center's Now
-Playing.
+Playing. After an update, macOS may ask once for your login password so
+LWSpot can read its saved sign-in; choose **Always Allow**.
+
+To remove LWSpot from a Mac: in Settings, sign out (this deletes the saved
+sign-in from the Keychain) and turn **Open at login** off, quit LWSpot, and
+drag it from Applications to the Trash. Its settings and caches are in
+`~/Library/Application Support/LWSpot` and `~/Library/Caches/LWSpot`, which
+you can delete too.
 
 ## Start listening
 
@@ -171,7 +178,7 @@ is described in [PACKAGING.md](PACKAGING.md).
 
 LWSpot is a fork of [Spotifast](https://github.com/crmne/spotifast) by
 [Carmine Paolino](https://github.com/crmne), released under the MIT License.
-LWSpot builds on that work and narrows it to Windows.
+LWSpot builds on that work for Windows and macOS.
 
 LWSpot uses [librespot](https://github.com/librespot-org/librespot),
 [egui](https://github.com/emilk/egui), the [Inter](https://rsms.me/inter/)

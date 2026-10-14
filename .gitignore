@@ -21,3 +21,6 @@ Thumbs.db
 desktop.ini
 *.code-workspace
 *.log
+
+# Lock files of vendored path crates (cargo ignores them)
+/vendor/*/Cargo.lock

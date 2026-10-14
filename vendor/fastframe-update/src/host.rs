@@ -270,12 +270,18 @@ mod os {
         ) -> Result<Box<dyn Child>> {
             let mut command = Command::new(executable);
             command.args(arguments);
-            if let Some(log) = log {
-                command
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(log);
-            }
+            // The helper and the app it relaunches log to their own files;
+            // without a log they must not inherit the helper's.
+            command
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(log.map_or_else(Stdio::null, Stdio::from));
+            // A process group of its own: an app started by a launchd agent
+            // (Open at login on macOS) shares the agent's group, and launchd
+            // kills the whole group when the app quits to be updated, helper
+            // included.
+            #[cfg(unix)]
+            std::os::unix::process::CommandExt::process_group(&mut command, 0);
             hidden(&mut command);
             Ok(Box::new(Process(command.spawn()?)))
         }

@@ -291,6 +291,13 @@ jobs:
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
+      # The DMG and the add-ons are named from Cargo.toml, the release from
+      # the tag, and the app looks for its add-on under its own version: they
+      # must agree, or Macs get a release they cannot install from.
+      - name: Tag matches the version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $version"; exit 1; }
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: stable

@@ -3,8 +3,10 @@ How to open LWSpot
 1. Drag LWSpot onto the Applications folder in this window.
 2. Open LWSpot from Applications (Launchpad, Spotlight or Finder).
 
-The first time, macOS may say "LWSpot" Not Opened, because LWSpot is not
-yet notarized by Apple. That happens only once:
+The first time, macOS stops LWSpot because it is not yet notarized by
+Apple. On macOS 15 or later it says "LWSpot" Not Opened; on macOS 11 to 14,
+"LWSpot" cannot be opened because the developer cannot be verified. That
+happens only once:
 
   macOS 15 Sequoia or later
     - Click Done.

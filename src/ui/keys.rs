@@ -9,6 +9,12 @@ use crate::i18n::{Locale, gettext, pgettext};
 use crate::model::{Action, Dialog, Page};
 
 pub(super) const SIDEBAR_SHORTCUT: &str = "Ctrl+B";
+/// Home's modifiers: Ctrl, or ⇧⌘ on a Mac, where ⌘H hides the app.
+const HOME_MODIFIERS: Modifiers = if cfg!(target_os = "macos") {
+    Modifiers::COMMAND.plus(Modifiers::SHIFT)
+} else {
+    Modifiers::COMMAND
+};
 pub(super) const QUIT_SHORTCUT: &str = "Ctrl+Q";
 pub(super) const WINAMP_SHORTCUT: &str = "Ctrl+M";
 pub(super) const MILKDROP_SHORTCUT: &str = "Ctrl+Shift+K";
@@ -50,7 +56,9 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
         // The platform's close key. The mini player has no title bar for
         // the system to close it by.
         key(Modifiers::COMMAND, Key::W, Action::CloseWindow);
-        key(Modifiers::COMMAND, Key::H, Action::Open(Page::Home));
+        // ⌘H is the Mac's Hide, which AppKit takes before LWSpot sees it;
+        // Home is ⇧⌘H there, as in the Finder.
+        key(HOME_MODIFIERS, Key::H, Action::Open(Page::Home));
         key(Modifiers::COMMAND, Key::L, Action::Open(Page::LikedSongs));
         key(Modifiers::COMMAND, Key::M, Action::ToggleWinampWindow);
         // Winamp's key for starting and stopping the visualisation plug-in.
@@ -217,7 +225,14 @@ pub fn shortcuts(locale: Locale) -> Vec<(Cow<'static, str>, Cow<'static, str>)> 
             gettext(locale, "Show or hide the sidebar"),
         ),
         (keys("Alt+←  /  Alt+→"), gettext(locale, "Back or forward")),
-        (keys("Ctrl+H"), gettext(locale, "Home")),
+        (
+            keys(if cfg!(target_os = "macos") {
+                "Ctrl+Shift+H"
+            } else {
+                "Ctrl+H"
+            }),
+            gettext(locale, "Home"),
+        ),
         (keys("Ctrl+L"), gettext(locale, "Liked Songs")),
         (
             keys("Ctrl+Shift+A"),
@@ -536,7 +551,12 @@ mod tests {
         } else {
             "Ctrl"
         };
-        assert_eq!(label("Home"), format!("{command}+H"));
+        let home = if cfg!(target_os = "macos") {
+            "Cmd+Shift+H".to_owned()
+        } else {
+            format!("{command}+H")
+        };
+        assert_eq!(label("Home"), home);
         assert_eq!(label("Winamp mini player"), format!("{command}+M"));
     }
 

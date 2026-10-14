@@ -64,6 +64,8 @@ fn plist(label: &str, arguments: &[String]) -> String {
     out.push_str(
         "\t</array>\n\
          \t<key>RunAtLoad</key>\n\t<true/>\n\
+         \t<key>AbandonProcessGroup</key>\n\t<true/>\n\
+         \t<key>AssociatedBundleIdentifiers</key>\n\t<string>io.github.BJDevelopes.LWSpot</string>\n\
          \t<key>ProcessType</key>\n\t<string>Interactive</string>\n\
          \t<key>LimitLoadToSessionType</key>\n\t<string>Aqua</string>\n\
          </dict>\n</plist>\n",

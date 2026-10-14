@@ -36,8 +36,18 @@ version's section below as its release notes, so write it for listeners.
   download page instead. Finished updates no longer leave their files hidden
   in Applications.
 - On a Mac, denying the Keychain prompt asks once rather than again for each
-  saved sign-in, and a copy opened from the disk image no longer takes over
-  **Open at login**.
+  saved sign-in, each saved sign-in is read once (one prompt, not two), and
+  there is time to answer, and a copy opened from the disk image no longer
+  takes over **Open at login**.
+- On a Mac, closing the window to the menu bar no longer leaves LWSpot
+  unresponsive. Quitting from the Dock, logging out or restarting saves
+  first, ⇧⌘H opens Home (⌘H hides the app, as on every Mac), Show brings a
+  hidden LWSpot back, the Dock menu works without a window, and starting in
+  the menu bar at log in no longer takes the focus.
+- A copy started at log in can update itself: the update no longer ends with
+  the app it replaces.
+- Declining on Spotify's sign-in page, or a browser that keeps an idle
+  connection open, no longer leaves sign-in waiting for ten minutes.
 
 ## [0.1.2] - 2026-10-13
 

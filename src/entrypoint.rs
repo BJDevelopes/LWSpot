@@ -549,10 +549,10 @@ pub(crate) fn run() -> eframe::Result<()> {
     // Nothing needs the main thread between headless ticks on Windows, so
     // the shell sleeps until the waker wakes it. On a Mac the menu-bar item
     // and the Dock icon answer only while AppKit's loop runs, so without a
-    // window the shell runs it between ticks instead; sleeping there leaves
-    // both unresponsive and the app "not responding".
+    // window the shell runs it until the next tick or a wake instead;
+    // sleeping there leaves both unresponsive and the app "not responding".
     #[cfg(target_os = "macos")]
-    let shell = shell.idle(fastframe_tray::idle);
+    let shell = shell.interruptible_idle(lwspot::headless::idle, lwspot::headless::interrupt);
     shell.run(|lease| {
         let creator_waker = waker.clone();
         #[cfg(feature = "demo")]
@@ -583,6 +583,14 @@ pub(crate) fn run() -> eframe::Result<()> {
             let mut options = options;
             if lease.peek(|app| app.hide_first_window) {
                 options.viewport = options.viewport.with_visible(false);
+                // Starting in the menu bar at log in must not take the focus
+                // from whatever the person opened first. eframe builds its
+                // one event loop with this first window, and the menu-bar
+                // item still brings LWSpot forward when it opens a window.
+                options.event_loop_builder = Some(Box::new(|builder| {
+                    use egui_winit::winit::platform::macos::EventLoopBuilderExtMacOS;
+                    builder.with_activate_ignoring_other_apps(false);
+                }));
             }
             options
         };

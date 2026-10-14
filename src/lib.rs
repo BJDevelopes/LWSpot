@@ -13,6 +13,8 @@ pub mod credentials;
 pub mod demo;
 pub mod emoji;
 pub mod eq;
+#[cfg(target_os = "macos")]
+pub mod headless;
 pub mod history;
 pub mod http;
 pub mod i18n;

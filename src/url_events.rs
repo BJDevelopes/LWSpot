@@ -12,12 +12,15 @@
 //! run loop runs, and leaves this event class alone because winit's delegate
 //! has no `application:openURLs:`.
 //!
-//! The same handler answers a Dock click while the app has no window
-//! ([`take_over_reopen`]): macOS sends the running app a "reopen" event,
-//! which becomes the same Show a second launch sends. AppKit would pass it
-//! to the application delegate, and winit's delegate only exists while a
-//! window does, so with the window closed (or never opened, after starting
-//! in the menu bar) a Dock click would otherwise do nothing.
+//! The same handler answers two events while the app has no window
+//! ([`take_over_app_events`]):
+//! - A Dock click, which macOS sends as "reopen" and which becomes the same
+//!   Show a second launch sends. AppKit would pass it to the application
+//!   delegate, which does nothing without a window.
+//! - Quit (from the Dock, at log out, restart or shut down), which becomes
+//!   the app's own Quit, so it saves and shuts down in order. AppKit's own
+//!   handler would end the process at once, as no window is there to close.
+//!   The reply says yes, so a log out is never held up or cancelled.
 
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -37,6 +40,11 @@ const DIRECT_OBJECT: u32 = u32::from_be_bytes(*b"----");
 /// of the running app.
 const CORE_EVENT: u32 = u32::from_be_bytes(*b"aevt");
 const REOPEN: u32 = u32::from_be_bytes(*b"rapp");
+/// `kAEQuitApplication`.
+const QUIT: u32 = u32::from_be_bytes(*b"quit");
+
+/// Set by a quit event while windowless, taken by [`take_quit_request`].
+static QUIT_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 thread_local! {
     /// The one handler, kept for the life of the process: the Apple Event
@@ -80,6 +88,13 @@ define_class!(
             log::debug!("reopen from macOS");
             self.queue(ControlCommand::Show);
         }
+
+        #[unsafe(method(handleQuit:withReplyEvent:))]
+        fn handle_quit(&self, _event: &NSAppleEventDescriptor, _reply: *mut AnyObject) {
+            log::info!("quit from macOS");
+            QUIT_REQUESTED.store(true, std::sync::atomic::Ordering::Release);
+            (self.ivars().wake)();
+        }
     }
 
     unsafe impl NSObjectProtocol for Handler {}
@@ -122,25 +137,35 @@ pub fn install(commands: Arc<Mutex<Vec<ControlCommand>>>, wake: impl Fn() + Send
     HANDLER.with_borrow_mut(|slot| *slot = Some(handler));
 }
 
-/// Answers Dock clicks with Show from now on. Call on the main thread each
-/// time the app goes without a window: AppKit installs its own reopen
-/// handler as it starts each event loop, so this takes the event back after
-/// it. Does nothing before [`install`].
-pub fn take_over_reopen() {
+/// Answers Dock clicks with Show, and quit events with the app's own Quit,
+/// from now on. Call on the main thread each time the app goes without a
+/// window: AppKit installs its own handlers as it starts each event loop, so
+/// this takes the events back after it. Does nothing before [`install`].
+pub fn take_over_app_events() {
     HANDLER.with_borrow(|handler| {
         let Some(handler) = handler else {
             return;
         };
         let manager = NSAppleEventManager::sharedAppleEventManager();
-        // SAFETY: as in `install`.
-        unsafe {
-            let _: () = msg_send![
-                &manager,
-                setEventHandler: &**handler,
-                andSelector: sel!(handleReopen:withReplyEvent:),
-                forEventClass: CORE_EVENT,
-                andEventID: REOPEN,
-            ];
+        for (selector, event) in [
+            (sel!(handleReopen:withReplyEvent:), REOPEN),
+            (sel!(handleQuit:withReplyEvent:), QUIT),
+        ] {
+            // SAFETY: as in `install`.
+            unsafe {
+                let _: () = msg_send![
+                    &manager,
+                    setEventHandler: &**handler,
+                    andSelector: selector,
+                    forEventClass: CORE_EVENT,
+                    andEventID: event,
+                ];
+            }
         }
     });
+}
+
+/// Whether macOS asked the app to quit since the last call.
+pub fn take_quit_request() -> bool {
+    QUIT_REQUESTED.swap(false, std::sync::atomic::Ordering::AcqRel)
 }

@@ -171,42 +171,70 @@ pub async fn wait_for_code(
         .with_context(|| format!("unable to listen on {address} for the Spotify redirect"))?;
     let deadline = tokio::time::sleep(LOGIN_TIMEOUT);
     tokio::pin!(deadline);
+    // Each connection is answered on its own, so one that sends nothing (a
+    // browser's speculative preconnect, say) holds up neither the real
+    // redirect nor Cancel. Dropping the set ends the others.
+    let mut connections = tokio::task::JoinSet::new();
 
     loop {
-        let (mut stream, _) = tokio::select! {
-            accepted = listener.accept() => accepted.context("redirect listener failed")?,
+        tokio::select! {
+            accepted = listener.accept() => {
+                let (stream, _) = accepted.context("redirect listener failed")?;
+                if connections.len() < MAX_CONNECTIONS {
+                    connections.spawn(answer(stream, expected_state.to_owned()));
+                }
+            }
+            Some(answered) = connections.join_next() => match answered {
+                Ok(Ok(code)) => return Ok(code),
+                // Spotify sent this attempt back with an error: the person
+                // declined, or Spotify refused. Waiting longer is pointless.
+                Ok(Err(error)) if error.is::<Declined>() => return Err(error),
+                // A favicon request or a stale tab is not the redirect; keep waiting.
+                Ok(Err(error)) => log::debug!("ignored request on the redirect listener: {error}"),
+                Err(_) => {}
+            },
             _ = cancel.changed() => {
                 if *cancel.borrow() { bail!("sign-in cancelled"); }
-                continue;
             }
             _ = &mut deadline => bail!("sign-in timed out; try again"),
-        };
-
-        let mut reader = BufReader::new(&mut stream);
-        let mut request_line = String::new();
-        if reader.read_line(&mut request_line).await.is_err() {
-            continue;
-        }
-        let outcome = parse_request_line(&request_line, expected_state);
-        let (status, body) = match &outcome {
-            Ok(_) => ("200 OK", success_page()),
-            Err(error) => ("400 Bad Request", failure_page(&error.to_string())),
-        };
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
-            body.len()
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
-        let _ = stream.shutdown().await;
-        match outcome {
-            Ok(code) => return Ok(code),
-            Err(error) => {
-                // A favicon request or a stale tab is not the redirect; keep waiting.
-                log::debug!("ignored request on the redirect listener: {error}");
-                continue;
-            }
         }
     }
+}
+
+/// At most this many connections are answered at once; more wait in the
+/// listen queue.
+const MAX_CONNECTIONS: usize = 16;
+/// How long a connection may take to send its request line.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The browser came back from Spotify with an error for this attempt.
+#[derive(Debug, thiserror::Error)]
+#[error("the sign-in was declined or refused in the browser")]
+pub struct Declined;
+
+/// Reads one request, answers it with the success or failure page, and
+/// says what it was.
+async fn answer(mut stream: tokio::net::TcpStream, expected_state: String) -> Result<String> {
+    let mut request_line = String::new();
+    let read = {
+        let mut reader = BufReader::new(&mut stream);
+        tokio::time::timeout(REQUEST_TIMEOUT, reader.read_line(&mut request_line)).await
+    };
+    if !matches!(read, Ok(Ok(_))) {
+        bail!("no request on the redirect listener");
+    }
+    let outcome = parse_request_line(&request_line, &expected_state);
+    let (status, body) = match &outcome {
+        Ok(_) => ("200 OK", success_page()),
+        Err(error) => ("400 Bad Request", failure_page(&error.to_string())),
+    };
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
+    let _ = stream.shutdown().await;
+    outcome
 }
 
 fn parse_request_line(line: &str, expected_state: &str) -> Result<String> {
@@ -233,11 +261,13 @@ fn parse_request_line(line: &str, expected_state: &str) -> Result<String> {
             _ => {}
         }
     }
-    if error.is_some() {
-        bail!("Spotify refused the sign-in. Try again.");
-    }
+    // The state first: a stale tab from an earlier attempt must not end
+    // this one, whatever it carries.
     if state.as_deref() != Some(expected_state) {
         bail!("state mismatch");
+    }
+    if error.is_some() {
+        return Err(Declined.into());
     }
     code.ok_or_else(|| anyhow!("Spotify did not return an authorization code"))
 }
@@ -524,6 +554,79 @@ fn failure_page(reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// A free loopback port for one listener test.
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    async fn request(port: u16, line: &str) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        stream
+            .write_all(format!("{line}\r\n\r\n").as_bytes())
+            .await
+            .unwrap();
+        let mut reply = Vec::new();
+        let _ = stream.read_to_end(&mut reply).await;
+    }
+
+    /// A connection that sends nothing, as a browser's preconnect does,
+    /// holds up neither the redirect nor Cancel.
+    #[tokio::test]
+    async fn an_idle_connection_does_not_hold_up_the_redirect_or_cancel() {
+        let port = free_port();
+        let (_cancel, cancel_rx) = tokio::sync::watch::channel(false);
+        let waiting =
+            tokio::spawn(async move { super::wait_for_code(port, "s1", cancel_rx).await });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let _idle = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        let started = std::time::Instant::now();
+        request(port, "GET /login?code=abc&state=s1 HTTP/1.1").await;
+        let code = waiting.await.unwrap().unwrap();
+        assert_eq!(code, "abc");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+
+        let port = free_port();
+        let (cancel, cancel_rx) = tokio::sync::watch::channel(false);
+        let waiting =
+            tokio::spawn(async move { super::wait_for_code(port, "s1", cancel_rx).await });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let _idle = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let started = std::time::Instant::now();
+        cancel.send(true).unwrap();
+        let error = waiting.await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("cancelled"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    /// Declining on Spotify's page ends this attempt at once; a stale tab of
+    /// another attempt is ignored.
+    #[tokio::test]
+    async fn a_declined_sign_in_ends_the_wait_and_a_stale_tab_does_not() {
+        let port = free_port();
+        let (_cancel, cancel_rx) = tokio::sync::watch::channel(false);
+        let waiting =
+            tokio::spawn(async move { super::wait_for_code(port, "s1", cancel_rx).await });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        request(port, "GET /login?error=access_denied&state=old HTTP/1.1").await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!waiting.is_finished(), "a stale tab ended the attempt");
+        request(port, "GET /login?error=access_denied&state=s1 HTTP/1.1").await;
+        let error = waiting.await.unwrap().unwrap_err();
+        assert!(error.is::<super::Declined>());
+    }
+
     #[test]
     fn token_errors_never_include_authorization_response_contents() {
         for (status, body) in [

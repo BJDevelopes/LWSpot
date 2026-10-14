@@ -39,6 +39,33 @@ pub fn report_missing_opengl(locale: crate::i18n::Locale) {
     }
 }
 
+/// Whether the app is hidden (⌘H, or Hide in its menu). Its windows are then
+/// not visible, so focusing one does nothing until the app is unhidden.
+#[cfg(target_os = "macos")]
+pub fn app_hidden() -> bool {
+    objc2::MainThreadMarker::new()
+        .is_some_and(|mtm| objc2_app_kit::NSApplication::sharedApplication(mtm).isHidden())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn app_hidden() -> bool {
+    false
+}
+
+/// Unhides the app and brings it forward, for a Show that should be seen.
+#[cfg(target_os = "macos")]
+pub fn unhide_app() {
+    if let Some(mtm) = objc2::MainThreadMarker::new() {
+        let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+        app.unhide(None);
+        #[allow(deprecated, reason = "its replacement needs macOS 14")]
+        app.activateIgnoringOtherApps(true);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn unhide_app() {}
+
 /// Minimize the active window.
 pub fn minimize_window(ctx: &egui::Context) {
     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));

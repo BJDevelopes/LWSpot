@@ -123,12 +123,13 @@ fn install(mtm: MainThreadMarker) -> bool {
     true
 }
 
-/// The Dock menu, for the window shell.
+/// The Dock menu. It belongs to the application, not a window: the Dock
+/// icon stays while LWSpot runs without one (closed to the menu bar, or
+/// started at log in), so the menu lives in [`STATE`] for the process's
+/// life. Every `ThumbBar` is a handle on it; the window shell and the app's
+/// background pass both sync it and take its presses.
 #[derive(Default)]
-pub struct ThumbBar {
-    attached: Option<Attached>,
-    locale: Locale,
-}
+pub struct ThumbBar;
 
 struct Attached {
     /// The items' action target, kept alive as long as they are.
@@ -136,19 +137,29 @@ struct Attached {
     items: [Retained<NSMenuItem>; super::COUNT],
     commands: Rc<RefCell<Vec<ThumbCommand>>>,
     shown: Option<ThumbState>,
+    locale: Locale,
+}
+
+thread_local! {
+    /// The menu's items and presses, once attached; main thread only.
+    static STATE: RefCell<Option<Attached>> = const { RefCell::new(None) };
 }
 
 impl ThumbBar {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
-    /// Builds the menu and offers it to the Dock. `_view` is unused: the
-    /// Dock menu belongs to the application, not a window.
+    /// Builds the menu and offers it to the Dock, once per process; later
+    /// windows find it there. `_view` is unused: the Dock menu belongs to
+    /// the application, not a window.
     ///
     /// # Safety
     /// Call on the main thread.
     pub unsafe fn attach(&mut self, _view: isize, wake: impl Fn() + Send + Sync + 'static) {
+        if STATE.with_borrow(Option::is_some) {
+            return;
+        }
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
@@ -177,8 +188,7 @@ impl ThumbBar {
                     &NSString::from_str(""),
                 )
             };
-            // SAFETY: the target outlives the menu (both are dropped in
-            // `detach`, the menu first).
+            // SAFETY: the target lives in STATE for the rest of the process.
             unsafe { item.setTarget(Some(&target)) };
             menu.addItem(&item);
             item
@@ -189,58 +199,67 @@ impl ThumbBar {
             item(sel!(next:)),
         ];
         MENU.set(Some(menu));
-        self.attached = Some(Attached {
+        STATE.set(Some(Attached {
             _target: target,
             items,
             commands,
             shown: None,
-        });
-        self.relabel();
+            locale: Locale::default(),
+        }));
+        relabel();
     }
 
-    pub fn detach(&mut self) {
-        MENU.set(None);
-        self.attached = None;
-    }
+    /// Nothing to undo: the Dock menu outlives each window.
+    pub fn detach(&mut self) {}
 
     /// The interface language for the items' titles.
     pub fn set_locale(&mut self, locale: Locale) {
-        if self.locale != locale {
-            self.locale = locale;
-            if let Some(attached) = &mut self.attached {
-                attached.shown = None;
+        let changed = STATE.with_borrow_mut(|state| match state {
+            Some(attached) if attached.locale != locale => {
+                attached.locale = locale;
+                true
             }
-            self.relabel();
+            _ => false,
+        });
+        if changed {
+            relabel();
         }
     }
 
     /// Shows `state` in the menu; nothing is touched while it is unchanged.
-    pub fn sync(&mut self, state: ThumbState) {
-        let Some(attached) = &mut self.attached else {
-            return;
-        };
-        if attached.shown == Some(state) {
-            return;
-        }
-        attached.shown = Some(state);
-        self.relabel();
-    }
-
-    fn relabel(&self) {
-        let Some(attached) = &self.attached else {
-            return;
-        };
-        let state = attached.shown.unwrap_or_default();
-        for (item, button) in attached.items.iter().zip(super::buttons(&state)) {
-            item.setTitle(&NSString::from_str(&gettext(self.locale, button.tip)));
-            item.setEnabled(button.enabled);
+    pub fn sync(&mut self, shown: ThumbState) {
+        let changed = STATE.with_borrow_mut(|state| match state {
+            Some(attached) if attached.shown != Some(shown) => {
+                attached.shown = Some(shown);
+                true
+            }
+            _ => false,
+        });
+        if changed {
+            relabel();
         }
     }
 
     pub fn drain_commands(&self) -> Vec<ThumbCommand> {
-        self.attached
-            .as_ref()
-            .map(|attached| std::mem::take(&mut *attached.commands.borrow_mut()))
-            .unwrap_or_default()
+        STATE.with_borrow(|state| {
+            state
+                .as_ref()
+                .map(|attached| std::mem::take(&mut *attached.commands.borrow_mut()))
+                .unwrap_or_default()
+        })
     }
+}
+
+/// Writes the titles and enabled states for what is shown now.
+fn relabel() {
+    STATE.with_borrow(|state| {
+        let Some(attached) = state else {
+            return;
+        };
+        let shown = attached.shown.unwrap_or_default();
+        for (item, button) in attached.items.iter().zip(super::buttons(&shown)) {
+            item.setTitle(&NSString::from_str(&gettext(attached.locale, button.tip)));
+            item.setEnabled(button.enabled);
+        }
+    });
 }

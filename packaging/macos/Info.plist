@@ -46,7 +46,7 @@
 	<string>MIT License</string>
 	<!-- Spotify Connect finds and announces devices on the local network. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>LWSpot finds your Spotify Connect speakers and lets your other devices play on this Mac.</string>
+	<string>LWSpot finds Spotify Connect speakers on your network so you can play on them.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_spotify-connect._tcp</string>

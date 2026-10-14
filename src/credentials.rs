@@ -20,7 +20,14 @@ use sha2::{Digest, Sha256};
 use crate::{auth::StoredToken, paths::AppDirs};
 
 const SERVICE: &str = "io.github.BJDevelopes.LWSpot";
-const TIMEOUT: Duration = Duration::from_secs(20);
+/// How long a credential operation may take. On a Mac it can be a person:
+/// after an ad-hoc-signed update the Keychain asks for the login password
+/// once per saved item, and those prompts queue up behind each other.
+const TIMEOUT: Duration = if cfg!(target_os = "macos") {
+    Duration::from_secs(180)
+} else {
+    Duration::from_secs(20)
+};
 /// Startup reads retry a refusing store after 250 ms, 500 ms and 1 s.
 const STARTUP_RETRIES: u32 = 3;
 const STARTUP_RETRY: Duration = Duration::from_millis(250);
@@ -174,19 +181,29 @@ const NATIVE_LIMIT: Option<usize> = if cfg!(windows) { Some(2400) } else { None 
 
 /// What a native store failure was, without anything it carried. Provider
 /// errors can hold the secret (`BadEncoding`, `BadDataFormat`) or arbitrary
-/// text, so only the variant, a Win32 code, or a length is kept.
+/// text, so only the variant, a platform code, or a length is kept.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Cause {
     variant: &'static str,
-    code: Option<u32>,
+    code: Option<PlatformCode>,
     length: Option<u32>,
+}
+
+/// The code inside a platform error, named for the system that gave it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PlatformCode {
+    Win32(u32),
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    OsStatus(i32),
 }
 
 impl std::fmt::Display for Cause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.variant)?;
-        if let Some(code) = self.code {
-            write!(f, " (Win32 error {code})")?;
+        match self.code {
+            Some(PlatformCode::Win32(code)) => write!(f, " (Win32 error {code})")?,
+            Some(PlatformCode::OsStatus(code)) => write!(f, " (OSStatus {code})")?,
+            None => {}
         }
         if let Some(length) = self.length {
             write!(f, " (limit {length})")?;
@@ -198,24 +215,23 @@ impl std::fmt::Display for Cause {
 /// The Win32 code inside a windows-native-keyring-store platform error (its
 /// type is private, so the code is recovered from its fixed Display forms),
 /// or the OSStatus inside a macOS Keychain error.
-fn platform_code(error: &(dyn std::error::Error + Send + Sync + 'static)) -> Option<u32> {
+fn platform_code(error: &(dyn std::error::Error + Send + Sync + 'static)) -> Option<PlatformCode> {
     #[cfg(target_os = "macos")]
     if let Some(error) = error.downcast_ref::<security_framework::base::Error>() {
-        // An OSStatus, logged as its bits, like the Win32 codes.
-        return Some(error.code() as u32);
+        return Some(PlatformCode::OsStatus(error.code()));
     }
     let text = error.to_string();
     if let Some(code) = text.strip_prefix("Windows error code ") {
-        return code.trim().parse().ok();
+        return code.trim().parse().ok().map(PlatformCode::Win32);
     }
-    Some(match text.as_str() {
+    Some(PlatformCode::Win32(match text.as_str() {
         "Windows ERROR_NO_SUCH_LOGON_SESSION" => 1312,
         "Windows ERROR_NOT_FOUND" => 1168,
         "Windows ERROR_BAD_USERNAME" => 2202,
         "Windows ERROR_INVALID_FLAGS" => 1004,
         "Windows ERROR_INVALID_PARAMETER" => 87,
         _ => return None,
-    })
+    }))
 }
 
 fn diagnose(error: &keyring_core::Error) -> Cause {
@@ -335,11 +351,12 @@ impl Native for NativeStore {
             Err(error) => Err(native_error("read", error)),
         }
     }
+    /// A Keychain item outlives the login session, so it is Local. This is
+    /// only asked right after a read found the item or a write made it, and
+    /// reading it again could bring up a second Keychain prompt.
     #[cfg(not(windows))]
-    fn persistence(&mut self, key: &str) -> Result<Option<Persistence>, Error> {
-        // A Keychain item outlives the login session, so any item that
-        // exists is Local.
-        Ok(self.read(key)?.map(|_| Persistence::Local))
+    fn persistence(&mut self, _key: &str) -> Result<Option<Persistence>, Error> {
+        Ok(Some(Persistence::Local))
     }
     #[cfg(windows)]
     fn persistence(&mut self, key: &str) -> Result<Option<Persistence>, Error> {

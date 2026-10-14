@@ -182,8 +182,11 @@ apple-native-keyring-store = { version = "1", default-features = false, features
 # the version apple-native-keyring-store already compiles.
 security-framework = { version = "3", default-features = false }
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSObject", "NSString"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSColor", "NSColorSpace", "NSMenu", "NSMenuItem", "NSResponder"] }
+# winit's macOS event-loop options (starting in the menu bar without taking
+# focus), through the egui-winit that eframe already compiles.
+egui-winit = { version = "0.36", default-features = false }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSGeometry", "NSObject", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSColor", "NSColorSpace", "NSEvent", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSResponder"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = { version = "1.1", default-features = false }
@@ -317,6 +320,7 @@ librespot-protocol = { git = "https://github.com/crmne/librespot", rev = "23fc42
 # inside their upstream repositories.
 [patch."https://github.com/dennisgr7/fastframe"]
 fastframe-fonts = { path = "vendor/fastframe-fonts" }
+fastframe-shell = { path = "vendor/fastframe-shell" }
 fastframe-update = { path = "vendor/fastframe-update" }
 
 [patch."https://github.com/crmne/librespot"]
