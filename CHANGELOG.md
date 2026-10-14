@@ -7,6 +7,12 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-14
+
+LWSpot now runs on Macs too. Copies of 0.1.0, 0.1.1 and 0.1.2 can't update
+themselves (see Fixed below): run the 0.1.3 installer once over yours. Your
+settings and sign-in are kept, and later updates install by themselves again.
+
 ### Added
 
 - LWSpot runs on macOS 11 and later, on Apple silicon and Intel Macs, as
@@ -189,7 +195,8 @@ being the lightest and most reliable Spotify client on Windows.
 - macOS and Linux support, and their packages. Use
   [Spotifast](https://github.com/crmne/spotifast) on those systems.
 
-[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/BJDevelopes/lwspot/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/BJDevelopes/lwspot/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/BJDevelopes/lwspot/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/BJDevelopes/lwspot/releases/tag/v0.1.0
