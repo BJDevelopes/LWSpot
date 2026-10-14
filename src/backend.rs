@@ -1787,6 +1787,10 @@ impl Worker {
                                 .map_or(CredentialSlot::Playback, web_slot),
                         );
                         let _ = cancel.send(true);
+                        // A cancelled playback flow reports nothing itself.
+                        if self.authorizing_source.is_none() {
+                            self.emit(Event::Playback(LocalPlayback::Unavailable));
+                        }
                     }
                     if let Some(source) = self.authorizing_source.take()
                         && matches!(self.api.state(source), SessionState::Authorizing)
@@ -1922,10 +1926,12 @@ impl Worker {
                     lease,
                     attempt,
                 } => {
+                    // The browser part is over either way; ending it first
+                    // means no early return below can leave its Cancel
+                    // behind to refuse every later sign-in.
+                    self.finish_playback_authorization(attempt);
                     if lease.current() {
                         self.on_playback_authorized(access_token);
-                    } else {
-                        self.finish_playback_authorization(attempt);
                     }
                 }
                 Command::EngineConnected {
@@ -2581,6 +2587,11 @@ impl Worker {
                 self.authorizing_source
                     .map_or(CredentialSlot::Playback, web_slot),
             );
+            // A playback flow cancelled with its lease reports nothing, and
+            // local playback would stay "Setting up".
+            if self.authorizing_source.is_none() {
+                self.emit(Event::Playback(LocalPlayback::Unavailable));
+            }
             true
         } else {
             false
@@ -2886,10 +2897,16 @@ impl Worker {
             )));
             return;
         }
-        // The playback sign-in that led here is over. A Web API sign-in
-        // still waiting for the browser (a reconnect can land here) is not.
-        if self.authorizing_source.is_none() {
-            self.cancel_signin = None;
+        // A playback sign-in still waiting for the browser is replaced by
+        // this connection (a reconnect with the stored grant): end its wait
+        // and free its port. Dropping its Cancel would leave the wait
+        // running. Its lease goes first, so it reports nothing over this
+        // connection's progress. A Web API sign-in is left waiting.
+        if self.authorizing_source.is_none()
+            && let Some(cancel) = self.cancel_signin.take()
+        {
+            self.credentials.invalidate(CredentialSlot::Playback);
+            let _ = cancel.send(true);
         }
         self.engine_busy = true;
         self.emit(Event::Playback(LocalPlayback::Connecting));
@@ -6413,13 +6430,69 @@ mod authorization_tests {
             "the sign-in lost its Cancel"
         );
 
+        // A playback sign-in it replaces is cancelled, not just dropped:
+        // a dropped Cancel no longer ends the wait.
         worker.engine_busy = false;
         worker.authorizing_source = None;
-        let (cancel, cancel_rx) = watch::channel(false);
+        let (cancel, mut cancel_rx) = watch::channel(false);
         worker.cancel_signin = Some(cancel);
+        let playback = worker.credentials.lease(CredentialSlot::Playback);
         worker.connect_engine(Credentials::with_access_token("dummy-token"));
         assert!(worker.cancel_signin.is_none());
-        assert!(cancel_rx.has_changed().is_err());
+        assert!(
+            *cancel_rx.borrow_and_update(),
+            "the playback sign-in was not cancelled"
+        );
+        assert!(
+            !playback.current(),
+            "the cancelled sign-in could still report"
+        );
+    }
+
+    /// A playback sign-in that finishes when the engine cannot connect
+    /// (here: the account is gone) leaves nothing behind to refuse the next
+    /// sign-in.
+    #[test]
+    fn a_finished_playback_sign_in_never_blocks_the_next_one() {
+        let (runtime, mut worker, events) = worker("finished-playback");
+        let (cancel, _cancel_rx) = watch::channel(false);
+        worker.cancel_signin = Some(cancel);
+        let attempt = worker.authorization_attempt;
+        let lease = worker.credentials.lease(CredentialSlot::Playback);
+        let (commands, receiver) = mpsc::unbounded_channel();
+        commands
+            .send(Command::PlaybackAuthorized {
+                access_token: "dummy-token".into(),
+                lease,
+                attempt,
+            })
+            .unwrap();
+        commands.send(Command::Shutdown).unwrap();
+        runtime.block_on(worker.run(receiver));
+        assert!(worker.cancel_signin.is_none());
+        assert!(
+            events
+                .try_iter()
+                .any(|event| matches!(event, Event::Playback(LocalPlayback::Failed(_))))
+        );
+    }
+
+    /// The guided setup cancelling a pending playback sign-in takes local
+    /// playback out of "Setting up".
+    #[test]
+    fn the_guided_setup_ends_a_pending_playback_sign_in_visibly() {
+        let (runtime, mut worker, events) = worker("guided-over-playback");
+        let _entered = runtime.enter();
+        let (cancel, mut cancel_rx) = watch::channel(false);
+        worker.cancel_signin = Some(cancel);
+        worker.configure_personal_web_app(Some("0123456789abcdef0123456789abcdef".into()));
+        assert!(*cancel_rx.borrow_and_update());
+        assert_eq!(worker.pending_authorization, Some(ApiSource::Personal));
+        assert!(
+            events
+                .try_iter()
+                .any(|event| matches!(event, Event::Playback(LocalPlayback::Unavailable)))
+        );
     }
 
     #[test]

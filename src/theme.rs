@@ -910,11 +910,32 @@ pub fn spinner(ui: &mut egui::Ui, size: f32, color: Color32) -> Response {
     response
 }
 
-/// The spinner standing still, for a wait whose end is known (a Spotify
-/// cooldown): it draws nothing more until something else asks for a frame.
-pub fn spinner_still(ui: &mut egui::Ui, size: f32, color: Color32) -> Response {
+/// Where this frame's [`hold_spotify_spinners`] is kept.
+fn spinner_hold_id() -> egui::Id {
+    egui::Id::new("lwspot-spotify-spinner-hold")
+}
+
+/// Sets, for this frame, how long every Web API request is only waiting
+/// out a Spotify cooldown (`None` while any is moving).
+/// [`spotify_spinner`]s stand still until then.
+pub fn hold_spotify_spinners(ctx: &egui::Context, hold: Option<std::time::Duration>) {
+    ctx.data_mut(|data| data.insert_temp(spinner_hold_id(), hold));
+}
+
+/// A spinner for a wait on Spotify's Web API. While every request is only
+/// waiting out a cooldown it stands still, and the next frame comes when the
+/// cooldown ends: each spinner frame redraws the whole window.
+pub fn spotify_spinner(ui: &mut egui::Ui, size: f32, color: Color32) -> Response {
+    let hold = ui
+        .ctx()
+        .data(|data| data.get_temp::<Option<std::time::Duration>>(spinner_hold_id()))
+        .flatten();
+    let Some(left) = hold else {
+        return spinner(ui, size, color);
+    };
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     if ui.is_rect_visible(rect) {
+        ui.ctx().request_repaint_after(left);
         spinner_arc(ui, rect, size, color, -std::f64::consts::FRAC_PI_2);
     }
     response

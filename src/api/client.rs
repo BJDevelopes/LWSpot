@@ -389,9 +389,11 @@ pub struct NetActivity {
     /// [`NetActivity::take_traffic`], per app (shared, personal).
     sent: [AtomicU64; 2],
     limited: [AtomicU64; 2],
-    /// Milliseconds since `started_at` when the latest Retry-After cooldown
-    /// ends; requests in flight before then are only waiting it out.
-    cooling_until_ms: AtomicU64,
+    /// Requests in flight that are only waiting out a Retry-After cooldown.
+    parked: AtomicUsize,
+    /// Per app (shared, personal): milliseconds since `started_at` when its
+    /// latest Retry-After cooldown ends.
+    cooling_until_ms: [AtomicU64; 2],
 }
 
 impl Default for NetActivity {
@@ -402,7 +404,8 @@ impl Default for NetActivity {
             busy_since_ms: AtomicU64::new(0),
             sent: Default::default(),
             limited: Default::default(),
-            cooling_until_ms: AtomicU64::new(0),
+            parked: AtomicUsize::new(0),
+            cooling_until_ms: Default::default(),
         }
     }
 }
@@ -466,20 +469,32 @@ impl NetActivity {
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
     }
 
-    fn note_cooldown(&self, until: Instant) {
+    fn note_cooldown(&self, source: ApiSource, until: Instant) {
         let until_ms = until.saturating_duration_since(self.started_at).as_millis() as u64;
-        self.cooling_until_ms.fetch_max(until_ms, Ordering::SeqCst);
+        self.cooling_until_ms[traffic_slot(source)].fetch_max(until_ms, Ordering::SeqCst);
     }
 
-    /// How long until a Spotify cooldown ends, while one is running. During
-    /// it, requests in flight are only waiting, so there is nothing to
-    /// animate.
-    pub fn cooldown_left(&self) -> Option<Duration> {
-        let left = self
-            .cooling_until_ms
-            .load(Ordering::SeqCst)
-            .saturating_sub(self.now_ms());
-        (left > 0).then(|| Duration::from_millis(left))
+    /// Counts a request as only waiting out a cooldown until the guard drops.
+    fn park(&self) -> ParkGuard<'_> {
+        self.parked.fetch_add(1, Ordering::SeqCst);
+        ParkGuard(self)
+    }
+
+    /// While every request in flight is only waiting out a Spotify cooldown,
+    /// how long until the first cooldown ends. Nothing moves meanwhile, so
+    /// there is nothing to animate.
+    pub fn waiting_out_cooldown(&self) -> Option<Duration> {
+        let in_flight = self.in_flight.load(Ordering::SeqCst);
+        if in_flight == 0 || self.parked.load(Ordering::SeqCst) < in_flight {
+            return None;
+        }
+        let now = self.now_ms();
+        self.cooling_until_ms
+            .iter()
+            .map(|until| until.load(Ordering::SeqCst))
+            .filter(|until| *until > now)
+            .min()
+            .map(|until| Duration::from_millis(until - now))
     }
 
     /// Requests have been in flight continuously for at least `for_at_least`.
@@ -498,6 +513,15 @@ struct ActivityGuard<'a>(&'a NetActivity);
 impl Drop for ActivityGuard<'_> {
     fn drop(&mut self) {
         self.0.end();
+    }
+}
+
+/// Ends [`NetActivity::park`] even if the request future is dropped.
+struct ParkGuard<'a>(&'a NetActivity);
+
+impl Drop for ParkGuard<'_> {
+    fn drop(&mut self) {
+        self.0.parked.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -577,6 +601,7 @@ impl ApiClient {
             let Some(wait) = until.checked_duration_since(Instant::now()) else {
                 return;
             };
+            let _parked = self.activity.park();
             tokio::time::sleep(wait).await;
         }
     }
@@ -584,7 +609,7 @@ impl ApiClient {
     async fn extend_cooldown(&self, wait: Duration) {
         let mut until = self.cooldown_until.lock().await;
         *until = (*until).max(Instant::now() + wait);
-        self.activity.note_cooldown(*until);
+        self.activity.note_cooldown(self.source, *until);
     }
 
     async fn cooling_down(&self) -> bool {
@@ -1948,19 +1973,35 @@ mod tests {
     }
 
     #[test]
-    fn a_cooldown_is_reported_until_it_ends_and_the_latest_one_wins() {
+    fn only_requests_all_parked_in_a_cooldown_count_as_waiting_it_out() {
         let activity = NetActivity::default();
-        assert_eq!(activity.cooldown_left(), None);
+        assert_eq!(activity.waiting_out_cooldown(), None);
         let now = Instant::now();
-        activity.note_cooldown(now + Duration::from_secs(30));
-        // An earlier end noted later does not cut the wait short.
-        activity.note_cooldown(now + Duration::from_secs(5));
-        let left = activity.cooldown_left().expect("cooling down");
+        activity.note_cooldown(ApiSource::Shared, now + Duration::from_secs(30));
+        // An earlier end noted later does not cut the shared wait short.
+        activity.note_cooldown(ApiSource::Shared, now + Duration::from_secs(5));
+        // A cooldown with nothing in flight: nothing is waiting.
+        assert_eq!(activity.waiting_out_cooldown(), None);
+
+        activity.begin();
+        let _shared_request = ActivityGuard(&activity);
+        let parked = activity.park();
+        let left = activity.waiting_out_cooldown().expect("all parked");
         assert!(left > Duration::from_secs(25) && left <= Duration::from_secs(30));
-        // One that has already ended reports nothing.
-        let ended = NetActivity::default();
-        ended.note_cooldown(Instant::now());
-        assert_eq!(ended.cooldown_left(), None);
+
+        // A personal request on the wire while the shared one waits.
+        activity.begin();
+        let personal_request = ActivityGuard(&activity);
+        assert_eq!(activity.waiting_out_cooldown(), None);
+        drop(personal_request);
+
+        // The first cooldown to end is when something moves again.
+        activity.note_cooldown(ApiSource::Personal, now + Duration::from_secs(10));
+        let left = activity.waiting_out_cooldown().expect("all parked");
+        assert!(left > Duration::from_secs(5) && left <= Duration::from_secs(10));
+
+        drop(parked);
+        assert_eq!(activity.waiting_out_cooldown(), None);
     }
 
     #[tokio::test]

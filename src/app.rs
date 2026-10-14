@@ -10751,9 +10751,10 @@ impl App {
     /// Runs background work with or without a main window.
     pub fn background_frame(&mut self, ctx: &egui::Context) {
         self.adopt_desktop();
+        // On a Mac egui misses a Dock restore; AppKit is asked there.
         self.window_minimized = !self.window_hidden
-            && (ctx.input(|input| input.viewport().minimized.unwrap_or(false))
-                || crate::window::main_window_minimized());
+            && crate::window::main_window_minimized()
+                .unwrap_or_else(|| ctx.input(|input| input.viewport().minimized.unwrap_or(false)));
         // Quit from the Dock, or at log out, restart or shut down, while
         // there was no window (see `url_events`).
         #[cfg(target_os = "macos")]
@@ -10984,6 +10985,7 @@ impl App {
         let ctx = ui.ctx().clone();
         let ctx = &ctx;
         self.refresh_frame_now();
+        theme::hold_spotify_spinners(ctx, self.backend.activity().waiting_out_cooldown());
         self.apply_theme(ctx);
         self.autoscroll.begin(ctx, true);
         if self.autoscroll.active() {

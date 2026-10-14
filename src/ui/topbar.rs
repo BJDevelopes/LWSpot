@@ -506,18 +506,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 // A quiet spinner once the app has been talking to Spotify for a
                 // while, long enough that fast requests never flash it.
                 if busy {
-                    // While Spotify has asked for a pause the requests are
-                    // only waiting it out: show that without animating (each
-                    // spinner frame redraws the whole window), and look again
-                    // when the pause ends.
-                    let activity = app.backend.activity();
-                    let spinner = if let Some(left) = activity.cooldown_left() {
-                        ui.ctx().request_repaint_after(left);
-                        theme::spinner_still(ui, SPINNER_SIZE, palette.secondary)
-                    } else {
-                        theme::spinner(ui, SPINNER_SIZE, palette.secondary)
-                    };
-                    spinner.on_hover_text(gettext(locale, "Waiting for Spotify…").as_ref());
+                    theme::spotify_spinner(ui, SPINNER_SIZE, palette.secondary)
+                        .on_hover_text(gettext(locale, "Waiting for Spotify…").as_ref());
                 }
                 // Where playback is.
                 if let Some(galley) = device_galley {

@@ -2501,7 +2501,7 @@ pub fn grid(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
 pub fn loading_row(ui: &mut Ui, palette: &Palette, locale: Locale) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        theme::spinner(ui, 18.0, palette.accent);
+        theme::spotify_spinner(ui, 18.0, palette.accent);
         theme::subtle(ui, palette, &gettext(locale, "Loading…"));
     });
 }

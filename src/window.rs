@@ -1013,33 +1013,31 @@ fn main_window_hidden() -> bool {
     false
 }
 
-/// Whether the main window is in the Dock. egui only learns this on
-/// Windows: on macOS it reports a window's minimized state when the window
-/// is made and never again (egui#3494), so ask AppKit.
+/// Whether the main window is in the Dock, as AppKit says, or `None` with
+/// no window to ask (and off macOS, where egui's own answer is current).
+/// egui reports a Mac window's minimized state only when the window is made
+/// or LWSpot minimizes it itself (egui#3494), so a Dock restore is never
+/// seen there.
 #[cfg(target_os = "macos")]
-pub fn main_window_minimized() -> bool {
+pub fn main_window_minimized() -> Option<bool> {
     use objc2::msg_send;
     use objc2::runtime::{AnyObject, Bool};
-    let Some(view) = main_view() else {
-        return false;
-    };
-    if objc2::MainThreadMarker::new().is_none() {
-        return false;
-    }
+    let view = main_view()?;
+    objc2::MainThreadMarker::new()?;
     // SAFETY: on the main thread, of the live main window's content view.
     unsafe {
         let window: *mut AnyObject = msg_send![view, window];
         if window.is_null() {
-            return false;
+            return None;
         }
         let minimized: Bool = msg_send![window, isMiniaturized];
-        minimized.as_bool()
+        Some(minimized.as_bool())
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn main_window_minimized() -> bool {
-    false
+pub fn main_window_minimized() -> Option<bool> {
+    None
 }
 
 /// Whether a window is on screen: shown, not minimized, and not cloaked by
