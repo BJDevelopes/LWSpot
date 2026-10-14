@@ -214,6 +214,12 @@ fn work_areas(rect: egui::Rect) -> Option<(egui::Rect, Vec<egui::Rect>)> {
     (!areas.is_empty()).then_some((nearest, areas))
 }
 
+/// The work area nearest `rect`, in physical pixels: its monitor less the
+/// taskbar. `None` where the system keeps windows on screen itself.
+pub fn nearest_work_area(rect: egui::Rect) -> Option<egui::Rect> {
+    work_areas(rect).map(|(nearest, _)| nearest)
+}
+
 /// What [`keep_usable`] changes about a window, in points.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Correction {

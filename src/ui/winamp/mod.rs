@@ -88,10 +88,74 @@ pub fn dropped_skins(ctx: &egui::Context) -> Vec<PathBuf> {
     })
 }
 
-/// Logical points per skin pixel: a whole number of screen pixels.
+/// Logical points per skin pixel: a whole number of screen pixels. The
+/// chosen size gives way to the largest that fits the screen, so opening
+/// the equalizer and the playlist never runs the stack past its edge.
 fn unit(app: &App, ctx: &egui::Context) -> f32 {
     let pixels_per_point = ctx.pixels_per_point();
-    WinampState::scale(&app.settings, pixels_per_point) as f32 / pixels_per_point
+    let chosen = WinampState::scale(&app.settings, pixels_per_point);
+    let skin = vec2(
+        layout::WINDOW_WIDTH as f32,
+        stack_height(&app.settings) as f32,
+    );
+    let room = room(ctx).map(|room| room * pixels_per_point);
+    fitting_scale(chosen, skin, room) as f32 / pixels_per_point
+}
+
+/// The largest scale up to `chosen` at which `skin` (in skin pixels) fits
+/// in `room` (in screen pixels); 1 when even that does not.
+fn fitting_scale(chosen: u32, skin: Vec2, room: Option<Vec2>) -> u32 {
+    let Some(room) = room.filter(|room| room.x > 0.0 && room.y > 0.0) else {
+        return chosen;
+    };
+    (1..=chosen)
+        .rev()
+        .find(|&scale| skin.x * scale as f32 <= room.x && skin.y * scale as f32 <= room.y)
+        .unwrap_or(1)
+}
+
+/// The space the window has, in points: on Windows the work area of the
+/// screen it is on (the taskbar left out), elsewhere the screen's size.
+fn room(ctx: &egui::Context) -> Option<Vec2> {
+    work_area(ctx)
+        .map(|area| area.size())
+        .or_else(|| ctx.input(|input| input.viewport().monitor_size))
+}
+
+/// The work area of the screen the window is on, in points, where the
+/// system says (Windows).
+fn work_area(ctx: &egui::Context) -> Option<Rect> {
+    let pixels_per_point = ctx.pixels_per_point();
+    let outer = ctx.input(|input| input.viewport().outer_rect)?;
+    // Asking Windows once a frame is cheap, but the answer only changes
+    // when the window moves or the displays change.
+    let key = Id::new("winamp-work-area");
+    if let Some((seen, area)) = ctx.data(|data| data.get_temp::<(Rect, Option<Rect>)>(key))
+        && seen == outer
+    {
+        return area;
+    }
+    let area = crate::window::nearest_work_area(outer * pixels_per_point)
+        .map(|area| area / pixels_per_point);
+    ctx.data_mut(|data| data.insert_temp(key, (outer, area)));
+    area
+}
+
+/// Where the window goes so that, `size` big, it stays inside `area`:
+/// moved up or left only as far as it must. `None` when it already fits.
+fn pulled_in(outer: Rect, size: Vec2, area: Rect) -> Option<Pos2> {
+    let axis = |start: f32, length: f32, low: f32, high: f32| {
+        if start + length <= high + 0.5 {
+            start
+        } else {
+            (high - length).max(low)
+        }
+    };
+    let pos = pos2(
+        axis(outer.min.x, size.x, area.min.x, area.max.x),
+        axis(outer.min.y, size.y, area.min.y, area.max.y),
+    );
+    (pos != outer.min).then_some(pos)
 }
 
 /// Fits the window to the skin after the display scale is known.
@@ -109,6 +173,15 @@ fn fit_window(ctx: &egui::Context, settings: &crate::settings::Settings, unit: f
         return;
     }
     ctx.data_mut(|data| data.insert_temp(asked, now));
+    // A stack that grows (the equalizer or the playlist opening) moves up
+    // rather than running past the bottom of the screen.
+    if let (Some(outer), Some(area)) = (
+        ctx.input(|input| input.viewport().outer_rect),
+        work_area(ctx),
+    ) && let Some(pos) = pulled_in(outer, wanted, area)
+    {
+        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(pos));
+    }
     ctx.send_viewport_cmd(ViewportCommand::MinInnerSize(wanted));
     ctx.send_viewport_cmd(ViewportCommand::MaxInnerSize(wanted));
     ctx.send_viewport_cmd(ViewportCommand::InnerSize(wanted));
@@ -1563,6 +1636,37 @@ fn shuffle_repeat(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The chosen size holds while the stack fits the screen, and gives way
+    /// to the largest that does when it would not.
+    #[test]
+    fn the_stack_takes_the_largest_size_that_fits_the_screen() {
+        let stack = vec2(275.0, 116.0 + 116.0 + 174.0);
+        // 1920x1080 with a 60-pixel taskbar: 3x would be 1218 tall.
+        assert_eq!(fitting_scale(3, stack, Some(vec2(1920.0, 1020.0))), 2);
+        assert_eq!(fitting_scale(2, stack, Some(vec2(1920.0, 1020.0))), 2);
+        assert_eq!(fitting_scale(4, stack, Some(vec2(2560.0, 1400.0))), 3);
+        // Too small for even 1x, and an unknown screen, leave it be.
+        assert_eq!(fitting_scale(3, stack, Some(vec2(800.0, 300.0))), 1);
+        assert_eq!(fitting_scale(3, stack, None), 3);
+    }
+
+    /// A window that would run past the work area moves up (or left) just
+    /// enough, and never above its top.
+    #[test]
+    fn a_growing_stack_moves_up_to_stay_on_screen() {
+        let area = Rect::from_min_max(pos2(0.0, 0.0), pos2(1536.0, 816.0));
+        let at = |x: f32, y: f32| Rect::from_min_size(pos2(x, y), vec2(440.0, 186.0));
+        assert_eq!(pulled_in(at(100.0, 100.0), vec2(440.0, 600.0), area), None);
+        assert_eq!(
+            pulled_in(at(100.0, 400.0), vec2(440.0, 600.0), area),
+            Some(pos2(100.0, 216.0))
+        );
+        assert_eq!(
+            pulled_in(at(1300.0, 400.0), vec2(440.0, 900.0), area),
+            Some(pos2(1096.0, 0.0))
+        );
+    }
 
     fn now(title: &str, subtitle: &str, duration_ms: u32) -> NowPlaying {
         NowPlaying {

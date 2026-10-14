@@ -115,6 +115,18 @@ fn art(character: char) -> &'static str {
         .unwrap_or("")
 }
 
+/// How far a character moves the pen: its width and a pixel of space, and
+/// never less than five so the narrow letters keep the font's rhythm.
+fn advance(character: char) -> i64 {
+    let width = art(character).split('/').next().map_or(4, str::len) as i64;
+    width.max(4) + 1
+}
+
+/// The width of a line of the bitmap font, without the trailing space.
+fn text_width(text: &str) -> i64 {
+    text.chars().map(advance).sum::<i64>() - 1
+}
+
 const PREVIOUS: &str = "#....#/#...##/#..###/#.####/#..###/#...##/#....#";
 const PLAY: &str = "##..../###.../####../#####./####../###.../##....";
 const PAUSE: &str = "##.##/##.##/##.##/##.##/##.##/##.##/##.##";
@@ -200,15 +212,18 @@ impl Canvas {
         );
     }
 
-    /// A line of the bitmap font, five pixels per character.
+    /// A line of the bitmap font, five pixels per character, and one more
+    /// for a wide one (M, V, W) so it never touches the next.
     fn text(&mut self, x: i64, y: i64, text: &str, color: Rgb) {
-        for (index, character) in text.chars().enumerate() {
-            self.glyph(x + 5 * index as i64, y, art(character), color);
+        let mut at = x;
+        for character in text.chars() {
+            self.glyph(at, y, art(character), color);
+            at += advance(character);
         }
     }
 
     fn text_centred(&mut self, (x, y, width, height): Box, text: &str, color: Rgb) {
-        let text_width = 5 * text.chars().count() as i64 - 1;
+        let text_width = text_width(text);
         self.text(
             x + (width - text_width) / 2,
             y + (height - 5) / 2,
@@ -361,7 +376,7 @@ fn title_bar(c: &mut Canvas, x: i64, y: i64, active: bool, shade: bool) {
         display(c, (x + 226, y + 4, 17, 7));
     } else {
         c.text_centred((x, y + 1, 275, 12), "LWSPOT", color);
-        let width = 5 * 10 - 1;
+        let width = text_width("LWSPOT");
         let start = x + (275 - width) / 2;
         title_lines(c, x + 18, start - 8, y + 5);
         title_lines(c, start + width + 8, x + 241, y + 5);
@@ -701,7 +716,7 @@ fn eqmain_sheet() -> Canvas {
     ];
     for (band, label) in labels.iter().enumerate() {
         let centre = 78 + 18 * band as i64 + 7;
-        let width = 5 * label.len() as i64 - 1;
+        let width = text_width(label);
         c.text(centre - width / 2, 104, label, DIM);
     }
     for (y, color, button) in [(134, TEXT, SECONDARY), (149, DIM, DIM)] {

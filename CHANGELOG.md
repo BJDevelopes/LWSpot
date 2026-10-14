@@ -7,6 +7,15 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
+### Fixed
+
+- The mini player no longer runs off the bottom of the screen when its
+  equalizer and playlist are open: it moves up to stay above the taskbar,
+  and steps down to the largest size that fits when the chosen one is too
+  big. Your chosen size comes back when the stack fits again.
+- The mini player's built-in skin says LWSPOT in its title bar instead of
+  Spotifast.
+
 ## [0.1.3] - 2026-10-14
 
 LWSpot now runs on Macs too. Copies of 0.1.0, 0.1.1 and 0.1.2 can't update
