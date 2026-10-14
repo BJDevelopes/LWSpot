@@ -1883,7 +1883,6 @@ dependencies = [
 [[package]]
 name = "fastframe-tray"
 version = "0.4.1"
-source = "git+https://github.com/dennisgr7/fastframe?rev=f7dc6fbe938e8a953509d110cdba036f537e5b7e#f7dc6fbe938e8a953509d110cdba036f537e5b7e"
 dependencies = [
  "ksni",
  "log",

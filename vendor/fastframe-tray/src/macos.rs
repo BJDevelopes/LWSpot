@@ -14,9 +14,9 @@ use std::time::Duration;
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool, MethodImplementation, NSObject, Sel};
-use objc2::{Encode, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
+use objc2::{DefinedClass, Encode, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{NSApplication, NSEvent, NSEventModifierFlags, NSEventType};
-use objc2_foundation::{NSObjectNSDelayedPerforming, NSPoint};
+use objc2_foundation::{NSObjectNSDelayedPerforming, NSPoint, NSString};
 
 use crate::native::Item;
 use crate::{Config, DrawIcon, Event, Router};
@@ -209,6 +209,58 @@ fn install_reopen_handler(app: &NSApplication) {
     };
     if !installed.as_bool() {
         log::warn!("the macOS Dock reopen handler could not be installed");
+    }
+}
+
+define_class!(
+    /// Answers an assistive press on the menu-bar item (VoiceOver, Voice
+    /// Control, Switch Control, Ctrl-F8) as a left click. tray-icon takes
+    /// mouse clicks in a view laid over the button and gives the button no
+    /// action, so a press reached nothing.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "FastframeTrayPress"]
+    #[ivars = Router]
+    pub(crate) struct Press;
+
+    impl Press {
+        #[unsafe(method(press:))]
+        fn press(&self, _sender: Option<&AnyObject>) {
+            self.ivars().send(crate::left_click(false));
+        }
+    }
+);
+
+impl Press {
+    fn new(mtm: MainThreadMarker, router: Router) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(router);
+        // SAFETY: `NSObject`'s designated initializer, called once.
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+/// Names the item for assistive technology, and with `press` makes its
+/// press a left click. Mouse clicks never reach the button's action: the
+/// view over it takes them, and the right-click menu opens without it.
+/// Returns the target, which the caller keeps.
+pub(crate) fn make_accessible(
+    icon: &tray_icon::TrayIcon,
+    title: &str,
+    press: Option<Router>,
+) -> Option<Retained<Press>> {
+    let mtm = MainThreadMarker::new()?;
+    let item = icon.ns_status_item()?;
+    // SAFETY: on the main thread, of the live status item's button; a
+    // status item made by tray-icon always has one.
+    unsafe {
+        let button: Option<Retained<AnyObject>> = msg_send![&*item, button];
+        let button = button?;
+        let label = NSString::from_str(title);
+        let _: () = msg_send![&*button, setAccessibilityLabel: &*label];
+        let target = Press::new(mtm, press?);
+        let _: () = msg_send![&*button, setTarget: &*target];
+        let _: () = msg_send![&*button, setAction: sel!(press:)];
+        Some(target)
     }
 }
 

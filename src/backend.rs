@@ -2886,7 +2886,11 @@ impl Worker {
             )));
             return;
         }
-        self.cancel_signin = None;
+        // The playback sign-in that led here is over. A Web API sign-in
+        // still waiting for the browser (a reconnect can land here) is not.
+        if self.authorizing_source.is_none() {
+            self.cancel_signin = None;
+        }
         self.engine_busy = true;
         self.emit(Event::Playback(LocalPlayback::Connecting));
         let lease = self.credentials.lease(CredentialSlot::Playback);
@@ -6390,6 +6394,32 @@ mod authorization_tests {
                 .try_iter()
                 .any(|event| matches!(event, Event::Error(_)))
         );
+    }
+
+    /// A reconnect while the personal Web API sign-in waits for the browser
+    /// leaves that sign-in waiting; the playback sign-in it ends is its own.
+    #[test]
+    fn connecting_the_engine_leaves_a_web_sign_in_waiting() {
+        let (runtime, mut worker, _events) = worker("web-sign-in");
+        // The connection is spawned on this runtime and never run.
+        let _entered = runtime.enter();
+        let (cancel, cancel_rx) = watch::channel(false);
+        worker.cancel_signin = Some(cancel);
+        worker.authorizing_source = Some(ApiSource::Personal);
+        worker.connect_engine(Credentials::with_access_token("dummy-token"));
+        assert!(worker.cancel_signin.is_some());
+        assert!(
+            cancel_rx.has_changed().is_ok(),
+            "the sign-in lost its Cancel"
+        );
+
+        worker.engine_busy = false;
+        worker.authorizing_source = None;
+        let (cancel, cancel_rx) = watch::channel(false);
+        worker.cancel_signin = Some(cancel);
+        worker.connect_engine(Credentials::with_access_token("dummy-token"));
+        assert!(worker.cancel_signin.is_none());
+        assert!(cancel_rx.has_changed().is_err());
     }
 
     #[test]

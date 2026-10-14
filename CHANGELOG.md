@@ -50,7 +50,13 @@ version's section below as its release notes, so write it for listeners.
   connection open, no longer leaves sign-in waiting for ten minutes.
 - On a Mac, the menu-bar icon keeps working after the window closes to the
   menu bar, ⌘Q without a window saves before quitting, the app menu says
-  LWSpot, and a click on the menu-bar icon brings back a minimized window.
+  LWSpot, a click on the menu-bar icon brings back a minimized window, and
+  VoiceOver names the icon and can press it.
+- **Show or hide LWSpot** in the tray menu brings back a minimized window
+  instead of closing it to the tray.
+- Setting up your own Client ID no longer keeps a processor core busy, or
+  stops waiting for the browser, when the connection to Spotify drops
+  meanwhile.
 - On a Mac, Now Playing no longer leaks each song's cover art (about 140 KB
   a song), and a Keychain item is read once per session and not written
   again when nothing changed.

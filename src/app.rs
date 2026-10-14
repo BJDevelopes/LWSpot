@@ -1270,6 +1270,8 @@ impl App {
     /// The window is gone but the process stays: audio, the tray, and the
     /// media controls keep running until Show or Quit.
     pub fn window_gone(&mut self) {
+        // Nothing may ask the closed window anything (a Mac's is freed).
+        crate::window::set_main_window(0);
         // The Winamp window went with it; it comes back where it was.
         self.winamp.remember_position();
         self.winamp.forget_textures();
@@ -10749,8 +10751,9 @@ impl App {
     /// Runs background work with or without a main window.
     pub fn background_frame(&mut self, ctx: &egui::Context) {
         self.adopt_desktop();
-        self.window_minimized =
-            !self.window_hidden && ctx.input(|input| input.viewport().minimized.unwrap_or(false));
+        self.window_minimized = !self.window_hidden
+            && (ctx.input(|input| input.viewport().minimized.unwrap_or(false))
+                || crate::window::main_window_minimized());
         // Quit from the Dock, or at log out, restart or shut down, while
         // there was no window (see `url_events`).
         #[cfg(target_os = "macos")]
@@ -10820,8 +10823,8 @@ impl App {
     /// Follows the system's power and session state: works out the budget
     /// for drawing and polling, and answers what the system is about to do.
     fn sync_power(&mut self, ctx: &egui::Context) {
-        let shown =
-            !self.window_hidden && !ctx.input(|input| input.viewport().minimized.unwrap_or(false));
+        // `window_minimized` is this frame's, set as `background_frame` began.
+        let shown = !self.window_hidden && !self.window_minimized;
         let focused = ctx.input(|input| input.viewport().focused.unwrap_or(true));
         let budget = crate::power::budget(self.power.conditions(), shown, focused);
         if budget != self.budget {

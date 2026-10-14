@@ -492,7 +492,8 @@ pub fn set_custom_titlebar(on: bool) {
 static MAIN_WINDOW: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 /// Remembers the main window's handle (its `HWND` on Windows, its content
-/// `NSView` on macOS), so its title bar can follow the theme.
+/// `NSView` on macOS), so its title bar can follow the theme; 0 once the
+/// window is gone, as a Mac view is freed with its window.
 pub fn set_main_window(hwnd: isize) {
     MAIN_WINDOW.store(hwnd, std::sync::atomic::Ordering::Relaxed);
 }
@@ -1009,6 +1010,35 @@ fn main_window_hidden() -> bool {
 
 #[cfg(not(any(windows, target_os = "macos")))]
 fn main_window_hidden() -> bool {
+    false
+}
+
+/// Whether the main window is in the Dock. egui only learns this on
+/// Windows: on macOS it reports a window's minimized state when the window
+/// is made and never again (egui#3494), so ask AppKit.
+#[cfg(target_os = "macos")]
+pub fn main_window_minimized() -> bool {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyObject, Bool};
+    let Some(view) = main_view() else {
+        return false;
+    };
+    if objc2::MainThreadMarker::new().is_none() {
+        return false;
+    }
+    // SAFETY: on the main thread, of the live main window's content view.
+    unsafe {
+        let window: *mut AnyObject = msg_send![view, window];
+        if window.is_null() {
+            return false;
+        }
+        let minimized: Bool = msg_send![window, isMiniaturized];
+        minimized.as_bool()
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn main_window_minimized() -> bool {
     false
 }
 

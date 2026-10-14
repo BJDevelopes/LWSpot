@@ -46,10 +46,12 @@ egui_extras = { version = "0.36", features = ["image", "svg"] }
 # (crmne/fastframe). Every crate comes from the same revision; move them
 # together. For now a fork of v0.4.1's successor with two changes proposed
 # upstream: a headless shell that sleeps until woken, and the audio stream's
-# thread joining MMCSS on Windows. LWSpot changes two crates, vendored in
+# thread joining MMCSS on Windows. LWSpot changes four crates, vendored in
 # vendor/ and patched in below: fastframe-fonts (system fallback fonts
 # memory-mapped instead of read whole onto the heap, ~25 MB less private
-# memory) and fastframe-update (one Windows installer for every processor).
+# memory), fastframe-shell (AppKit runs for a whole headless wait on macOS),
+# fastframe-tray (the macOS menu-bar item works with VoiceOver) and
+# fastframe-update (one Windows installer for every processor).
 # Back to a crmne/fastframe tag once a release carries them.
 fastframe-text ={ git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
 fastframe-fonts = { git = "https://github.com/dennisgr7/fastframe", rev = "f7dc6fbe938e8a953509d110cdba036f537e5b7e" }
@@ -326,6 +328,7 @@ librespot-protocol = { git = "https://github.com/crmne/librespot", rev = "23fc42
 [patch."https://github.com/dennisgr7/fastframe"]
 fastframe-fonts = { path = "vendor/fastframe-fonts" }
 fastframe-shell = { path = "vendor/fastframe-shell" }
+fastframe-tray = { path = "vendor/fastframe-tray" }
 fastframe-update = { path = "vendor/fastframe-update" }
 
 [patch."https://github.com/crmne/librespot"]

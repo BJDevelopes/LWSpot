@@ -175,6 +175,10 @@ pub async fn wait_for_code(
     // browser's speculative preconnect, say) holds up neither the real
     // redirect nor Cancel. Dropping the set ends the others.
     let mut connections = tokio::task::JoinSet::new();
+    // Once the sender is gone only the redirect or the deadline ends the
+    // wait: the worker drops it when it is done with the sign-in, which
+    // is not the person giving up in the browser.
+    let mut cancellable = true;
 
     loop {
         tokio::select! {
@@ -192,11 +196,12 @@ pub async fn wait_for_code(
                 Ok(Err(error)) => log::debug!("ignored request on the redirect listener: {error}"),
                 Err(_) => {}
             },
-            changed = cancel.changed() => {
-                // A dropped sender cancels too: nobody can end the wait
-                // otherwise, and `changed` would return at once forever.
-                if changed.is_err() || *cancel.borrow() { bail!("sign-in cancelled"); }
-            }
+            // A closed channel would answer at once, every time round.
+            changed = cancel.changed(), if cancellable => match changed {
+                Ok(()) if *cancel.borrow() => bail!("sign-in cancelled"),
+                Ok(()) => {}
+                Err(_) => cancellable = false,
+            },
             _ = &mut deadline => bail!("sign-in timed out; try again"),
         }
     }
@@ -609,6 +614,22 @@ mod tests {
         let error = waiting.await.unwrap().unwrap_err();
         assert!(error.to_string().contains("cancelled"));
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    /// The worker dropping its Cancel neither cancels nor spins: the
+    /// redirect still arrives.
+    #[tokio::test]
+    async fn a_dropped_cancel_keeps_waiting_for_the_redirect() {
+        let port = free_port();
+        let (cancel, cancel_rx) = tokio::sync::watch::channel(false);
+        let waiting =
+            tokio::spawn(async move { super::wait_for_code(port, "s1", cancel_rx).await });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        drop(cancel);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!waiting.is_finished(), "a dropped Cancel ended the wait");
+        request(port, "GET /login?code=abc&state=s1 HTTP/1.1").await;
+        assert_eq!(waiting.await.unwrap().unwrap(), "abc");
     }
 
     /// Declining on Spotify's page ends this attempt at once; a stale tab of

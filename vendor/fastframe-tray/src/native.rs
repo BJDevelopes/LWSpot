@@ -14,6 +14,10 @@ const ICON_SIZE: usize = if cfg!(target_os = "macos") { 36 } else { 32 };
 pub(crate) struct Item {
     icon: TrayIcon,
     entries: Entries,
+    /// What an assistive press on the item calls; the button holds it
+    /// weakly.
+    #[cfg(target_os = "macos")]
+    _press: Option<objc2::rc::Retained<crate::macos::Press>>,
 }
 
 impl Item {
@@ -164,6 +168,12 @@ pub(crate) fn build(config: &Config, router: Router) -> Result<Item, Box<dyn std
         .with_menu_on_left_click(menu_on_click)
         .build()?;
 
+    #[cfg(target_os = "macos")]
+    let press = crate::macos::make_accessible(
+        &icon,
+        &config.title,
+        (!menu_on_click).then(|| router.clone()),
+    );
     router.install();
     MenuEvent::set_event_handler(Some(|event: MenuEvent| {
         crate::claim_menu_event(&event.id.0);
@@ -180,7 +190,12 @@ pub(crate) fn build(config: &Config, router: Router) -> Result<Item, Box<dyn std
         }
     }));
 
-    Ok(Item { icon, entries })
+    Ok(Item {
+        icon,
+        entries,
+        #[cfg(target_os = "macos")]
+        _press: press,
+    })
 }
 
 // muda menus can be made off the main thread on Windows only; macOS needs
