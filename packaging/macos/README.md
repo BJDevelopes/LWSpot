@@ -34,8 +34,12 @@ MilkDrop download look for exactly those names.
 
 ### Signing and notarization
 
-Without Apple credentials the app is signed ad hoc, and people open it the
-first time with right-click > **Open**. To sign and notarize, set these
+Without Apple credentials the app is signed ad hoc. macOS then stops its
+first launch with **"LWSpot" Not Opened**, and people have to allow it once
+in **System Settings > Privacy & Security > Open Anyway** (macOS 15 and
+later; Control-click > **Open** on 14 and earlier). The DMG carries a short
+note saying so. Only a Developer ID signature with notarization removes that
+step, so a download opens with a double-click. To sign and notarize, set these
 repository secrets (Settings > Secrets and variables > Actions); the job
 uses them when they are there:
 
@@ -67,7 +71,8 @@ xcrun stapler staple dist/lwspot-v*-macos-universal.dmg
 | Windows accent colour | The accent colour from System Settings > Appearance |
 | Title bar in the theme's colours, Mica and acrylic | The system title bar in the theme's light or dark appearance |
 | Jump list | Not applicable |
-| Polls the default output device | CoreAudio's own default-device notifications |
+| Polls the default output device | fastframe-audio follows the default output (a cheap check every 2 s) |
+| Asks the device for 44.1 kHz | Keeps the device's own rate and resamples, so other apps are not disturbed |
 | EcoQoS while hidden | App Nap, and the visualizer stops while the window is covered |
 | Taskbar thumbnail buttons | The Dock icon's menu: Previous, Play/Pause, Next |
 | `spotify:` links through the registry | `spotify:` links through Info.plist and Apple Events |

@@ -3625,3 +3625,7 @@ msgstr "Kolor przycisków i wyróżnień: własny kolor motywu, kolor akcentu us
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Uruchom na pasku menu"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Najpierw przenieś LWSpot do folderu Aplikacje, a potem włącz tę opcję."

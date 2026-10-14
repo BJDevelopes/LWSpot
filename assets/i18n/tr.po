@@ -3612,3 +3612,7 @@ msgstr "Düğmelerin ve vurguların rengi: temanın kendi rengi, macOS'te ayarla
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Menü çubuğunda başlat"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Önce LWSpot'u Uygulamalar klasörüne taşıyın, ardından bunu açın."

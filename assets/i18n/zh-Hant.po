@@ -3505,3 +3505,7 @@ msgstr "按鈕與醒目提示的顏色：主題本身的顏色、macOS 中設定
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "在選單列中啟動"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "請先將 LWSpot 移到「應用程式」檔案夾，然後再開啟此選項。"

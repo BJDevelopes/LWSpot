@@ -316,13 +316,24 @@ fn format_devices(snapshot: &str) -> String {
         .collect()
 }
 
+/// macOS can still pass a `-psn_0_<n>` process serial number to an app it
+/// opens, notably on the first launch after Open Anyway. It is not ours and
+/// clap would refuse it, so the app would exit before showing a window.
+fn without_process_serial_number(
+    mut arguments: Vec<std::ffi::OsString>,
+) -> Vec<std::ffi::OsString> {
+    arguments.retain(|argument| !argument.to_string_lossy().starts_with("-psn_"));
+    arguments
+}
+
 pub(crate) fn run() -> eframe::Result<()> {
     // First of all: `--apply-update <job>` makes this process the update
     // helper, which installs and exits; otherwise the receipt and error an
     // update relaunch carries are taken out of the arguments.
     let launch = fastframe_update::intercept(&lwspot::updates::CONFIG);
+    let arguments = without_process_serial_number(launch.arguments.clone());
 
-    let cli = Cli::from_arg_matches(&Cli::command().get_matches_from(&launch.arguments))
+    let cli = Cli::from_arg_matches(&Cli::command().get_matches_from(&arguments))
         .unwrap_or_else(|error| error.exit());
     // Demo mode invents plays, settings, and a signed-in account. Without a
     // folder of its own it would write them into the real profile, where
@@ -523,19 +534,34 @@ pub(crate) fn run() -> eframe::Result<()> {
     // `--autostart=tray`: no window until the tray or a launch asks for
     // one, and nothing plays until the user does.
     let start_in_tray = cli.autostart == Some(lwspot::autostart::Mode::Tray);
+    // A Mac starts winit inside AppKit's launch, so it cannot begin with no
+    // window and make one later: the first window is made invisible and
+    // closes itself to the menu bar instead (`App::hide_first_window`).
+    #[cfg(target_os = "macos")]
+    let start_in_tray = {
+        app.hide_first_window = start_in_tray;
+        false
+    };
     if let Some(mode) = cli.autostart {
-        log::info!("started by Windows at sign-in ({mode:?})");
+        log::info!("started at sign-in ({mode:?})");
     }
     let shell = fastframe_shell::Shell::new(app, &waker).start_hidden(start_in_tray);
-    // Nothing needs the main thread between headless ticks, so the shell
-    // sleeps until the waker wakes it.
+    // Nothing needs the main thread between headless ticks on Windows, so
+    // the shell sleeps until the waker wakes it. On a Mac the menu-bar item
+    // and the Dock icon answer only while AppKit's loop runs, so without a
+    // window the shell runs it between ticks instead; sleeping there leaves
+    // both unresponsive and the app "not responding".
+    #[cfg(target_os = "macos")]
+    let shell = shell.idle(fastframe_tray::idle);
     shell.run(|lease| {
         let creator_waker = waker.clone();
         #[cfg(feature = "demo")]
         let creator_shot = shot.clone();
         let mini = lease.peek(MiniWindow::wanted);
-        #[cfg(all(windows, target_arch = "aarch64"))]
+        #[cfg(any(target_os = "macos", all(windows, target_arch = "aarch64")))]
         let locale = lease.peek(|app| app.locale);
+        #[cfg(target_os = "macos")]
+        let log_file = lease.peek(|app| app.dirs.log_file());
         #[cfg(feature = "demo")]
         let options = {
             let options = native_options(
@@ -552,6 +578,14 @@ pub(crate) fn run() -> eframe::Result<()> {
         #[cfg(not(feature = "demo"))]
         let options = native_options(false, mini, None);
         let options = profile_options(options);
+        #[cfg(target_os = "macos")]
+        let options = {
+            let mut options = options;
+            if lease.peek(|app| app.hide_first_window) {
+                options.viewport = options.viewport.with_visible(false);
+            }
+            options
+        };
         let persist_memory = options.persist_window;
         let thumbbar_enabled = desktop_surfaces && options.viewport.taskbar != Some(false);
         eframe::run_native(
@@ -632,6 +666,20 @@ pub(crate) fn run() -> eframe::Result<()> {
                     | eframe::Error::OpenGL(_)
             ) {
                 lwspot::window::report_missing_opengl(locale);
+            }
+            // Launched from Finder, nothing shows what went wrong, and the
+            // Dock icon would just bounce and disappear.
+            #[cfg(target_os = "macos")]
+            {
+                let _ = rfd::MessageDialog::new()
+                    .set_level(rfd::MessageLevel::Error)
+                    .set_title(lwspot::i18n::gettext(
+                        locale,
+                        "LWSpot cannot open its window",
+                    ))
+                    .set_description(format!("{error}\n\n{}", log_file.display()))
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
             }
         })
     })
@@ -1206,6 +1254,21 @@ fn app_icon() -> egui::IconData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_process_serial_number_from_macos_is_ignored() {
+        let arguments = without_process_serial_number(vec![
+            "lwspot".into(),
+            "-psn_0_1234567".into(),
+            "spotify:track:x".into(),
+        ]);
+        assert_eq!(
+            arguments,
+            ["lwspot", "spotify:track:x"].map(std::ffi::OsString::from)
+        );
+        let launch = Cli::try_parse_from(&arguments).expect("a normal launch");
+        assert_eq!(launch.link.as_deref(), Some("spotify:track:x"));
+    }
 
     /// A link on the command line is a link, and a control verb is still a
     /// verb: the two do not get in each other's way.

@@ -5,9 +5,9 @@ version = "0.1.2"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT"
-description = "A lightweight native Spotify client for Windows"
+description = "A lightweight native Spotify client for Windows and macOS"
 repository = "https://github.com/BJDevelopes/lwspot"
-keywords = ["spotify", "music", "windows", "librespot", "player"]
+keywords = ["spotify", "music", "windows", "macos", "librespot"]
 categories = ["multimedia::audio"]
 
 [lib]
@@ -178,6 +178,9 @@ ctr = "0.9"
 # the system accent colour (src/accent.rs). objc2 and objc2-app-kit are the
 # versions winit and rfd already compile, so they add no build.
 apple-native-keyring-store = { version = "1", default-features = false, features = ["keychain"] }
+# Only to read the OSStatus inside a Keychain error (src/credentials.rs);
+# the version apple-native-keyring-store already compiles.
+security-framework = { version = "3", default-features = false }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSObject", "NSString"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSColor", "NSColorSpace", "NSMenu", "NSMenuItem", "NSResponder"] }

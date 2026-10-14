@@ -3571,3 +3571,7 @@ msgstr "ボタンや強調表示の色です。テーマ自体の色、macOSで�
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "メニューバーで起動"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "先にLWSpotを「アプリケーション」フォルダに移動してから、オンにしてください。"

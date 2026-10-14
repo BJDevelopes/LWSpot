@@ -3611,3 +3611,7 @@ msgstr "Il colore di pulsanti ed evidenziazioni: quello del tema, il colore d’
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Avvia nella barra dei menu"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Prima sposta LWSpot in Applicazioni, poi attiva questa opzione."

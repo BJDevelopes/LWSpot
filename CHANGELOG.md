@@ -23,6 +23,22 @@ version's section below as its release notes, so write it for listeners.
   on another Space, animations run at half rate in Low Power Mode, and
   nothing is drawn while the screen is locked or the display sleeps.
 
+### Fixed
+
+- Updates download again. GitHub names the release files with the
+  repository's own capital letters, and the updater refused every one of
+  them, on Windows too.
+- The Mac disk image says how to get past macOS's first-launch check
+  ("LWSpot" Not Opened, then Privacy & Security > Open Anyway) until LWSpot
+  is notarized by Apple.
+- On a Mac, an update is no longer offered to an account that cannot
+  replace the app (a copy another account installed); it points to the
+  download page instead. Finished updates no longer leave their files hidden
+  in Applications.
+- On a Mac, denying the Keychain prompt asks once rather than again for each
+  saved sign-in, and a copy opened from the disk image no longer takes over
+  **Open at login**.
+
 ## [0.1.2] - 2026-10-13
 
 ### Added

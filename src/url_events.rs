@@ -11,7 +11,15 @@
 //! that launched the app is handled too: AppKit holds Apple Events until its
 //! run loop runs, and leaves this event class alone because winit's delegate
 //! has no `application:openURLs:`.
+//!
+//! The same handler answers a Dock click while the app has no window
+//! ([`take_over_reopen`]): macOS sends the running app a "reopen" event,
+//! which becomes the same Show a second launch sends. AppKit would pass it
+//! to the application delegate, and winit's delegate only exists while a
+//! window does, so with the window closed (or never opened, after starting
+//! in the menu bar) a Dock click would otherwise do nothing.
 
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use objc2::rc::Retained;
@@ -25,6 +33,16 @@ use crate::single_instance::ControlCommand;
 const GET_URL: u32 = u32::from_be_bytes(*b"GURL");
 /// `keyDirectObject`, '----': the event's URL.
 const DIRECT_OBJECT: u32 = u32::from_be_bytes(*b"----");
+/// `kCoreEventClass` and `kAEReopenApplication`: a Dock click or a launch
+/// of the running app.
+const CORE_EVENT: u32 = u32::from_be_bytes(*b"aevt");
+const REOPEN: u32 = u32::from_be_bytes(*b"rapp");
+
+thread_local! {
+    /// The one handler, kept for the life of the process: the Apple Event
+    /// manager does not retain it.
+    static HANDLER: RefCell<Option<Retained<Handler>>> = const { RefCell::new(None) };
+}
 
 struct Ivars {
     commands: Arc<Mutex<Vec<ControlCommand>>>,
@@ -51,20 +69,32 @@ define_class!(
             match crate::link::parse(&text) {
                 Some(uri) => {
                     log::info!("opening a link from macOS");
-                    self.ivars()
-                        .commands
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .push(ControlCommand::OpenLink(uri));
-                    (self.ivars().wake)();
+                    self.queue(ControlCommand::OpenLink(uri));
                 }
                 None => log::warn!("not a Spotify link: {text}"),
             }
+        }
+
+        #[unsafe(method(handleReopen:withReplyEvent:))]
+        fn handle_reopen(&self, _event: &NSAppleEventDescriptor, _reply: *mut AnyObject) {
+            log::debug!("reopen from macOS");
+            self.queue(ControlCommand::Show);
         }
     }
 
     unsafe impl NSObjectProtocol for Handler {}
 );
+
+impl Handler {
+    fn queue(&self, command: ControlCommand) {
+        self.ivars()
+            .commands
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(command);
+        (self.ivars().wake)();
+    }
+}
 
 /// Starts taking links from macOS into `commands`, waking the app for each.
 /// Call once, on the main thread, before the event loop runs.
@@ -89,7 +119,28 @@ pub fn install(commands: Arc<Mutex<Vec<ControlCommand>>>, wake: impl Fn() + Send
             andEventID: GET_URL,
         ];
     }
-    // The manager does not retain its handler, and links may come until
-    // the app quits.
-    std::mem::forget(handler);
+    HANDLER.with_borrow_mut(|slot| *slot = Some(handler));
+}
+
+/// Answers Dock clicks with Show from now on. Call on the main thread each
+/// time the app goes without a window: AppKit installs its own reopen
+/// handler as it starts each event loop, so this takes the event back after
+/// it. Does nothing before [`install`].
+pub fn take_over_reopen() {
+    HANDLER.with_borrow(|handler| {
+        let Some(handler) = handler else {
+            return;
+        };
+        let manager = NSAppleEventManager::sharedAppleEventManager();
+        // SAFETY: as in `install`.
+        unsafe {
+            let _: () = msg_send![
+                &manager,
+                setEventHandler: &**handler,
+                andSelector: sel!(handleReopen:withReplyEvent:),
+                forEventClass: CORE_EVENT,
+                andEventID: REOPEN,
+            ];
+        }
+    });
 }

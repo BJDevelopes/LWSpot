@@ -133,6 +133,17 @@ pub fn parse(command: &str) -> Option<(PathBuf, Mode)> {
     Some((PathBuf::from(exe), mode))
 }
 
+/// Whether `exe` runs from somewhere that will not last: a mounted disk image
+/// (`/Volumes/...`) or a copy macOS moved aside for a downloaded app opened
+/// in place (App Translocation). The updater treats both the same way.
+pub fn temporary(exe: &Path) -> bool {
+    cfg!(target_os = "macos")
+        && (exe.starts_with("/Volumes")
+            || exe
+                .components()
+                .any(|part| part.as_os_str() == "AppTranslocation"))
+}
+
 /// Whether Task Manager or Settings turned the entry off: an odd first
 /// byte in its `StartupApproved\Run` marker.
 pub fn turned_off(approval: &[u8]) -> bool {
@@ -195,8 +206,17 @@ impl Autostart {
         self.mode
     }
 
-    /// Makes `mode` what happens at sign-in.
+    /// Makes `mode` what happens at sign-in. A Mac copy opened from its disk
+    /// image, or one macOS runs from a temporary place (App Translocation),
+    /// is refused with [`std::io::ErrorKind::Unsupported`]: the entry would
+    /// name a program that is gone after the next restart.
     pub fn set(&mut self, mode: Mode) -> std::io::Result<()> {
+        if mode != Mode::Off && self.exe.as_deref().is_some_and(temporary) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "LWSpot is not in Applications",
+            ));
+        }
         match self.exe.as_deref().and_then(|exe| command(exe, mode)) {
             Some(command) => self.registry.set_run(&self.name, &command)?,
             None if mode == Mode::Off => self.registry.delete_run(&self.name)?,
@@ -223,9 +243,14 @@ impl Autostart {
         if self.registry.run(&self.name).as_deref() == Some(wanted.as_str()) {
             return;
         }
+        // A copy opened from the disk image must not take over the entry of
+        // the one in Applications.
+        if self.exe.as_deref().is_some_and(temporary) {
+            return;
+        }
         match self.registry.set_run(&self.name, &wanted) {
-            Ok(()) => log::info!("Start with Windows now starts {wanted}"),
-            Err(error) => log::warn!("could not update the Start with Windows entry: {error}"),
+            Ok(()) => log::info!("the startup entry now starts {wanted}"),
+            Err(error) => log::warn!("could not update the startup entry: {error}"),
         }
     }
 }
@@ -242,6 +267,30 @@ mod tests {
 
     fn run_value(autostart: &Autostart) -> Option<String> {
         autostart.registry.run(VALUE_NAME)
+    }
+
+    /// A copy opened from the disk image (or translocated) never takes over
+    /// the entry of the copy in Applications, and cannot turn it on.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_copy_on_the_disk_image_neither_takes_nor_turns_on_the_entry() {
+        let installed = "/Applications/LWSpot.app/Contents/MacOS/lwspot";
+        let mut memory = Memory::default();
+        let entry = command(Path::new(installed), Mode::Open).unwrap();
+        memory.run.insert(VALUE_NAME.into(), entry.clone());
+        for exe in [
+            "/Volumes/LWSpot/LWSpot.app/Contents/MacOS/lwspot",
+            "/private/var/folders/x/AppTranslocation/ABC/d/LWSpot.app/Contents/MacOS/lwspot",
+        ] {
+            let mut autostart = autostart(memory.clone(), exe);
+            assert_eq!(run_value(&autostart).as_deref(), Some(entry.as_str()));
+            let refused = autostart.set(Mode::Tray).unwrap_err();
+            assert_eq!(refused.kind(), std::io::ErrorKind::Unsupported);
+            assert_eq!(run_value(&autostart).as_deref(), Some(entry.as_str()));
+            autostart.set(Mode::Off).unwrap();
+            assert_eq!(run_value(&autostart), None);
+        }
+        assert!(!temporary(Path::new(installed)));
     }
 
     #[test]

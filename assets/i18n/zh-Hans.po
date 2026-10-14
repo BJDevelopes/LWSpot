@@ -3498,3 +3498,7 @@ msgstr "按钮和高亮的颜色：主题自带的颜色、macOS 中设置的强
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "在菜单栏中启动"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "请先将 LWSpot 移到“应用程序”文件夹，然后再开启此选项。"

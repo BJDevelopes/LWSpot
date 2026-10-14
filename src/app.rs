@@ -344,6 +344,11 @@ pub struct App {
     /// pixels, so the logic knows when the fill next moves.
     pub progress_bar_px: f32,
     pub window_hidden: bool,
+    /// Start in the menu bar on a Mac: the first window is made invisible
+    /// and closed to the menu bar on its first frame. winit only starts
+    /// inside AppKit's launch, so a Mac app cannot begin with no window and
+    /// open one later (see `entrypoint::run`).
+    pub hide_first_window: bool,
     /// The window should close but the process should stay in the tray.
     pub hide_intent: bool,
     /// The outer loop should recreate the hidden window.
@@ -769,6 +774,10 @@ impl fastframe_shell::Resident for App {
     /// Audio, media controls, the tray and polling keep running until Show or Quit.
     fn headless_frame(&mut self, ctx: &egui::Context) -> fastframe_shell::Headless {
         use fastframe_shell::Headless;
+        // AppKit puts its own reopen handler back when its loop starts, which
+        // the shell's idle does between these ticks; one call takes it back.
+        #[cfg(target_os = "macos")]
+        crate::url_events::take_over_reopen();
         self.background_frame(ctx);
         if self.quit_requested {
             Headless::Quit
@@ -886,6 +895,7 @@ impl App {
             occlusion: crate::window::Occlusion::default(),
             progress_bar_px: 0.0,
             window_hidden: false,
+            hide_first_window: false,
             hide_intent: false,
             wants_show: false,
             switch_intent: false,
@@ -1147,7 +1157,12 @@ impl App {
         // again rather than trust what the replaced window was told.
         self.window_title.clear();
         if let Some(tray) = &mut self.tray {
-            tray.attach();
+            if self.hide_first_window {
+                // Make the item without bringing the app forward.
+                tray.create_item();
+            } else {
+                tray.attach();
+            }
         }
         self.window_watch = crate::window::Watch::attached();
         // eframe restores the full screen fullscreen lyrics left behind when
@@ -1248,6 +1263,10 @@ impl App {
         self.window_hidden = true;
         self.hide_intent = false;
         self.wants_show = false;
+        // A Dock click is now the way back (with the menu-bar item, which a
+        // crowded menu bar or the notch can hide).
+        #[cfg(target_os = "macos")]
+        crate::url_events::take_over_reopen();
     }
 
     /// Whether closing the window keeps the app in the tray rather than
@@ -10021,7 +10040,12 @@ impl App {
             Action::SetAutostart(mode) => {
                 if let Err(error) = self.autostart.set(mode) {
                     log::warn!("could not change Start with Windows: {error}");
-                    let message = if cfg!(target_os = "macos") {
+                    let message = if error.kind() == std::io::ErrorKind::Unsupported {
+                        gettext(
+                            self.locale,
+                            "Move LWSpot to Applications first, then turn this on.",
+                        )
+                    } else if cfg!(target_os = "macos") {
                         // Translators: {error} is an error message.
                         gettext(self.locale, "Couldn't change Open at login: {error}")
                     } else {
@@ -10701,6 +10725,20 @@ impl App {
     /// Runs background work with or without a main window.
     pub fn background_frame(&mut self, ctx: &egui::Context) {
         self.adopt_desktop();
+        if self.hide_first_window && !self.window_hidden {
+            self.hide_first_window = false;
+            if self
+                .tray
+                .as_ref()
+                .is_some_and(fastframe_tray::Tray::is_shown)
+            {
+                self.hide_intent = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else {
+                // No menu-bar item to come back through: show the window.
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            }
+        }
         if self.autoscroll.cancel_if_unfocused(ctx) {
             self.scrolling.stop();
         }

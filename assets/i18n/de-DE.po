@@ -3620,3 +3620,7 @@ msgstr "Die Farbe von Schaltflächen und Hervorhebungen: die des Designs, die in
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "In der Menüleiste starten"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Verschiebe LWSpot zuerst in den Ordner „Programme“ und schalte dies dann ein."

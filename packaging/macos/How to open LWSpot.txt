@@ -1,0 +1,20 @@
+How to open LWSpot
+
+1. Drag LWSpot onto the Applications folder in this window.
+2. Open LWSpot from Applications (Launchpad, Spotlight or Finder).
+
+The first time, macOS may say "LWSpot" Not Opened, because LWSpot is not
+yet notarized by Apple. That happens only once:
+
+  macOS 15 Sequoia or later
+    - Click Done.
+    - Open System Settings > Privacy & Security.
+    - Scroll down to Security. Next to "LWSpot was blocked to protect your
+      Mac", click Open Anyway, enter your Mac password, then Open Anyway.
+
+  macOS 14 Sonoma or earlier
+    - In Applications, Control-click (or right-click) LWSpot, choose Open,
+      then Open.
+
+LWSpot needs nothing else installed. Sign in with your Spotify account;
+playing music needs Spotify Premium.

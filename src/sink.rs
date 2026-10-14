@@ -1588,7 +1588,8 @@ fn target(preferred: Option<&str>) -> Target {
 }
 
 /// What the output asks of the device: Spotify's stereo 44.1 kHz first, so
-/// nothing is converted, then whatever the device takes. fastframe-audio
+/// nothing is converted, then whatever the device takes (on a Mac, the
+/// device's own rate; see below). fastframe-audio
 /// has no way to insist on stereo: a device that refuses two channels is
 /// opened with its own count, which `fit_channels` and `log_stream` handle.
 /// The fixed buffer addresses Windows shared-mode underruns (#88);
@@ -1599,7 +1600,15 @@ fn output_options(device: fastframe_audio::Device, buffer_ms: u32) -> OutputOpti
     OutputOptions {
         device,
         channels: NUM_CHANNELS as u16,
-        sample_rate: Some(SAMPLE_RATE),
+        // On a Mac, asking for a rate sets the output device's own rate for
+        // every app (built-in speakers run at 48 kHz), which can glitch other
+        // apps' sound and outlasts LWSpot. Take the device's rate there and
+        // resample, as Windows' shared mode does anyway.
+        sample_rate: if cfg!(target_os = "macos") {
+            None
+        } else {
+            Some(SAMPLE_RATE)
+        },
         buffer: Buffer::FixedOnWindows(BufferSize::Duration(Duration::from_millis(u64::from(
             buffer_ms,
         )))),
@@ -1800,7 +1809,14 @@ mod tests {
         let named = fastframe_audio::Device::Named("USB DAC".into());
         let options = output_options(named.clone(), DEFAULT_BUFFER_MS);
         assert_eq!(options.device, named);
-        assert_eq!(options.sample_rate, Some(SAMPLE_RATE));
+        // A Mac keeps the device's own rate rather than change it for every
+        // app; elsewhere Spotify's rate is asked for first.
+        let rate = if cfg!(target_os = "macos") {
+            None
+        } else {
+            Some(SAMPLE_RATE)
+        };
+        assert_eq!(options.sample_rate, rate);
         assert_eq!(options.channels, NUM_CHANNELS as u16);
         assert_eq!(target(Some(" USB DAC ")), Target::Named("USB DAC".into()));
         for blank in [None, Some(""), Some("  ")] {

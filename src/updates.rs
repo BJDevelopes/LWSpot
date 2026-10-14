@@ -28,7 +28,8 @@ pub const CONFIG: UpdateConfig = UpdateConfig {
         legacy_bundle_names: &[],
     },
     ..UpdateConfig::new(
-        "BJDevelopes/lwspot",
+        // GitHub's own casing, which its asset URLs use.
+        "BJDevelopes/LWSpot",
         "LWSpot",
         "lwspot",
         env!("CARGO_PKG_VERSION"),

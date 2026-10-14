@@ -3584,3 +3584,7 @@ msgstr "Färgen på knappar och markeringar: temats egen, accentfärgen som är 
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Starta i menyraden"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Flytta först LWSpot till Program och slå sedan på det här."

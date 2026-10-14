@@ -123,6 +123,10 @@ pub enum Error {
     Locked,
     #[error("The system credential store did not respond. This sign-in cannot be remembered yet.")]
     Timeout,
+    /// Someone answered the Keychain's access prompt with Deny, or cancelled
+    /// it. Not retried: asking again only shows the same dialog.
+    #[error("Access to the saved sign-in was denied. Sign in again to remember it.")]
+    Denied,
     #[error("The stored Spotify grant is invalid. Sign in again.")]
     Invalid,
     #[error(
@@ -156,6 +160,9 @@ impl Error {
                 "The credential store did not retain the proxy password. It is available only for this session."
             }
             Self::Stale => "The proxy settings changed while the password was being stored.",
+            Self::Denied => {
+                "Access to the saved proxy password was denied. It is available only for this session."
+            }
         }
     }
 }
@@ -188,9 +195,15 @@ impl std::fmt::Display for Cause {
     }
 }
 
-/// The Win32 code inside a windows-native-keyring-store platform error. Its
-/// type is private, so the code is recovered from its fixed Display forms.
-fn platform_code(error: &(dyn std::error::Error + Send + Sync)) -> Option<u32> {
+/// The Win32 code inside a windows-native-keyring-store platform error (its
+/// type is private, so the code is recovered from its fixed Display forms),
+/// or the OSStatus inside a macOS Keychain error.
+fn platform_code(error: &(dyn std::error::Error + Send + Sync + 'static)) -> Option<u32> {
+    #[cfg(target_os = "macos")]
+    if let Some(error) = error.downcast_ref::<security_framework::base::Error>() {
+        // An OSStatus, logged as its bits, like the Win32 codes.
+        return Some(error.code() as u32);
+    }
     let text = error.to_string();
     if let Some(code) = text.strip_prefix("Windows error code ") {
         return code.trim().parse().ok();
@@ -232,10 +245,32 @@ fn native_error(operation: &str, error: keyring_core::Error) -> Error {
     // Some provider errors contain the secret or arbitrary platform data.
     // Never propagate their Debug/Display text into application diagnostics.
     log::warn!("credential store {operation} failed: {}", diagnose(&error));
+    if denied(&error) {
+        return Error::Denied;
+    }
     match error {
         keyring_core::Error::NoStorageAccess(_) => Error::Locked,
         _ => Error::Unavailable,
     }
+}
+
+/// Whether the Keychain refused because of the person at the Mac: Deny on
+/// its access prompt (`errSecAuthFailed`) or a cancelled prompt
+/// (`errSecUserCanceled`). After an ad-hoc-signed update the prompt can come
+/// up for each saved grant, and retrying would show it again each time.
+#[cfg(target_os = "macos")]
+fn denied(error: &keyring_core::Error) -> bool {
+    let keyring_core::Error::PlatformFailure(inner) = error else {
+        return false;
+    };
+    inner
+        .downcast_ref::<security_framework::base::Error>()
+        .is_some_and(|error| matches!(error.code(), -128 | -25293))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn denied(_error: &keyring_core::Error) -> bool {
+    false
 }
 
 trait ProtectedStore: Send {

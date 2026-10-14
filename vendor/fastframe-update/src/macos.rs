@@ -91,6 +91,7 @@ pub(crate) fn detect(
         }
     }
     match identity(config, host, bundle) {
+        Ok(true) if !host.replaceable(bundle) => Err(Unsupported::NotWritable),
         Ok(true) => Ok(()),
         Ok(false) => Err(Unsupported::ForeignBundle),
         Err(error) => Err(Unsupported::Unavailable(format!("{error:#}"))),

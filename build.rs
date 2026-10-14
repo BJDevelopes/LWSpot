@@ -58,6 +58,12 @@ const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 
 fn main() {
     fastframe_i18n::build::compile_catalogs("assets/i18n");
+    // cpal's loopback capture, which LWSpot never uses, names a CoreAudio
+    // function from macOS 14.2. Link CoreAudio weakly so that reference can
+    // never stop the app from starting on macOS 11 to 14.1.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-arg=-Wl,-weak_framework,CoreAudio");
+    }
     #[cfg(windows)]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         println!("cargo:rerun-if-changed=packaging/windows/lwspot.ico");

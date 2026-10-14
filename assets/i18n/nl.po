@@ -3604,3 +3604,7 @@ msgstr "De kleur van knoppen en markeringen: die van het thema, de accentkleur d
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Starten in de menubalk"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Zet LWSpot eerst in Apps en schakel dit daarna in."

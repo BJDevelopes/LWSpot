@@ -188,12 +188,30 @@ impl Source {
             && match &self.0 {
                 Origin::GitHub => {
                     url.host_str() == Some("github.com")
-                        && url.path()
-                            == format!("/{}/releases/download/v{version}/{name}", config.repository)
+                        && release_path(
+                            url.path(),
+                            config.repository,
+                            &format!("/releases/download/v{version}/{name}"),
+                        )
                 }
                 Origin::Local(_) => true,
             }
     }
+}
+
+/// Whether `path` is `/<repository><rest>`. GitHub owner and repository
+/// names are case-insensitive, and the API gives asset URLs in the
+/// repository's own casing (`BJDevelopes/LWSpot` for a configured
+/// `BJDevelopes/lwspot`), so that part matches in any case; the tag and the
+/// file name must match exactly.
+fn release_path(path: &str, repository: &str, rest: &str) -> bool {
+    let Some(after_slash) = path.strip_prefix('/') else {
+        return false;
+    };
+    after_slash.len() == repository.len() + rest.len()
+        && after_slash.is_char_boundary(repository.len())
+        && after_slash[..repository.len()].eq_ignore_ascii_case(repository)
+        && &after_slash[repository.len()..] == rest
 }
 
 fn feed(base: &Url) -> String {
@@ -286,6 +304,30 @@ mod tests {
         )
         .unwrap();
         assert!(!Source::github().owns_asset(&ZAPFAST, &other, "0.17.0", "checksums.txt"));
+    }
+
+    /// The API names assets in the repository's canonical casing, which a
+    /// configuration may not share; GitHub treats the names alike.
+    #[test]
+    fn asset_urls_in_the_repositorys_own_casing_belong_to_the_release() {
+        let canonical =
+            Url::parse("https://github.com/CRMNE/ZapFast/releases/download/v0.17.0/checksums.txt")
+                .unwrap();
+        assert!(Source::github().owns_asset(&ZAPFAST, &canonical, "0.17.0", "checksums.txt"));
+        // The tag and the file name still have to match exactly.
+        let tag =
+            Url::parse("https://github.com/CRMNE/ZapFast/releases/download/V0.17.0/checksums.txt")
+                .unwrap();
+        assert!(!Source::github().owns_asset(&ZAPFAST, &tag, "0.17.0", "checksums.txt"));
+        let name =
+            Url::parse("https://github.com/crmne/zapfast/releases/download/v0.17.0/CHECKSUMS.txt")
+                .unwrap();
+        assert!(!Source::github().owns_asset(&ZAPFAST, &name, "0.17.0", "checksums.txt"));
+        let longer = Url::parse(
+            "https://github.com/crmne/zapfast-fork/releases/download/v0.17.0/checksums.txt",
+        )
+        .unwrap();
+        assert!(!Source::github().owns_asset(&ZAPFAST, &longer, "0.17.0", "checksums.txt"));
     }
 
     #[test]

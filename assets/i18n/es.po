@@ -3604,3 +3604,7 @@ msgstr "El color de los botones y resaltados: el del tema, el color de énfasis 
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Iniciar en la barra de menús"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Primero mueve LWSpot a Aplicaciones y luego activa esta opción."

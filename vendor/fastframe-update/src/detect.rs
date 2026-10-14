@@ -93,6 +93,9 @@ pub enum Unsupported {
     MoveToApplications,
     /// A macOS bundle whose identifier or executable is not this app's.
     ForeignBundle,
+    /// A macOS bundle this user cannot replace: another account installed
+    /// it, or its folder is not writable.
+    NotWritable,
     /// No download exists for this operating system or processor.
     Platform,
     /// The installation could not be inspected.
@@ -125,6 +128,9 @@ impl std::fmt::Display for Unsupported {
             Self::ForeignBundle => {
                 formatter.write_str("This app bundle is not a release of this app.")
             }
+            Self::NotWritable => formatter.write_str(
+                "This copy was installed by another account or sits in a folder you cannot change. Use the download page.",
+            ),
             Self::Platform => formatter
                 .write_str("Use the download page for this operating system or architecture."),
             Self::Unavailable(reason) => {

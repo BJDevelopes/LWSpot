@@ -3619,3 +3619,7 @@ msgstr "Цвет кнопок и выделения: собственный цв
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Запускать в строке меню"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Сначала переместите LWSpot в папку «Программы», затем включите этот параметр."

@@ -3626,3 +3626,7 @@ msgstr "La couleur des boutons et des surbrillances : celle du thème, la coule
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Démarrer dans la barre des menus"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Déplacez d’abord LWSpot dans Applications, puis activez cette option."

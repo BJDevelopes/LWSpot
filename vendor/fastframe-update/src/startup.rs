@@ -89,6 +89,12 @@ pub fn intercept(config: &UpdateConfig) -> Launch {
         }
         Parsed::Launch(launch) => {
             crate::rename::tidy(config, &OsHost, crate::detect::Platform::current());
+            // Before logging starts, so it says nothing; what it removes is
+            // the hidden folders of updates that are over.
+            #[cfg(target_os = "macos")]
+            if let Ok(executable) = OsHost.current_exe() {
+                let _ = crate::stage::tidy_finished(config, &executable);
+            }
             *launch
         }
     }

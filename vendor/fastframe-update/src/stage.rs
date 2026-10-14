@@ -192,6 +192,61 @@ pub(crate) fn discard(directory: &Path) -> bool {
     fs::remove_dir_all(directory).is_ok()
 }
 
+/// How long a finished helper may still be writing to its folder.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const FINISHED_GRACE: std::time::Duration = std::time::Duration::from_secs(60);
+/// How old a folder with no result must be to count as abandoned: a
+/// download that was never installed. A new download makes a new folder,
+/// so an old one is never picked up again.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const ABANDONED: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// macOS, at startup: removes the staging folders beside the app's bundle
+/// that are done with. Each holds the old bundle, the helper's copy of it
+/// and the disk image, about three times the app, hidden in Applications.
+/// A folder whose helper wrote its result a while ago is finished, and one
+/// with no result that has sat untouched for a day was abandoned. A folder
+/// of an update in progress (no result yet, recent) is left alone.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn tidy_finished(config: &UpdateConfig, executable: &Path) -> Vec<PathBuf> {
+    let Some(parent) = crate::macos::bundle_root(config, executable).and_then(Path::parent) else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(parent) else {
+        return Vec::new();
+    };
+    let now = std::time::SystemTime::now();
+    let older_than = |path: &Path, age: std::time::Duration| {
+        fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .is_ok_and(|modified| now.duration_since(modified).is_ok_and(|since| since > age))
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| is_staging_name(config, name))
+        })
+        .map(|entry| entry.path())
+        .filter(|folder| {
+            let result = folder.join(RESULT);
+            if result.exists() {
+                older_than(&result, FINISHED_GRACE)
+            } else {
+                older_than(folder, ABANDONED)
+                    && fs::read_dir(folder).is_ok_and(|files| {
+                        files
+                            .flatten()
+                            .all(|file| older_than(&file.path(), ABANDONED))
+                    })
+            }
+        })
+        .filter(|folder| discard(folder))
+        .collect()
+}
+
 pub(crate) fn hash(path: &Path) -> Result<String> {
     let mut file = File::open(path)?;
     let mut hash = Sha256::new();
@@ -336,6 +391,55 @@ impl Staged {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Finished and abandoned staging folders beside the bundle go; one in
+    /// progress, and anything that is not a staging folder, stays.
+    #[test]
+    fn finished_and_abandoned_staging_folders_are_tidied() {
+        let config = crate::tests::ZAPFAST;
+        let apps = std::env::temp_dir().join(format!("ffu-tidy-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&apps);
+        let executable = apps.join("ZapFast.app/Contents/MacOS/zapfast");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"app").unwrap();
+        let old = std::time::SystemTime::now() - ABANDONED - std::time::Duration::from_secs(60);
+        let age = |path: &Path| {
+            File::options()
+                .write(true)
+                .open(path)
+                .or_else(|_| File::open(path))
+                .unwrap()
+                .set_modified(old)
+                .unwrap();
+        };
+        let folder = |suffix: &str| {
+            let folder = apps.join(format!(".zapfast-update-{suffix}"));
+            fs::create_dir_all(&folder).unwrap();
+            folder
+        };
+        let finished = folder("000000000000000a");
+        fs::write(finished.join(RESULT), "Updated to 0.17.0").unwrap();
+        age(&finished.join(RESULT));
+        let running = folder("000000000000000b");
+        fs::write(running.join(JOB), "{}").unwrap();
+        let abandoned = folder("000000000000000c");
+        fs::write(
+            abandoned.join("zapfast-v0.17.0-macos-universal.dmg"),
+            b"dmg",
+        )
+        .unwrap();
+        age(&abandoned.join("zapfast-v0.17.0-macos-universal.dmg"));
+        age(&abandoned);
+        let other = apps.join(".zapfast-update-notours");
+        fs::create_dir_all(&other).unwrap();
+
+        let mut removed = tidy_finished(&config, &executable);
+        removed.sort();
+        assert_eq!(removed, [finished.clone(), abandoned.clone()]);
+        assert!(!finished.exists() && !abandoned.exists());
+        assert!(running.exists() && other.exists());
+        fs::remove_dir_all(&apps).unwrap();
+    }
     use crate::tests::ZAPFAST;
 
     fn portable(directory: &Path) -> Installation {

@@ -3622,3 +3622,7 @@ msgstr "Колір кнопок і виділення: власний колір
 #: src/ui/settings.rs
 msgid "Start in the menu bar"
 msgstr "Запускати в рядку меню"
+
+#: src/app.rs
+msgid "Move LWSpot to Applications first, then turn this on."
+msgstr "Спочатку перемістіть LWSpot у папку «Програми», потім увімкніть цей параметр."

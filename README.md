@@ -109,8 +109,13 @@ how the portable copy keeps its data. To build it yourself, see
 [Build from source](docs/_guide/getting-started.md#build-from-source), or
 [packaging/macos](packaging/macos/README.md) for the Mac app.
 
-The Mac app is not notarized yet, so the first time, right-click **LWSpot**
-in Applications and choose **Open**. It keeps your sign-in in the login
+On a Mac, open the disk image, drag **LWSpot** to **Applications**, and open
+it from there. Until LWSpot is notarized by Apple, macOS stops the first
+launch with **"LWSpot" Not Opened**: click **Done**, open **System Settings >
+Privacy & Security**, scroll to **Security**, click **Open Anyway** next to
+"LWSpot was blocked", and confirm with your password. You only do this once.
+On macOS 14 or earlier, Control-click LWSpot in Applications and choose
+**Open** instead. LWSpot needs nothing else installed. It keeps your sign-in in the login
 Keychain, shows its controls in the menu bar and the Dock icon's menu, opens
 `spotify:` links, and works with the media keys and Control Center's Now
 Playing.

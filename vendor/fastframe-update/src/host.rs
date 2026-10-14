@@ -90,11 +90,38 @@ pub(crate) trait Host: Send + Sync {
     fn detach(&self, mountpoint: &Path) -> bool;
     /// Copies a bundle with its signature, extended attributes and links.
     fn copy_bundle(&self, source: &Path, destination: &Path) -> Result<()>;
+    /// Whether this user can replace the bundle: write to the folder it is
+    /// in, and move the bundle folder itself, which macOS allows only to
+    /// a user who can write to it. A copy another account installed in
+    /// /Applications, seen from a standard account, cannot be replaced.
+    fn replaceable(&self, _bundle: &Path) -> bool {
+        true
+    }
 }
 
 /// The real operating system.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct OsHost;
+
+/// Whether this user can replace `bundle` (see [`Host::replaceable`]). A
+/// file made and removed next to it answers for the folder, with its access
+/// lists; its owner is this user, whom the bundle folder must belong to and
+/// be writable by.
+#[cfg(unix)]
+pub(crate) fn replaceable(bundle: &Path) -> bool {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let Some(parent) = bundle.parent() else {
+        return false;
+    };
+    let probe = parent.join(format!(".fastframe-update-probe-{}", std::process::id()));
+    let me = match File::create(&probe).and_then(|file| file.metadata()) {
+        Ok(metadata) => metadata.uid(),
+        Err(_) => return false,
+    };
+    let _ = std::fs::remove_file(&probe);
+    std::fs::metadata(bundle)
+        .is_ok_and(|bundle| bundle.uid() == me && bundle.permissions().mode() & 0o200 != 0)
+}
 
 mod os {
     use std::ffi::OsString;
@@ -371,6 +398,11 @@ mod os {
             ensure!(copy.status.success(), "Could not copy the app bundle");
             Ok(())
         }
+
+        #[cfg(unix)]
+        fn replaceable(&self, bundle: &Path) -> bool {
+            super::replaceable(bundle)
+        }
     }
 
     #[cfg(windows)]
@@ -478,6 +510,24 @@ pub(crate) fn is_zombie(stat: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// A bundle this user owns and can write is replaceable; one whose
+    /// folder this user cannot write (installed by another account, say)
+    /// is not.
+    #[cfg(unix)]
+    #[test]
+    fn only_a_bundle_this_user_can_write_is_replaceable() {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = std::env::temp_dir().join(format!("ffu-replaceable-{}", std::process::id()));
+        let bundle = parent.join("App.app");
+        std::fs::create_dir_all(&bundle).unwrap();
+        assert!(super::replaceable(&bundle));
+        std::fs::set_permissions(&bundle, std::fs::Permissions::from_mode(0o555)).unwrap();
+        assert!(!super::replaceable(&bundle));
+        std::fs::set_permissions(&bundle, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!super::replaceable(&parent.join("missing.app")));
+        std::fs::remove_dir_all(&parent).unwrap();
+    }
+
     use super::*;
 
     #[test]
