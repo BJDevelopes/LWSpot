@@ -3460,3 +3460,19 @@ msgstr ""
 #: src/ui/jam.rs
 msgid "Discord is playing your friend's music here. To stop, end it in Discord or play something else."
 msgstr ""
+
+#: src/ui/settings.rs
+msgid "LWSpot stays in the menu bar. Quit from its menu or with Ctrl+Q."
+msgstr ""
+
+#: src/ui/settings.rs
+msgid "Off ignores environment variables. System uses them and the macOS proxy settings."
+msgstr ""
+
+#: src/ui/settings.rs
+msgid "The colour of buttons and highlights: the theme's own, the accent colour set in macOS, or the playing song's cover. Adjusted when needed so text stays readable."
+msgstr ""
+
+#: src/ui/settings.rs
+msgid "Start in the menu bar"
+msgstr ""

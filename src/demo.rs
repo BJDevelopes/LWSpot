@@ -3221,12 +3221,15 @@ mod tests {
     #[test]
     fn settings_search_never_shows_a_section_for_an_unavailable_row() {
         let (ctx, mut app) = accessible_app("settings-search-availability");
-        let text = settings_text(&ctx, &mut app, "Show in taskbar");
-        assert!(text.iter().any(|text| text == "Winamp skins"));
-        app.demo_windows_controls = true;
-        let text = settings_text(&ctx, &mut app, "Show in taskbar");
-        assert!(text.iter().any(|text| text == "Winamp skins"));
-        assert!(text.iter().any(|text| text == "Show in taskbar"));
+        // The Mac has no taskbar row (see `the_taskbar_setting_shows_under_winamp_skins`).
+        if cfg!(not(target_os = "macos")) {
+            let text = settings_text(&ctx, &mut app, "Show in taskbar");
+            assert!(text.iter().any(|text| text == "Winamp skins"));
+            app.demo_windows_controls = true;
+            let text = settings_text(&ctx, &mut app, "Show in taskbar");
+            assert!(text.iter().any(|text| text == "Winamp skins"));
+            assert!(text.iter().any(|text| text == "Show in taskbar"));
+        }
 
         app.settings.web_client_id = None;
         app.web_app = None;
@@ -3691,6 +3694,8 @@ mod tests {
         app.backend.shutdown();
     }
 
+    // A taskbar button is a Windows idea; the Mac hides the row.
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn the_windows_taskbar_setting_keeps_its_choice_without_closing_settings() {
         use egui::accesskit::Role;
@@ -3722,7 +3727,9 @@ mod tests {
         app.backend.shutdown();
     }
 
-    /// The Winamp skins section and its taskbar row always show.
+    /// The Winamp skins section and its taskbar row always show, except on
+    /// a Mac, which has no taskbar.
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn the_taskbar_setting_shows_under_winamp_skins() {
         let (ctx, mut app) = accessible_app("taskbar-setting");

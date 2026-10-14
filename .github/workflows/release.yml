@@ -272,9 +272,89 @@ jobs:
           path: dist/*-setup.exe
           if-no-files-found: error
 
+  # The Mac app: one universal disk image for Apple silicon and Intel, named
+  # as the updater looks for it, and the MilkDrop add-on for each processor.
+  # Signed and notarized when the Apple secrets below are set (see
+  # packaging/macos/README.md); otherwise signed ad hoc.
+  macos:
+    name: build (macOS)
+    runs-on: macos-latest
+    env:
+      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: CMake
+        run: brew list cmake >/dev/null 2>&1 || brew install cmake
+      # A temporary keychain holding the Developer ID certificate, for
+      # codesign; only when the secrets are set.
+      - name: Signing keychain
+        if: env.APPLE_CERTIFICATE_P12 != ''
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 16)"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+      - name: LWSpot.app and disk image
+        run: CODESIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" packaging/macos/build.sh
+      - name: Check the app
+        run: |
+          app=dist/LWSpot.app/Contents/MacOS/lwspot
+          lipo "$app" -verify_arch arm64 x86_64
+          version="$($app --version)"
+          echo "$version" | grep -Eq '^lwspot [0-9]+\.[0-9]+\.[0-9]+' || { echo "Unexpected --version output: $version"; exit 1; }
+          codesign --verify --strict dist/LWSpot.app
+      - name: Notarize
+        if: env.APPLE_ID != '' && env.APPLE_CERTIFICATE_P12 != ''
+        run: |
+          dmg="dist/lwspot-${GITHUB_REF_NAME}-macos-universal.dmg"
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$dmg"
+      # The add-on as the app downloads it: lwspot-milkdrop-<tag>-<target>.zip
+      # holding lwspot-milkdrop and the licence, deflated.
+      - name: MilkDrop add-on zips
+        run: |
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked --target "$target" --features milkdrop --bin lwspot-milkdrop
+            binary="target/$target/release/lwspot-milkdrop"
+            arch=x86_64; [ "$target" = aarch64-apple-darwin ] && arch=arm64
+            lipo "$binary" -verify_arch "$arch"
+            if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+              codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$binary"
+            fi
+            name="lwspot-milkdrop-${GITHUB_REF_NAME}-$target"
+            mkdir -p "dist/$name"
+            cp "$binary" LICENSE "dist/$name/"
+            (cd "dist/$name" && zip -X -9 "../$name.zip" lwspot-milkdrop LICENSE)
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-macos
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+
   publish:
     name: GitHub release
-    needs: [build, installer]
+    needs: [build, installer, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -301,10 +381,13 @@ jobs:
             "lwspot-${GITHUB_REF_NAME}-x86_64-pc-windows-msvc.zip" \
             "lwspot-${GITHUB_REF_NAME}-aarch64-pc-windows-msvc.zip" \
             "lwspot-milkdrop-${GITHUB_REF_NAME}-x86_64-pc-windows-msvc.zip" \
-            "lwspot-milkdrop-${GITHUB_REF_NAME}-aarch64-pc-windows-msvc.zip"; do
+            "lwspot-milkdrop-${GITHUB_REF_NAME}-aarch64-pc-windows-msvc.zip" \
+            "lwspot-${GITHUB_REF_NAME}-macos-universal.dmg" \
+            "lwspot-milkdrop-${GITHUB_REF_NAME}-aarch64-apple-darwin.zip" \
+            "lwspot-milkdrop-${GITHUB_REF_NAME}-x86_64-apple-darwin.zip"; do
             test -f "$name" || { echo "Missing release file: $name"; exit 1; }
           done
-          sha256sum -- *.zip *-setup.exe > checksums.txt && cat checksums.txt
+          sha256sum -- *.zip *-setup.exe *.dmg > checksums.txt && cat checksums.txt
       # The release text is the tag's section of CHANGELOG.md
       # ("## [X.Y.Z] - date" up to the next "## ["). A tag without one, such
       # as a release candidate, gets notes generated from the pull requests.

@@ -111,8 +111,9 @@ how the portable copy keeps its data. To build it yourself, see
 
 The Mac app is not notarized yet, so the first time, right-click **LWSpot**
 in Applications and choose **Open**. It keeps your sign-in in the login
-Keychain, shows its controls in the menu bar, and works with the media keys
-and Control Center's Now Playing.
+Keychain, shows its controls in the menu bar and the Dock icon's menu, opens
+`spotify:` links, and works with the media keys and Control Center's Now
+Playing.
 
 ## Start listening
 

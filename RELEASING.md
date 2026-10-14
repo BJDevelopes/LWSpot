@@ -50,7 +50,10 @@ release workflow builds and how winget and code signing are set up.
        - `lwspot-vX.Y.Z-aarch64-pc-windows-msvc.zip`
        - `lwspot-milkdrop-vX.Y.Z-x86_64-pc-windows-msvc.zip`
        - `lwspot-milkdrop-vX.Y.Z-aarch64-pc-windows-msvc.zip`
-       - `checksums.txt`, with a line for each of the five files above
+       - `lwspot-vX.Y.Z-macos-universal.dmg`
+       - `lwspot-milkdrop-vX.Y.Z-aarch64-apple-darwin.zip`
+       - `lwspot-milkdrop-vX.Y.Z-x86_64-apple-darwin.zip`
+       - `checksums.txt`, with a line for each of the eight files above
 7. [ ] Check the release notes are the CHANGELOG section.
 
 ## Smoke test

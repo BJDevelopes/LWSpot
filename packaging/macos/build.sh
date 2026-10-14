@@ -63,7 +63,12 @@ rm -rf "$STAGE" "$DMG"
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -quiet -volname "LWSpot" -srcfolder "$STAGE" -fs HFS+ -format UDZO "$DMG"
+# hdiutil now and then finds the volume busy on a loaded machine; try again.
+for attempt in 1 2 3; do
+    hdiutil create -quiet -volname "LWSpot" -srcfolder "$STAGE" -fs HFS+ -format UDZO "$DMG" && break
+    [ "$attempt" = 3 ] && exit 1
+    sleep 5
+done
 rm -rf "$STAGE"
 
 echo "==> $APP"

@@ -41,6 +41,8 @@ pub mod theme_files;
 pub mod thumbbar;
 pub mod ui;
 pub mod updates;
+#[cfg(target_os = "macos")]
+pub mod url_events;
 pub mod util;
 pub mod vis;
 pub mod web_cache;

@@ -113,3 +113,39 @@ jobs:
           $binary = "$PWD\target\debug\lwspot.exe"
           & $iscc "/DVersion=$version" "/DBinaryX64=$binary" "/DBinaryArm64=$binary" "/DOutputDir=$env:RUNNER_TEMP\lwspot-installer-check" packaging\windows\lwspot.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # The Mac app (packaging/macos). Formatting is checked on Windows; the
+  # rest runs here because the macOS code is only compiled on a Mac.
+  macos:
+    name: test (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          components: clippy
+      # projectM, for the MilkDrop add-on, builds through CMake.
+      - name: CMake
+        run: brew list cmake >/dev/null 2>&1 || brew install cmake
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Clippy (all features)
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Tests (app)
+        run: cargo test --locked --all-targets --no-default-features
+      - name: Tests (app, demo)
+        run: cargo test --locked --all-targets --no-default-features --features demo
+      - name: Tests (all features, with the MilkDrop add-on)
+        run: cargo test --locked --all-targets --all-features
+      - name: Documentation tests
+        run: cargo test --locked --all-features --doc
+      # The bundle, its icon, its Info.plist and its disk image, for this
+      # runner's processor (the release builds the universal one).
+      - name: App bundle
+        run: |
+          packaging/macos/build.sh --native
+          plutil -lint dist/LWSpot.app/Contents/Info.plist
+          test "$(dist/LWSpot.app/Contents/MacOS/lwspot --version)" = "lwspot $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"

@@ -26,13 +26,19 @@ mod win;
 #[cfg(windows)]
 pub use win::ThumbBar;
 
-/// macOS has no taskbar preview to put buttons under: the media keys and
-/// Control Center's Now Playing come through fastframe-now-playing.
-#[cfg(not(windows))]
+/// On a Mac the same three commands are the Dock icon's menu.
+#[cfg(target_os = "macos")]
+mod mac;
+
+#[cfg(target_os = "macos")]
+pub use mac::ThumbBar;
+
+/// Elsewhere there is no taskbar preview to put buttons under.
+#[cfg(not(any(windows, target_os = "macos")))]
 #[derive(Default)]
 pub struct ThumbBar;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 impl ThumbBar {
     pub fn new() -> Self {
         Self

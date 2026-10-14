@@ -85,7 +85,7 @@ impl Ack {
 
     /// Waits until [`done`](Self::done) or `timeout`, whichever is first.
     /// Returns whether the app answered in time.
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn wait(&self, timeout: Duration) -> bool {
         let (done, ring) = &*self.0;
         let done = done.lock().unwrap_or_else(PoisonError::into_inner);
@@ -135,7 +135,7 @@ pub fn budget(conditions: Conditions, window_shown: bool, focused: bool) -> Budg
 
 /// How long a reader waits for the app to save before the system sleeps.
 /// Windows gives a suspend callback about two seconds.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 const SUSPEND_ACK: Duration = Duration::from_millis(1500);
 /// How long a reader holds back the end of the session for the app to save.
 /// Windows waits about five seconds before it lists the app as blocking.
@@ -174,7 +174,7 @@ impl Shared {
         }
     }
 
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn push(&self, event: Event) {
         log::info!("power and session: {event:?}");
         self.events
@@ -186,7 +186,7 @@ impl Shared {
 
     /// Queues the event `make` builds and waits up to `timeout` for the app
     /// to answer it.
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     fn push_and_wait(&self, make: impl FnOnce(Ack) -> Event, timeout: Duration) {
         let ack = Ack::default();
         self.push(make(ack.clone()));

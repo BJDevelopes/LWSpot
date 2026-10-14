@@ -3595,3 +3595,19 @@ msgstr "Ascolto insieme su Discord"
 #: src/ui/jam.rs
 msgid "Discord is playing your friend's music here. To stop, end it in Discord or play something else."
 msgstr "Discord sta riproducendo qui la musica del tuo amico. Per smettere, interrompi in Discord o riproduci altro."
+
+#: src/ui/settings.rs
+msgid "LWSpot stays in the menu bar. Quit from its menu or with Ctrl+Q."
+msgstr "LWSpot resta nella barra dei menu. Esci dal suo menu o con Ctrl+Q."
+
+#: src/ui/settings.rs
+msgid "Off ignores environment variables. System uses them and the macOS proxy settings."
+msgstr "Disattivato ignora le variabili d’ambiente. Sistema le usa, insieme al proxy del sistema operativo su macOS e Windows."
+
+#: src/ui/settings.rs
+msgid "The colour of buttons and highlights: the theme's own, the accent colour set in macOS, or the playing song's cover. Adjusted when needed so text stays readable."
+msgstr "Il colore di pulsanti ed evidenziazioni: quello del tema, il colore d’accento impostato in macOS o la copertina del brano in riproduzione. Viene regolato quando serve perché il testo resti leggibile."
+
+#: src/ui/settings.rs
+msgid "Start in the menu bar"
+msgstr "Avvia nella barra dei menu"

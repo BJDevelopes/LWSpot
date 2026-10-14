@@ -14,8 +14,11 @@ version's section below as its release notes, so write it for listeners.
   follows the Mac's output device, the media keys and Now Playing work, and
   the menu bar icon keeps music playing with the window closed.
 - On a Mac: **Open at login** in Settings, the accent colour from System
-  Settings, a title bar that follows the theme's light or dark look, and
-  shortcuts shown with Cmd and Option.
+  Settings (followed live), a title bar that follows the theme's light or
+  dark look, and shortcuts shown with Cmd and Option.
+- On a Mac: Previous, Play/Pause and Next in the Dock icon's menu,
+  `spotify:` links open in LWSpot, your session is saved before the Mac
+  sleeps, and the MilkDrop add-on downloads for Apple silicon and Intel.
 - On a Mac, the visualizer stops while the window is covered, minimized or
   on another Space, animations run at half rate in Low Power Mode, and
   nothing is drawn while the screen is locked or the display sleeps.

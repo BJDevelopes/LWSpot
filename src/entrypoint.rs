@@ -470,6 +470,11 @@ pub(crate) fn run() -> eframe::Result<()> {
     }
     if let Some(guard) = &instance {
         app.set_remote_control(guard);
+        #[cfg(target_os = "macos")]
+        {
+            let waker = waker.clone();
+            lwspot::url_events::install(guard.commands(), move || waker.wake());
+        }
     }
     if let Some(uri) = link {
         app.open_link(uri);
@@ -590,6 +595,12 @@ pub(crate) fn run() -> eframe::Result<()> {
                         && let RawWindowHandle::AppKit(view) = handle.as_raw()
                     {
                         lwspot::window::set_main_window(view.ns_view.as_ptr() as isize);
+                    }
+                    #[cfg(target_os = "macos")]
+                    if thumbbar_enabled {
+                        let wake = creator_waker.clone();
+                        // SAFETY: the creator runs on the main thread.
+                        unsafe { toolbar.attach(0, move || wake.wake()) };
                     }
                     if thumbbar_enabled && let Some(hwnd) = hwnd {
                         let wake = creator_waker.clone();
@@ -1128,6 +1139,8 @@ impl eframe::App for Shell {
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let app = &mut *self.app;
+        #[cfg(target_os = "macos")]
+        self.thumbbar.set_locale(app.locale);
         for command in self.thumbbar.drain_commands() {
             if let Some(action) = command.action(&app.thumb_state(false)) {
                 app.actions.push(action);

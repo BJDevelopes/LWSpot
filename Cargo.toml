@@ -179,8 +179,8 @@ ctr = "0.9"
 # versions winit and rfd already compile, so they add no build.
 apple-native-keyring-store = { version = "1", default-features = false, features = ["keychain"] }
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSColor", "NSColorSpace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSObject", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSColor", "NSColorSpace", "NSMenu", "NSMenuItem", "NSResponder"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = { version = "1.1", default-features = false }

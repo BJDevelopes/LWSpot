@@ -581,10 +581,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ),
         RowText::new(
             keep_playing.clone(),
-            gettext(
-                locale,
-                "LWSpot hides to the system tray. Quit from the tray menu or with Ctrl+Q.",
-            ),
+            if cfg!(target_os = "macos") {
+                gettext(
+                    locale,
+                    "LWSpot stays in the menu bar. Quit from its menu or with Ctrl+Q.",
+                )
+            } else {
+                gettext(
+                    locale,
+                    "LWSpot hides to the system tray. Quit from the tray menu or with Ctrl+Q.",
+                )
+            },
         ),
         RowText::new(
             update_checks.clone(),
@@ -773,7 +780,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 (crate::autostart::Mode::Open, gettext(locale, "Open LWSpot")),
                 (
                     crate::autostart::Mode::Tray,
-                    gettext(locale, "Start in the tray"),
+                    if cfg!(target_os = "macos") {
+                        gettext(locale, "Start in the menu bar")
+                    } else {
+                        gettext(locale, "Start in the tray")
+                    },
                 ),
             ];
             let start_choices_width = start_choices
@@ -986,10 +997,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ),
         RowText::new(
             gettext(locale, "Accent colour"),
-            gettext(
-                locale,
-                "The colour of buttons and highlights: the theme's own, the accent colour set in Windows, or the playing song's cover. Adjusted when needed so text stays readable.",
-            ),
+            if cfg!(target_os = "macos") {
+                gettext(
+                    locale,
+                    "The colour of buttons and highlights: the theme's own, the accent colour set in macOS, or the playing song's cover. Adjusted when needed so text stays readable.",
+                )
+            } else {
+                gettext(
+                    locale,
+                    "The colour of buttons and highlights: the theme's own, the accent colour set in Windows, or the playing song's cover. Adjusted when needed so text stays readable.",
+                )
+            },
         ),
         RowText::new(gettext(locale, "Window backdrop"), {
             if !crate::window::backdrop_supported() {
@@ -1362,10 +1380,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             &pgettext(locale, "proxy", "Mode"),
-            &gettext(
-                locale,
-                "Off ignores environment variables. System uses them and the Windows proxy settings.",
-            ),
+            &if cfg!(target_os = "macos") {
+                gettext(
+                    locale,
+                    "Off ignores environment variables. System uses them and the macOS proxy settings.",
+                )
+            } else {
+                gettext(
+                    locale,
+                    "Off ignores environment variables. System uses them and the Windows proxy settings.",
+                )
+            },
             |_| {},
         );
         // The row's control slot is right-to-left and too narrow for four
@@ -1468,13 +1493,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             always_on_top.clone(),
             gettext(locale, "Keep the Winamp window above everything else."),
         ),
+        // A taskbar button is a Windows idea; the Mac's Dock is per app.
         RowText::new(
             gettext(locale, "Show in taskbar"),
             gettext(
                 locale,
                 "Keep a taskbar button for the mini player. The tray icon stays available when hidden.",
             ),
-        ),
+        )
+        .when(!cfg!(target_os = "macos")),
         RowText::new(
             gettext(locale, "Installed skins"),
             app.winamp

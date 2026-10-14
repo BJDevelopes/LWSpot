@@ -3482,3 +3482,19 @@ msgstr "正在 Discord 上一起听"
 #: src/ui/jam.rs
 msgid "Discord is playing your friend's music here. To stop, end it in Discord or play something else."
 msgstr "Discord 正在这里播放你朋友的音乐。要停止，请在 Discord 中结束，或播放其他内容。"
+
+#: src/ui/settings.rs
+msgid "LWSpot stays in the menu bar. Quit from its menu or with Ctrl+Q."
+msgstr "LWSpot 会留在菜单栏中。可通过其菜单或 Ctrl+Q 退出。"
+
+#: src/ui/settings.rs
+msgid "Off ignores environment variables. System uses them and the macOS proxy settings."
+msgstr "“关闭”会忽略环境变量。“系统”会使用环境变量，在 macOS 和 Windows 上还会使用操作系统代理。"
+
+#: src/ui/settings.rs
+msgid "The colour of buttons and highlights: the theme's own, the accent colour set in macOS, or the playing song's cover. Adjusted when needed so text stays readable."
+msgstr "按钮和高亮的颜色：主题自带的颜色、macOS 中设置的强调色，或正在播放歌曲的封面。必要时会自动调整，确保文字清晰可读。"
+
+#: src/ui/settings.rs
+msgid "Start in the menu bar"
+msgstr "在菜单栏中启动"

@@ -712,9 +712,11 @@ fn options_menu(app: &mut App, ui: &mut Ui, unit: f32) {
         app.actions.push(Action::ToggleWinampOnTop);
     }
     let mut visible = app.settings.winamp_show_taskbar;
-    if ui
-        .checkbox(&mut visible, gettext(locale, "Show in taskbar").as_ref())
-        .changed()
+    // A taskbar button is a Windows idea; the Mac's Dock is per app.
+    if cfg!(not(target_os = "macos"))
+        && ui
+            .checkbox(&mut visible, gettext(locale, "Show in taskbar").as_ref())
+            .changed()
     {
         app.actions.push(Action::SetWinampTaskbar(visible));
     }

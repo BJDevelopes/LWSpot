@@ -22,6 +22,18 @@
 	<string>@VERSION@</string>
 	<key>CFBundleVersion</key>
 	<string>@VERSION@</string>
+	<!-- spotify: links open in LWSpot, as the Windows installer registers. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Spotify link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>spotify</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.music</string>
 	<key>LSMinimumSystemVersion</key>
