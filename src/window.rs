@@ -9,7 +9,7 @@
 /// it on ARM through Microsoft's compatibility pack, a Store app that
 /// translates it to Direct3D 12, so a missing or broken pack leaves eframe
 /// without a context and the app would otherwise close without a word.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(windows, target_arch = "aarch64"))]
 pub fn report_missing_opengl(locale: crate::i18n::Locale) {
     use crate::i18n::gettext;
     use windows_sys::Win32::UI::WindowsAndMessaging::{IDYES, MB_ICONERROR, MB_YESNO, MessageBoxW};
@@ -59,7 +59,15 @@ fn titlebar_anchor(pos: [f32; 2], pixels_per_point: f32) -> Option<egui::Pos2> {
     (pixels_per_point.is_finite() && pixels_per_point > 0.0 && anchor.is_finite()).then_some(anchor)
 }
 
+/// AppKit keeps a restored window's title bar on a screen itself, moving it
+/// back from a display that is gone.
+#[cfg(not(windows))]
+pub fn can_restore(pos: [f32; 2], pixels_per_point: f32) -> bool {
+    titlebar_anchor(pos, pixels_per_point).is_some()
+}
+
 /// Checks that the saved position leaves the title bar in a monitor's work area.
+#[cfg(windows)]
 pub fn can_restore(pos: [f32; 2], pixels_per_point: f32) -> bool {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::{
@@ -94,6 +102,7 @@ pub fn can_restore(pos: [f32; 2], pixels_per_point: f32) -> bool {
 }
 
 /// The work area of `monitor`, in physical pixels.
+#[cfg(windows)]
 fn work_area(monitor: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> Option<egui::Rect> {
     use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITORINFO};
 
@@ -111,7 +120,15 @@ fn work_area(monitor: windows_sys::Win32::Graphics::Gdi::HMONITOR) -> Option<egu
     ))
 }
 
+/// AppKit constrains windows to the screens there are, so there is nothing
+/// to correct here.
+#[cfg(not(windows))]
+fn work_areas(_rect: egui::Rect) -> Option<(egui::Rect, Vec<egui::Rect>)> {
+    None
+}
+
 /// The work area nearest `rect` and every monitor's, in physical pixels.
+#[cfg(windows)]
 fn work_areas(rect: egui::Rect) -> Option<(egui::Rect, Vec<egui::Rect>)> {
     use windows_sys::Win32::Foundation::{LPARAM, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
@@ -422,13 +439,15 @@ pub fn custom_titlebar() -> bool {
 
 /// Sets the title bar choice the next main window is created with.
 pub fn set_custom_titlebar(on: bool) {
+    // The Mac keeps its own title bar and traffic lights.
+    let on = on && !cfg!(target_os = "macos");
     CUSTOM_TITLEBAR.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
 static MAIN_WINDOW: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
-/// Remembers the main window's handle, so its Windows title bar can follow
-/// the theme.
+/// Remembers the main window's handle (its `HWND` on Windows, its content
+/// `NSView` on macOS), so its title bar can follow the theme.
 pub fn set_main_window(hwnd: isize) {
     MAIN_WINDOW.store(hwnd, std::sync::atomic::Ordering::Relaxed);
 }
@@ -436,6 +455,7 @@ pub fn set_main_window(hwnd: isize) {
 /// The backdrop the main window was created with, as a [`Backdrop::ALL`]
 /// index.
 static BACKDROP: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+#[cfg_attr(not(windows), allow(dead_code))]
 /// Whether transparency effects are on in Windows, read again after a
 /// setting change.
 static TRANSPARENCY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
@@ -446,10 +466,12 @@ use crate::settings::Backdrop;
 
 /// The first Windows build with `DWMWA_SYSTEMBACKDROP_TYPE`: Windows 11
 /// 2022 Update (22H2).
+#[cfg_attr(not(windows), allow(dead_code))]
 const BACKDROP_BUILD: u32 = 22621;
 
 /// The Windows build number, from the registry (the version functions
 /// answer for the version the program says it supports).
+#[cfg(windows)]
 fn windows_build() -> Option<u32> {
     use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
     let mut buffer = [0u16; 16];
@@ -477,6 +499,13 @@ fn windows_build() -> Option<u32> {
 }
 
 /// Whether this Windows can put Mica or acrylic behind a window.
+#[cfg(not(windows))]
+pub fn backdrop_supported() -> bool {
+    false
+}
+
+/// Whether this Windows can put Mica or acrylic behind a window.
+#[cfg(windows)]
 pub fn backdrop_supported() -> bool {
     static SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *SUPPORTED.get_or_init(|| windows_build().is_some_and(|build| build >= BACKDROP_BUILD))
@@ -513,7 +542,13 @@ pub fn note_setting_change() {
     TRANSPARENCY_STALE.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
+#[cfg(not(windows))]
+fn transparency_effects() -> bool {
+    false
+}
+
 /// Whether "Transparency effects" is on in Windows Settings.
+#[cfg(windows)]
 fn transparency_effects() -> bool {
     use std::sync::atomic::Ordering;
     if TRANSPARENCY_STALE.swap(false, Ordering::Relaxed) {
@@ -578,6 +613,11 @@ fn ground(color: egui::Color32, cover: f32) -> egui::Color32 {
 /// Asks Windows for the chosen backdrop behind the main window, under a
 /// frame stretched over the whole client area so it shows wherever the app
 /// draws nothing opaque. Not for the mini player, whose skin is its shape.
+#[cfg(not(windows))]
+pub fn apply_backdrop() {}
+
+/// Asks Windows for the chosen backdrop (see above).
+#[cfg(windows)]
 pub fn apply_backdrop() {
     let hwnd = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
     if hwnd == 0 || custom_titlebar() {
@@ -586,6 +626,7 @@ pub fn apply_backdrop() {
     backdrop_behind(hwnd as windows_sys::Win32::Foundation::HWND);
 }
 
+#[cfg(windows)]
 fn backdrop_behind(hwnd: windows_sys::Win32::Foundation::HWND) {
     use windows_sys::Win32::Graphics::Dwm::{
         DWMSBT_MAINWINDOW, DWMSBT_TRANSIENTWINDOW, DWMWA_SYSTEMBACKDROP_TYPE, DwmSetWindowAttribute,
@@ -633,10 +674,51 @@ fn backdrop_behind(hwnd: windows_sys::Win32::Foundation::HWND) {
 /// The Windows title-bar colours for a palette, as COLORREF (0x00BBGGRR):
 /// the caption in the window colour, so the bar reads as the top of the
 /// app, and the caption text in the text colour.
+#[cfg(any(windows, test))]
 fn title_bar_colors(palette: &crate::theme::Palette) -> (u32, u32) {
     let colorref =
         |c: egui::Color32| u32::from(c.r()) | u32::from(c.g()) << 8 | u32::from(c.b()) << 16;
     (colorref(palette.window), colorref(palette.text))
+}
+
+/// Gives the main window's title bar the theme's dark or light appearance.
+#[cfg(target_os = "macos")]
+pub fn tint_title_bar(palette: &crate::theme::Palette) {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::NSString;
+    let Some(view) = main_view() else {
+        return;
+    };
+    let Some(appearance_class) = AnyClass::get(c"NSAppearance") else {
+        return;
+    };
+    let name = NSString::from_str(if palette.dark {
+        "NSAppearanceNameDarkAqua"
+    } else {
+        "NSAppearanceNameAqua"
+    });
+    // SAFETY: on the main thread (the theme is applied while drawing), with
+    // the content view of the live main window; `window` may be nil, which
+    // is checked, and `appearanceNamed:` returns an autoreleased object.
+    unsafe {
+        let window: *mut AnyObject = msg_send![view, window];
+        if window.is_null() {
+            return;
+        }
+        let appearance: *mut AnyObject = msg_send![appearance_class, appearanceNamed: &*name];
+        let _: () = msg_send![window, setAppearance: appearance];
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn tint_title_bar(_palette: &crate::theme::Palette) {}
+
+/// The main window's content view, once it exists.
+#[cfg(target_os = "macos")]
+fn main_view() -> Option<*mut objc2::runtime::AnyObject> {
+    let view = MAIN_WINDOW.load(std::sync::atomic::Ordering::Relaxed);
+    (view != 0).then_some(view as *mut objc2::runtime::AnyObject)
 }
 
 /// Paints the main window's Windows title bar in the palette's colours.
@@ -644,6 +726,7 @@ fn title_bar_colors(palette: &crate::theme::Palette) -> (u32, u32) {
 /// need Windows 11, and older versions keep their own (the call is refused
 /// harmlessly). Nothing happens before the window exists or when LWSpot
 /// draws its own title bar.
+#[cfg(windows)]
 pub fn tint_title_bar(palette: &crate::theme::Palette) {
     use windows_sys::Win32::Graphics::Dwm::{
         DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute,
@@ -726,6 +809,7 @@ impl Occlusion {
 }
 
 /// A rectangle of screen pixels; the right and bottom edges are outside it.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ScreenRect {
     left: i32,
@@ -751,10 +835,12 @@ impl ScreenRect {
 
 /// The most pieces the uncovered part of a window is tracked in. Past it
 /// the window is counted as seen, which only keeps a visualizer moving.
+#[cfg_attr(not(windows), allow(dead_code))]
 const MOST_PIECES: usize = 256;
 
 /// Whether `covers` together hide every pixel of `target`. Each cover cuts
 /// what is left of the target into at most four pieces around it.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn fully_covered(target: ScreenRect, covers: &[ScreenRect]) -> bool {
     let mut uncovered = vec![target];
     uncovered.retain(|piece| !piece.is_empty());
@@ -806,6 +892,7 @@ fn fully_covered(target: ScreenRect, covers: &[ScreenRect]) -> bool {
 /// of it, as a full-screen window on its monitor does. Windows that can be
 /// seen through (click-through overlays, translucent or colour-keyed ones)
 /// cover nothing. Before the window exists it counts as seen.
+#[cfg(windows)]
 fn main_window_hidden() -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GW_HWNDPREV, GetSystemMetrics, GetWindow, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
@@ -851,8 +938,38 @@ fn main_window_hidden() -> bool {
     false
 }
 
+/// Whether nobody can see any of the main window, as AppKit reports it:
+/// minimized, on another Space, behind other windows, or on a sleeping
+/// display. One message to the window, so it is cheap to ask.
+#[cfg(target_os = "macos")]
+fn main_window_hidden() -> bool {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    /// `NSWindowOcclusionStateVisible`.
+    const VISIBLE: usize = 1 << 1;
+    let Some(view) = main_view() else {
+        return false;
+    };
+    // SAFETY: asked from the UI thread, which is the main thread on macOS,
+    // of the live main window's content view.
+    unsafe {
+        let window: *mut AnyObject = msg_send![view, window];
+        if window.is_null() {
+            return false;
+        }
+        let state: usize = msg_send![window, occlusionState];
+        state & VISIBLE == 0
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn main_window_hidden() -> bool {
+    false
+}
+
 /// Whether a window is on screen: shown, not minimized, and not cloaked by
 /// Windows (on another virtual desktop, or a suspended app's window).
+#[cfg(windows)]
 fn shown(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
     use windows_sys::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
     use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
@@ -874,6 +991,7 @@ fn shown(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
 
 /// The screen area a window hides of the windows below it, if it is shown
 /// and opaque.
+#[cfg(windows)]
 fn opaque_cover(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<ScreenRect> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GWL_EXSTYLE, GetLayeredWindowAttributes, GetWindowLongPtrW, LWA_ALPHA, LWA_COLORKEY,
@@ -901,6 +1019,7 @@ fn opaque_cover(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<ScreenRect
 
 /// A window's visible frame on screen, without the invisible resize
 /// borders Windows 10 and 11 count in its window rectangle.
+#[cfg(windows)]
 fn frame_bounds(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<ScreenRect> {
     use windows_sys::Win32::Foundation::RECT;
     use windows_sys::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};

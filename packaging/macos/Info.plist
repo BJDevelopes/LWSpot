@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>LWSpot</string>
+	<key>CFBundleExecutable</key>
+	<string>lwspot</string>
+	<key>CFBundleIconFile</key>
+	<string>LWSpot</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.BJDevelopes.LWSpot</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>LWSpot</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.music</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>MIT License</string>
+	<!-- Spotify Connect finds and announces devices on the local network. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>LWSpot finds your Spotify Connect speakers and lets your other devices play on this Mac.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_spotify-connect._tcp</string>
+	</array>
+</dict>
+</plist>

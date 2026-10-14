@@ -20,7 +20,11 @@ use std::time::{Duration, Instant};
 use sha2::{Digest, Sha256};
 
 /// The add-on's file name, wherever it is.
-pub const FILE_NAME: &str = "lwspot-milkdrop.exe";
+pub const FILE_NAME: &str = if cfg!(windows) {
+    "lwspot-milkdrop.exe"
+} else {
+    "lwspot-milkdrop"
+};
 /// The name its `--version` starts with.
 pub const COMMAND: &str = "lwspot-milkdrop";
 /// The version an add-on has to report: the app's own.
@@ -28,7 +32,11 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Where releases keep their files, by tag.
 const RELEASES: &str = "https://github.com/BJDevelopes/lwspot/releases/download";
 /// The download is written here first, run, and only then moved into place.
-const STAGED_NAME: &str = "lwspot-milkdrop.new.exe";
+const STAGED_NAME: &str = if cfg!(windows) {
+    "lwspot-milkdrop.new.exe"
+} else {
+    "lwspot-milkdrop.new"
+};
 /// How long `--version` may take. A fresh download can wait on the virus
 /// scanner the first time it runs.
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
@@ -52,10 +60,11 @@ pub fn reports_version(output: &str, version: &str) -> bool {
 
 /// The Rust target the release names its files by, the same as this build's.
 pub fn target() -> &'static str {
-    if cfg!(target_arch = "aarch64") {
-        "aarch64-pc-windows-msvc"
-    } else {
-        "x86_64-pc-windows-msvc"
+    match (cfg!(target_os = "macos"), cfg!(target_arch = "aarch64")) {
+        (true, true) => "aarch64-apple-darwin",
+        (true, false) => "x86_64-apple-darwin",
+        (false, true) => "aarch64-pc-windows-msvc",
+        (false, false) => "x86_64-pc-windows-msvc",
     }
 }
 
@@ -147,14 +156,17 @@ pub fn find(
 /// Runs an add-on with `--version`, with no console window, and returns what
 /// it printed; `None` if it would not run or took too long.
 pub fn probe(path: &Path) -> Option<String> {
-    use std::os::windows::process::CommandExt as _;
     let mut command = Command::new(path);
     command
         .arg("--version")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+    }
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -251,6 +263,11 @@ pub fn place(
     let staged = folder.join(STAGED_NAME);
     let path = folder.join(FILE_NAME);
     std::fs::write(&staged, exe)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
+    }
     if !probe(&staged).is_some_and(|output| reports_version(&output, version)) {
         let _ = std::fs::remove_file(&staged);
         return Err(Failure::WrongVersion(version.to_string()));
@@ -665,10 +682,11 @@ mod tests {
             release_url("0.2.0", "checksums.txt"),
             "https://github.com/BJDevelopes/lwspot/releases/download/v0.2.0/checksums.txt"
         );
-        let expected = if cfg!(target_arch = "aarch64") {
-            "aarch64-pc-windows-msvc"
-        } else {
-            "x86_64-pc-windows-msvc"
+        let expected = match (cfg!(target_os = "macos"), cfg!(target_arch = "aarch64")) {
+            (true, true) => "aarch64-apple-darwin",
+            (true, false) => "x86_64-apple-darwin",
+            (false, true) => "aarch64-pc-windows-msvc",
+            (false, false) => "x86_64-pc-windows-msvc",
         };
         assert_eq!(target(), expected);
     }
@@ -721,7 +739,7 @@ mod tests {
     fn the_executable_comes_out_of_its_zip() {
         let zip = crate::skin::zip::write(&[
             ("LICENSE", b"MIT".as_slice(), true),
-            ("lwspot-milkdrop.exe", b"MZ program".as_slice(), true),
+            (FILE_NAME, b"MZ program".as_slice(), true),
         ]);
         assert_eq!(extract(&zip), Ok(b"MZ program".to_vec()));
         let without = crate::skin::zip::write(&[("LICENSE", b"MIT".as_slice(), false)]);

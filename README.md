@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/Built_with-Rust-6D5BF0" alt="Built with Rust"></a>
-  <a href="https://github.com/BJDevelopes/lwspot/releases"><img src="https://img.shields.io/badge/Platform-Windows-24292f" alt="Windows"></a>
+  <a href="https://github.com/BJDevelopes/lwspot/releases"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-24292f" alt="Windows and macOS"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6D5BF0" alt="MIT license"></a>
 </p>
 
@@ -98,6 +98,7 @@ Download the latest release from
 | `lwspot-vX.Y.Z-setup.exe` | The installer, for every PC: it installs the version for your processor (Intel, AMD or ARM). Installs for your user only; no administrator rights needed. |
 | `lwspot-vX.Y.Z-x86_64-pc-windows-msvc.zip` | Portable copy for most PCs (Intel and AMD). Extract and run `lwspot.exe`; it keeps its settings and caches in the `data` folder beside it. |
 | `lwspot-vX.Y.Z-aarch64-pc-windows-msvc.zip` | The same, for Windows on ARM. |
+| `lwspot-vX.Y.Z-macos-universal.dmg` | macOS 11 or later, on Apple silicon and Intel Macs. Open it and drag **LWSpot** to **Applications**. |
 | `checksums.txt` | SHA-256 checksums for every download. |
 
 The installer is not code-signed yet, so SmartScreen may warn about an unknown
@@ -105,7 +106,13 @@ publisher. Choose **More info**, then **Run anyway**. Check a download against
 `checksums.txt` with `Get-FileHash <file> -Algorithm SHA256`. A winget package
 is planned. [Download](docs/_guide/download.md) has the details, including
 how the portable copy keeps its data. To build it yourself, see
-[Build from source](docs/_guide/getting-started.md#build-from-source).
+[Build from source](docs/_guide/getting-started.md#build-from-source), or
+[packaging/macos](packaging/macos/README.md) for the Mac app.
+
+The Mac app is not notarized yet, so the first time, right-click **LWSpot**
+in Applications and choose **Open**. It keeps your sign-in in the login
+Keychain, shows its controls in the menu bar, and works with the media keys
+and Control Center's Now Playing.
 
 ## Start listening
 

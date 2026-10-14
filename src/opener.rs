@@ -7,7 +7,30 @@
 use std::ffi::OsStr;
 use std::io;
 
+/// Opens a URL or a path with Launch Services, through `/usr/bin/open`,
+/// which takes the target as one argument with no shell in between. It
+/// returns once `open` has started, so a click never waits on Launch
+/// Services; a failure after that is logged.
+#[cfg(target_os = "macos")]
+pub fn open(target: impl AsRef<OsStr>) -> io::Result<()> {
+    let mut child = std::process::Command::new("/usr/bin/open")
+        .arg(target.as_ref())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    std::thread::Builder::new()
+        .name("open".into())
+        .spawn(move || match child.wait() {
+            Ok(status) if !status.success() => log::warn!("open exited with {status}"),
+            Err(error) => log::warn!("open did not finish: {error}"),
+            Ok(_) => {}
+        })?;
+    Ok(())
+}
+
 /// Opens a URL or a path in whatever the desktop uses for it.
+#[cfg(windows)]
 pub fn open(target: impl AsRef<OsStr>) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};

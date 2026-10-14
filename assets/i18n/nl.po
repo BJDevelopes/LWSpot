@@ -3211,6 +3211,20 @@ msgstr "Starten in het systeemvak"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "Kan “Starten met Windows” niet wijzigen: {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Openen bij inloggen"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Opent LWSpot wanneer je inlogt op je Mac. Er wordt niets afgespeeld tot je erom vraagt."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "Kan “Openen bij inloggen” niet wijzigen: {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Afspelen / Pauzeren"

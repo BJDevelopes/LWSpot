@@ -29,6 +29,12 @@ mod win;
 #[cfg(windows)]
 pub use win::System;
 
+#[cfg(target_os = "macos")]
+mod mac;
+
+#[cfg(target_os = "macos")]
+pub use mac::System;
+
 /// The Run value's name, and the marker's.
 pub const VALUE_NAME: &str = "LWSpot";
 
@@ -180,7 +186,7 @@ impl Autostart {
     }
 
     /// The user's own startup list, for the running instance.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     pub fn system() -> Self {
         Self::new(Box::new(System), VALUE_NAME, std::env::current_exe().ok())
     }

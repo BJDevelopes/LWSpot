@@ -3233,6 +3233,20 @@ msgstr "Démarrer dans la zone de notification"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "Impossible de modifier « Lancer au démarrage de Windows » : {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Ouvrir à la connexion"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Ouvre LWSpot lorsque vous ouvrez une session sur votre Mac. Rien n’est lu tant que vous ne le demandez pas."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "Impossible de modifier « Ouvrir à la connexion » : {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Lecture / Pause"

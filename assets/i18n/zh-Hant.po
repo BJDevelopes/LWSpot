@@ -3112,6 +3112,20 @@ msgstr "在系統匣中啟動"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "無法變更「隨 Windows 啟動」：{error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "登入時開啟"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "登入 Mac 時開啟 LWSpot。在你操作之前不會播放任何內容。"
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "無法變更「登入時開啟」：{error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "播放 / 暫停"

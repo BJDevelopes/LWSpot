@@ -3234,6 +3234,20 @@ msgstr "Sistem tepsisinde başlat"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "“Windows ile başlat” değiştirilemedi: {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Oturum açıldığında aç"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Mac'inizde oturum açtığınızda LWSpot'i açar. Siz istemedikçe hiçbir şey çalınmaz."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "“Oturum açıldığında aç” değiştirilemedi: {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Çal / Duraklat"

@@ -3218,6 +3218,20 @@ msgstr "Avvia nell’area di notifica"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "Impossibile modificare “Avvia con Windows”: {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Apri all'accesso"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Apre LWSpot quando accedi al Mac. Non viene riprodotto nulla finché non lo chiedi."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "Impossibile modificare “Apri all'accesso”: {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Riproduci / Pausa"

@@ -267,7 +267,18 @@ pub fn strip_html(text: &str) -> String {
         .replace("&gt;", ">")
 }
 
+/// Atomically replaces `path` with `temporary`: rename(2) is atomic on
+/// the same volume.
+#[cfg(not(windows))]
+pub(crate) fn replace_file(
+    temporary: &std::path::Path,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    std::fs::rename(temporary, path)
+}
+
 /// Atomically replaces `path` with `temporary` on Windows.
+#[cfg(windows)]
 pub(crate) fn replace_file(
     temporary: &std::path::Path,
     path: &std::path::Path,

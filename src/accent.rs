@@ -159,8 +159,24 @@ pub fn from_abgr(value: u32) -> Color32 {
     Color32::from_rgb(r, g, b)
 }
 
+/// The accent colour chosen in System Settings > Appearance, as AppKit
+/// resolves it (the multicolour setting gives the system blue).
+#[cfg(target_os = "macos")]
+pub fn windows_accent() -> Option<Color32> {
+    use objc2_app_kit::{NSColor, NSColorSpace};
+    let color =
+        NSColor::controlAccentColor().colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
+    let channel = |value: f64| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+    Some(Color32::from_rgb(
+        channel(color.redComponent()),
+        channel(color.greenComponent()),
+        channel(color.blueComponent()),
+    ))
+}
+
 /// The accent colour chosen in Windows Settings, from
 /// `HKCU\Software\Microsoft\Windows\DWM\AccentColor`.
+#[cfg(windows)]
 pub fn windows_accent() -> Option<Color32> {
     use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
     let mut value: u32 = 0;

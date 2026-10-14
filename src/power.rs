@@ -11,7 +11,12 @@
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
-mod windows;
+#[cfg(target_os = "macos")]
+#[path = "power/macos.rs"]
+mod platform;
+#[cfg(windows)]
+#[path = "power/windows.rs"]
+mod platform;
 
 /// What the system says about power, the display, the session and the
 /// network. A platform that cannot tell leaves the default, which is the
@@ -80,6 +85,7 @@ impl Ack {
 
     /// Waits until [`done`](Self::done) or `timeout`, whichever is first.
     /// Returns whether the app answered in time.
+    #[cfg_attr(not(windows), allow(dead_code))]
     fn wait(&self, timeout: Duration) -> bool {
         let (done, ring) = &*self.0;
         let done = done.lock().unwrap_or_else(PoisonError::into_inner);
@@ -129,9 +135,11 @@ pub fn budget(conditions: Conditions, window_shown: bool, focused: bool) -> Budg
 
 /// How long a reader waits for the app to save before the system sleeps.
 /// Windows gives a suspend callback about two seconds.
+#[cfg_attr(not(windows), allow(dead_code))]
 const SUSPEND_ACK: Duration = Duration::from_millis(1500);
 /// How long a reader holds back the end of the session for the app to save.
 /// Windows waits about five seconds before it lists the app as blocking.
+#[cfg_attr(not(windows), allow(dead_code))]
 const END_SESSION_ACK: Duration = Duration::from_secs(3);
 
 /// What the readers write and the app reads.
@@ -166,6 +174,7 @@ impl Shared {
         }
     }
 
+    #[cfg_attr(not(windows), allow(dead_code))]
     fn push(&self, event: Event) {
         log::info!("power and session: {event:?}");
         self.events
@@ -177,6 +186,7 @@ impl Shared {
 
     /// Queues the event `make` builds and waits up to `timeout` for the app
     /// to answer it.
+    #[cfg_attr(not(windows), allow(dead_code))]
     fn push_and_wait(&self, make: impl FnOnce(Ack) -> Event, timeout: Duration) {
         let ack = Ack::default();
         self.push(make(ack.clone()));
@@ -190,10 +200,10 @@ impl Shared {
 pub struct Power {
     shared: Arc<Shared>,
     _reader: Option<Reader>,
-    eco_qos: windows::EcoQos,
+    eco_qos: platform::EcoQos,
 }
 
-use self::windows::Reader;
+use self::platform::Reader;
 
 impl Power {
     /// Starts the platform's reader; `wake` runs on a system thread whenever
@@ -204,7 +214,7 @@ impl Power {
             _reader: Reader::start(Arc::clone(&shared))
                 .inspect_err(|error| log::warn!("power and session state unavailable: {error}"))
                 .ok(),
-            eco_qos: windows::EcoQos::default(),
+            eco_qos: platform::EcoQos::default(),
             shared,
         }
     }
@@ -219,7 +229,7 @@ impl Power {
         Self {
             shared,
             _reader: None,
-            eco_qos: windows::EcoQos::default(),
+            eco_qos: platform::EcoQos::default(),
         }
     }
 

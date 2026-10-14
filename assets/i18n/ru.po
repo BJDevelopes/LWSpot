@@ -3226,6 +3226,20 @@ msgstr "Запускать в системном трее"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "Не удалось изменить параметр «Запускать вместе с Windows»: {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Открывать при входе"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Открывает LWSpot при входе в систему на Mac. Ничего не воспроизводится, пока вы не попросите."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "Не удалось изменить параметр «Открывать при входе»: {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Воспроизведение / Пауза"

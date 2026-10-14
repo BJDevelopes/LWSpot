@@ -173,6 +173,15 @@ pbkdf2 = "0.12"
 aes = "0.8"
 ctr = "0.9"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# The login Keychain for Spotify grants (src/credentials.rs), and AppKit for
+# the system accent colour (src/accent.rs). objc2 and objc2-app-kit are the
+# versions winit and rfd already compile, so they add no build.
+apple-native-keyring-store = { version = "1", default-features = false, features = ["keychain"] }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSColor", "NSColorSpace"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = { version = "1.1", default-features = false }
 # Message loops, the taskbar thumbnail buttons and window styles. Power,

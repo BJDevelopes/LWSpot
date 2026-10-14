@@ -3189,7 +3189,14 @@ mod tests {
         let (ctx, mut app) = accessible_app("settings-search-text");
         for (query, row) in [
             ("without a cover", "Compact track list"),
-            ("Ctrl+0", "Interface zoom"),
+            (
+                if cfg!(target_os = "macos") {
+                    "Cmd+0"
+                } else {
+                    "Ctrl+0"
+                },
+                "Interface zoom",
+            ),
             ("Rust", "About"),
             (
                 "Downloads in the background",

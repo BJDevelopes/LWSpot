@@ -66,7 +66,12 @@ impl AccentSource {
         use crate::i18n::gettext;
         match self {
             Self::Theme => gettext(locale, "Theme"),
-            Self::Windows => "Windows".into(),
+            Self::Windows => if cfg!(target_os = "macos") {
+                "macOS"
+            } else {
+                "Windows"
+            }
+            .into(),
             Self::AlbumArt => gettext(locale, "Album art"),
         }
     }

@@ -3227,6 +3227,20 @@ msgstr "Im Infobereich starten"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "„Mit Windows starten“ konnte nicht geändert werden: {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Bei der Anmeldung öffnen"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Öffnet LWSpot, wenn du dich bei deinem Mac anmeldest. Es wird nichts abgespielt, bis du es möchtest."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "„Bei der Anmeldung öffnen“ konnte nicht geändert werden: {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Wiedergabe / Pause"

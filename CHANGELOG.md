@@ -7,6 +7,19 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
+### Added
+
+- LWSpot runs on macOS 11 and later, on Apple silicon and Intel Macs, as
+  `LWSpot.app` in a disk image. Sign-in is kept in the login Keychain, audio
+  follows the Mac's output device, the media keys and Now Playing work, and
+  the menu bar icon keeps music playing with the window closed.
+- On a Mac: **Open at login** in Settings, the accent colour from System
+  Settings, a title bar that follows the theme's light or dark look, and
+  shortcuts shown with Cmd and Option.
+- On a Mac, the visualizer stops while the window is covered, minimized or
+  on another Space, animations run at half rate in Low Power Mode, and
+  nothing is drawn while the screen is locked or the display sleeps.
+
 ## [0.1.2] - 2026-10-13
 
 ### Added

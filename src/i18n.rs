@@ -2,7 +2,40 @@
 //! for every message a catalog has not translated yet. The interface follows
 //! the operating system's language unless Settings names another one.
 
-pub use fastframe_i18n::{gettext, ngettext, pgettext};
+pub use fastframe_i18n::ngettext;
+#[cfg(not(target_os = "macos"))]
+pub use fastframe_i18n::{gettext, pgettext};
+
+use std::borrow::Cow;
+
+/// Translates `source`, naming the Mac's modifier keys (see [`platform_keys`]).
+#[cfg(target_os = "macos")]
+pub fn gettext(locale: Locale, source: &'static str) -> Cow<'static, str> {
+    platform_keys(fastframe_i18n::gettext(locale, source))
+}
+
+/// Translates `source` in `context`, naming the Mac's modifier keys.
+#[cfg(target_os = "macos")]
+pub fn pgettext(locale: Locale, context: &'static str, source: &'static str) -> Cow<'static, str> {
+    platform_keys(fastframe_i18n::pgettext(locale, context, source))
+}
+
+/// Key names as this platform's keyboard prints them. The catalogs and the
+/// shortcut table say Ctrl and Alt; egui's command modifier is ⌘ on a Mac
+/// and Alt is Option there, so the Mac reads Cmd and Option. Text without
+/// a modifier is returned as it came, without copying.
+pub fn platform_keys(text: Cow<'static, str>) -> Cow<'static, str> {
+    if cfg!(target_os = "macos")
+        && (text.contains("Ctrl+") || text.contains("Strg+") || text.contains("Alt+"))
+    {
+        text.replace("Ctrl+", "Cmd+")
+            .replace("Strg+", "Cmd+")
+            .replace("Alt+", "Option+")
+            .into()
+    } else {
+        text
+    }
+}
 
 include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 

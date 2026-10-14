@@ -479,6 +479,8 @@ mod tests {
         assert!(writable(&folder.0));
     }
 
+    // Written with Windows paths: the portable ZIP is a Windows download.
+    #[cfg(windows)]
     #[test]
     fn the_portable_layout_lives_inside_the_data_folder() {
         let data = Path::new(r"E:\LWSpot\data");

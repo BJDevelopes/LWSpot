@@ -26,6 +26,32 @@ mod win;
 #[cfg(windows)]
 pub use win::ThumbBar;
 
+/// macOS has no taskbar preview to put buttons under: the media keys and
+/// Control Center's Now Playing come through fastframe-now-playing.
+#[cfg(not(windows))]
+#[derive(Default)]
+pub struct ThumbBar;
+
+#[cfg(not(windows))]
+impl ThumbBar {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// # Safety
+    /// Nothing to uphold; kept `unsafe` to match the Windows toolbar.
+    pub unsafe fn attach(&mut self, _hwnd: isize, _wake: impl Fn() + Send + Sync + 'static) {}
+
+    pub fn detach(&mut self) {}
+
+    #[inline]
+    pub fn sync(&mut self, _state: ThumbState) {}
+
+    pub fn drain_commands(&self) -> Vec<ThumbCommand> {
+        Vec::new()
+    }
+}
+
 /// The button identifiers, as Windows reports them back in `WM_COMMAND`.
 pub const ID_PREVIOUS: u32 = 2;
 pub const ID_PLAY: u32 = 3;

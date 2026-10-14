@@ -12,7 +12,33 @@
 //! as the endpoint it is at that moment, and followed by this sink (see
 //! `endpoint` and `Follow`).
 
+#[cfg(windows)]
 mod endpoint;
+
+/// Off Windows the sink opens "the default" and fastframe-audio follows it
+/// through the system's own default-device notifications (CoreAudio's on
+/// macOS), so there is no endpoint to read and no polling thread.
+#[cfg(not(windows))]
+#[allow(dead_code)]
+mod endpoint {
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(super) struct Endpoint {
+        pub(super) id: String,
+        pub(super) name: String,
+    }
+
+    pub(super) struct Apartment;
+
+    impl Apartment {
+        pub(super) fn enter() -> Result<Self, String> {
+            Ok(Self)
+        }
+    }
+
+    pub(super) fn default_output() -> Result<Option<Endpoint>, String> {
+        Err("the default output is followed by the audio stream".into())
+    }
+}
 
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering, fence};
@@ -116,6 +142,7 @@ const OPEN_ATTEMPTS: u32 = 5;
 const OPEN_RETRY: Duration = Duration::from_millis(150);
 
 /// How often the default output is checked while the sink follows it.
+#[cfg_attr(not(windows), allow(dead_code))]
 const DEFAULT_POLL: Duration = Duration::from_millis(1_500);
 
 /// The longest a seek command is remembered while waiting for librespot to
@@ -791,6 +818,7 @@ impl Output {
 /// Follows the system's default output for a stream opened on it as the
 /// endpoint it was. cpal would follow it too, through the path that broke
 /// reopening (see `endpoint`), so the sink polls instead.
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Follow {
     /// The endpoint the stream is open on.
     opened: Endpoint,
@@ -802,6 +830,7 @@ struct Follow {
 }
 
 impl Follow {
+    #[cfg_attr(not(windows), allow(dead_code))]
     fn start(opened: Endpoint) -> Self {
         let latest = Arc::new(Mutex::new(Some(opened.clone())));
         let watched = Arc::downgrade(&latest);
@@ -1491,8 +1520,27 @@ impl Sink for RodioSink {
     }
 }
 
+/// Puts the decoder thread in the user-initiated QoS class, so macOS keeps
+/// it on a performance core and ahead of background work, and queued audio
+/// does not run out under load (#88).
+#[cfg(target_os = "macos")]
+fn take_precedence() {
+    const QOS_CLASS_USER_INITIATED: u32 = 0x19;
+    unsafe extern "C" {
+        fn pthread_set_qos_class_self_np(class: u32, relative_priority: i32) -> i32;
+    }
+    // SAFETY: changes only the calling thread's own QoS class.
+    unsafe {
+        pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn take_precedence() {}
+
 /// Raises the Windows decoder thread one step above normal to prevent queued
 /// audio from running out under load (#88).
+#[cfg(windows)]
 fn take_precedence() {
     use windows_sys::Win32::System::Threading::{
         GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
@@ -1570,7 +1618,14 @@ fn open_device(
     fastframe_audio::Output::open(output_options(device, buffer_ms), renderer)
 }
 
+/// The default output, which fastframe-audio follows itself off Windows.
+#[cfg(not(windows))]
+fn default_device() -> Result<(fastframe_audio::Device, Option<Follow>), OpenError> {
+    Ok((fastframe_audio::Device::Default, None))
+}
+
 /// The default output as the endpoint it is now, followed from here on.
+#[cfg(windows)]
 fn default_device() -> Result<(fastframe_audio::Device, Option<Follow>), OpenError> {
     match endpoint::default_output() {
         Ok(Some(endpoint)) => Ok((

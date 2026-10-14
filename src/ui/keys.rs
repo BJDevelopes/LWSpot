@@ -160,7 +160,7 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
 /// Key names stay as the keyboard prints them; words around them, and
 /// every description, are translated.
 pub fn shortcuts(locale: Locale) -> Vec<(Cow<'static, str>, Cow<'static, str>)> {
-    let keys = |text: &'static str| Cow::Borrowed(text);
+    let keys = |text: &'static str| crate::i18n::platform_keys(Cow::Borrowed(text));
     vec![
         (
             pgettext(locale, "key", "Space"),
@@ -290,7 +290,12 @@ mod tests {
         crate::demo::populate(&mut app);
 
         // The modifiers as the platform reports its command key.
-        let command = Modifiers::CTRL | Modifiers::COMMAND;
+        // What the platform's command key sends: Ctrl, or ⌘ on a Mac.
+        let command = if cfg!(target_os = "macos") {
+            Modifiers::MAC_CMD | Modifiers::COMMAND
+        } else {
+            Modifiers::CTRL | Modifiers::COMMAND
+        };
         let ctx = egui::Context::default();
         let field = egui::Id::new("keys-test-field");
         let row = egui::Id::new("keys-test-row");
@@ -354,9 +359,15 @@ mod tests {
         frame(&mut app, &mut text, vec![]);
         assert!(ctx.memory(|memory| memory.has_focus(field)));
 
-        // Ctrl+Left goes back a word.
+        // Ctrl+Left goes back a word; ⌘← goes to the start of the line.
+        let command_left = if cfg!(target_os = "macos") { 0 } else { 10 };
         for (keys, modifiers, lands, what) in [
-            (Key::ArrowLeft, command, 10, "the previous-song shortcut"),
+            (
+                Key::ArrowLeft,
+                command,
+                command_left,
+                "the previous-song shortcut",
+            ),
             (Key::ArrowLeft, Modifiers::ALT, 10, "the back shortcut"),
             (Key::ArrowUp, command, 0, "the volume shortcut"),
         ] {
@@ -501,7 +512,11 @@ mod tests {
 
     #[test]
     fn shortcut_dialog_never_names_cmd() {
-        let other = "Cmd+";
+        let other = if cfg!(target_os = "macos") {
+            "Ctrl+"
+        } else {
+            "Cmd+"
+        };
         for (keys, _) in shortcuts(Locale::English) {
             assert!(!keys.contains(other), "wrong modifier in {keys}");
         }
@@ -516,8 +531,13 @@ mod tests {
                 .map(|(keys, _)| keys)
                 .unwrap()
         };
-        assert_eq!(label("Home"), "Ctrl+H");
-        assert_eq!(label("Winamp mini player"), "Ctrl+M");
+        let command = if cfg!(target_os = "macos") {
+            "Cmd"
+        } else {
+            "Ctrl"
+        };
+        assert_eq!(label("Home"), format!("{command}+H"));
+        assert_eq!(label("Winamp mini player"), format!("{command}+M"));
     }
 
     #[test]
@@ -590,7 +610,12 @@ mod tests {
         assert!(album.is_some(), "the demo song has an album to go to");
 
         // The modifiers as the platform reports its command key.
-        let command = Modifiers::CTRL | Modifiers::COMMAND;
+        // What the platform's command key sends: Ctrl, or ⌘ on a Mac.
+        let command = if cfg!(target_os = "macos") {
+            Modifiers::MAC_CMD | Modifiers::COMMAND
+        } else {
+            Modifiers::CTRL | Modifiers::COMMAND
+        };
         let ctx = egui::Context::default();
         let press = |app: &mut App, key: Key, modifiers: Modifiers| {
             app.actions.clear();

@@ -529,7 +529,7 @@ pub(crate) fn run() -> eframe::Result<()> {
         #[cfg(feature = "demo")]
         let creator_shot = shot.clone();
         let mini = lease.peek(MiniWindow::wanted);
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(all(windows, target_arch = "aarch64"))]
         let locale = lease.peek(|app| app.locale);
         #[cfg(feature = "demo")]
         let options = {
@@ -585,6 +585,12 @@ pub(crate) fn run() -> eframe::Result<()> {
                     if let Some(hwnd) = hwnd {
                         lwspot::window::set_main_window(hwnd);
                     }
+                    #[cfg(target_os = "macos")]
+                    if let Ok(handle) = cc.window_handle()
+                        && let RawWindowHandle::AppKit(view) = handle.as_raw()
+                    {
+                        lwspot::window::set_main_window(view.ns_view.as_ptr() as isize);
+                    }
                     if thumbbar_enabled && let Some(hwnd) = hwnd {
                         let wake = creator_waker.clone();
                         // The shell and toolbar share this window's thread
@@ -607,7 +613,7 @@ pub(crate) fn run() -> eframe::Result<()> {
         )
         .inspect_err(|error| {
             log::error!("Native window failed: {error}");
-            #[cfg(target_arch = "aarch64")]
+            #[cfg(all(windows, target_arch = "aarch64"))]
             if matches!(
                 error,
                 eframe::Error::Glutin(_)

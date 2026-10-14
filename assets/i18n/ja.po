@@ -3178,6 +3178,20 @@ msgstr "システムトレイで起動"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "「Windowsと同時に起動」を変更できませんでした：{error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "ログイン時に開く"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "MacにログインするとLWSpotが開きます。操作するまで何も再生されません。"
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "「ログイン時に開く」を変更できませんでした：{error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "再生／一時停止"

@@ -3554,7 +3554,7 @@ impl App {
     /// Reads Start with Windows from the user's own startup list, and
     /// points the entry at this program when it is on and names another.
     pub fn use_system_autostart(&mut self) {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
             self.autostart = crate::autostart::Autostart::system();
         }
@@ -10021,11 +10021,14 @@ impl App {
             Action::SetAutostart(mode) => {
                 if let Err(error) = self.autostart.set(mode) {
                     log::warn!("could not change Start with Windows: {error}");
-                    self.toast_error(
+                    let message = if cfg!(target_os = "macos") {
+                        // Translators: {error} is an error message.
+                        gettext(self.locale, "Couldn't change Open at login: {error}")
+                    } else {
                         // Translators: {error} is an error message.
                         gettext(self.locale, "Couldn't change Start with Windows: {error}")
-                            .replace("{error}", &error.to_string()),
-                    );
+                    };
+                    self.toast_error(message.replace("{error}", &error.to_string()));
                 }
             }
             Action::SetCustomTheme(filename) => {
@@ -12338,6 +12341,8 @@ mod tests {
     /// The title bar choice is saved and, because decorations are fixed when
     /// a window is created, replaces only the main window's native window.
     /// The mini player picks it up the next time the main window opens.
+    /// The Mac keeps its own title bar, so there is nothing to choose there.
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn choosing_the_custom_title_bar_recreates_only_the_main_window() {
         let mut app = headless_app();

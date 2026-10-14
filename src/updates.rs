@@ -14,12 +14,19 @@ use fastframe_update::{ReqwestTransport, UpdateConfig};
 
 /// Updates come only from LWSpot's own releases: the installer puts the app
 /// at `%LOCALAPPDATA%\Programs\LWSpot\lwspot.exe`, and a portable copy is
-/// recognised by the `lwspot-portable.txt` marker beside it.
+/// recognised by the `lwspot-portable.txt` marker beside it. On macOS the
+/// app is `LWSpot.app` (packaging/macos), updated from the release's
+/// `lwspot-v<version>-macos-universal.dmg`.
 pub const CONFIG: UpdateConfig = UpdateConfig {
     // Releases are verified against checksums.txt alone until they are
     // signed. Only a version shipped after the first signed release may
     // carry the key: from then on an unsigned release is refused.
     publisher_key: None,
+    macos: fastframe_update::MacConfig {
+        bundle_ids: &["io.github.BJDevelopes.LWSpot"],
+        executable_names: &["lwspot"],
+        legacy_bundle_names: &[],
+    },
     ..UpdateConfig::new(
         "BJDevelopes/lwspot",
         "LWSpot",

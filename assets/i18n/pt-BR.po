@@ -3199,6 +3199,20 @@ msgstr "Iniciar na bandeja do sistema"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "Não foi possível alterar “Iniciar com o Windows”: {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Abrir ao iniciar sessão"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Abre o LWSpot quando você inicia sessão no Mac. Nada toca até você pedir."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "Não foi possível alterar “Abrir ao iniciar sessão”: {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Reproduzir / Pausar"

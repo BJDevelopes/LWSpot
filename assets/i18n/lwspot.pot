@@ -3098,6 +3098,20 @@ msgstr ""
 msgid "Couldn't change Start with Windows: {error}"
 msgstr ""
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr ""
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr ""
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr ""
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr ""

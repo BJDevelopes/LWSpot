@@ -677,7 +677,10 @@ mod tests {
                 does: Span::new("full screen", 14.0),
             },
             Row::Keys {
-                key: Span::new("Ctrl+Shift+K", 14.0),
+                key: Span::new(
+                    crate::i18n::platform_keys("Ctrl+Shift+K".into()).into_owned(),
+                    14.0,
+                ),
                 does: Span::new("close", 14.0),
             },
         ];

@@ -613,13 +613,23 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 "Downloads in the background. You choose when to restart.",
             ),
         ),
-        RowText::new(
-            gettext(locale, "Start with Windows"),
-            gettext(
-                locale,
-                "Open LWSpot when you sign in to Windows. Nothing plays until you ask.",
-            ),
-        ),
+        if cfg!(target_os = "macos") {
+            RowText::new(
+                gettext(locale, "Open at login"),
+                gettext(
+                    locale,
+                    "Open LWSpot when you log in to your Mac. Nothing plays until you ask.",
+                ),
+            )
+        } else {
+            RowText::new(
+                gettext(locale, "Start with Windows"),
+                gettext(
+                    locale,
+                    "Open LWSpot when you sign in to Windows. Nothing plays until you ask.",
+                ),
+            )
+        },
     ];
     if section_matches(&needle, &playback, &playback_rows) {
         any_visible = true;
@@ -951,13 +961,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 "Ctrl+Plus and Ctrl+Minus work anywhere; Ctrl+0 resets.",
             ),
         ),
+        // The Mac keeps its own title bar and traffic lights.
         RowText::new(
             custom_titlebar.clone(),
             gettext(
                 locale,
                 "Draw LWSpot's own title bar and window buttons instead of the desktop's.",
             ),
-        ),
+        )
+        .when(!cfg!(target_os = "macos")),
         RowText::new(
             player_bar_vis.clone(),
             gettext(
@@ -996,7 +1008,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     "Let Windows' Mica or acrylic material show through the window. Text and controls stay opaque.",
                 )
             }
-        }),
+        })
+        // Mica and acrylic are Windows 11 materials.
+        .when(!cfg!(target_os = "macos")),
     ];
     if section_matches(&needle, &appearance, &appearance_rows) {
         any_visible = true;

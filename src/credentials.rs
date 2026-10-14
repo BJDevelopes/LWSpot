@@ -162,7 +162,8 @@ impl Error {
 
 /// Credential Manager refuses blobs over 2560 bytes. Larger records go
 /// straight to the protected fallback file with a clear log line instead.
-const NATIVE_LIMIT: usize = 2400;
+/// The macOS Keychain has no such limit for a generic password.
+const NATIVE_LIMIT: Option<usize> = if cfg!(windows) { Some(2400) } else { None };
 
 /// What a native store failure was, without anything it carried. Provider
 /// errors can hold the secret (`BadEncoding`, `BadDataFormat`) or arbitrary
@@ -246,6 +247,7 @@ trait ProtectedStore: Send {
 /// How long Credential Manager keeps an entry. `Session` entries end at
 /// sign-out of Windows, which is what a policy forbidding saved credentials
 /// turns every write into.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Persistence {
     Session,
@@ -270,14 +272,22 @@ struct NativeStore {
 impl NativeStore {
     fn entry(&mut self, key: &str) -> Result<keyring_core::Entry, Error> {
         if self.store.is_none() {
+            #[cfg(windows)]
             let store = windows_native_keyring_store::Store::new();
+            #[cfg(target_os = "macos")]
+            let store = apple_native_keyring_store::keychain::Store::new();
             self.store = Some(store.map_err(|error| native_error("open", error))?);
         }
-        let modifiers = std::collections::HashMap::from([("persistence", "Local")]);
+        // Credential Manager takes a persistence; the login Keychain is
+        // always local to this Mac and takes no modifiers.
+        #[cfg(windows)]
+        let modifiers = Some(std::collections::HashMap::from([("persistence", "Local")]));
+        #[cfg(not(windows))]
+        let modifiers: Option<std::collections::HashMap<&str, &str>> = None;
         self.store
             .as_ref()
             .ok_or(Error::Unavailable)?
-            .build(SERVICE, key, Some(&modifiers))
+            .build(SERVICE, key, modifiers.as_ref())
             .map_err(|error| native_error("entry", error))
     }
 }
@@ -290,6 +300,13 @@ impl Native for NativeStore {
             Err(error) => Err(native_error("read", error)),
         }
     }
+    #[cfg(not(windows))]
+    fn persistence(&mut self, key: &str) -> Result<Option<Persistence>, Error> {
+        // A Keychain item outlives the login session, so any item that
+        // exists is Local.
+        Ok(self.read(key)?.map(|_| Persistence::Local))
+    }
+    #[cfg(windows)]
     fn persistence(&mut self, key: &str) -> Result<Option<Persistence>, Error> {
         match self.entry(key)?.get_attributes() {
             Ok(attributes) => Ok(Some(
@@ -317,6 +334,7 @@ impl Native for NativeStore {
 }
 
 /// Encrypts the fallback file for the signed-in Windows user with DPAPI.
+#[cfg(windows)]
 mod dpapi {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
@@ -398,6 +416,25 @@ mod dpapi {
 
 /// Credential Manager first, then a DPAPI-encrypted file for the computers
 /// where it cannot keep an entry across Windows sign-outs.
+/// macOS has no DPAPI and the Keychain is the protected store, so there is
+/// no fallback file: a Keychain failure is reported instead of leaving the
+/// secret in a file a key for which would have to live in the same Keychain.
+#[cfg(not(windows))]
+mod dpapi {
+    fn unsupported() -> std::io::Error {
+        std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "no protected fallback file on this platform",
+        )
+    }
+    pub(super) fn protect(_secret: &[u8], _entropy: &[u8]) -> std::io::Result<Vec<u8>> {
+        Err(unsupported())
+    }
+    pub(super) fn unprotect(_protected: &[u8], _entropy: &[u8]) -> std::io::Result<Vec<u8>> {
+        Err(unsupported())
+    }
+}
+
 struct Durable<N> {
     native: N,
     /// `credential-storage` in the state directory, beside the markers.
@@ -545,9 +582,11 @@ impl<N: Native> ProtectedStore for Durable<N> {
     }
 
     fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error> {
-        if secret.len() > NATIVE_LIMIT {
+        if let Some(limit) = NATIVE_LIMIT
+            && secret.len() > limit
+        {
             log::warn!(
-                "credential record of {} bytes exceeds the {NATIVE_LIMIT}-byte Credential Manager limit; using the fallback file",
+                "credential record of {} bytes exceeds the {limit}-byte Credential Manager limit; using the fallback file",
                 secret.len()
             );
             return self.fall_back(key, secret, Error::Unavailable);
@@ -1708,6 +1747,8 @@ mod tests {
         }
     }
 
+    // The protected fallback file is DPAPI, so Windows only.
+    #[cfg(windows)]
     #[test]
     fn dpapi_round_trips_only_for_its_purpose() {
         let secret = b"dummy-dpapi-secret".to_vec();
@@ -1773,6 +1814,8 @@ mod tests {
         (native, store)
     }
 
+    // The protected fallback file is DPAPI, so Windows only.
+    #[cfg(windows)]
     #[test]
     fn the_fallback_file_is_read_after_the_native_store_and_encrypted() {
         let f = Fixture::new();
@@ -1832,6 +1875,8 @@ mod tests {
         assert_eq!(store.read(&key), Err(Error::Unavailable));
     }
 
+    // The protected fallback file is DPAPI, so Windows only.
+    #[cfg(windows)]
     #[test]
     fn session_only_and_oversized_saves_use_the_fallback_file() {
         let f = Fixture::new();
@@ -1850,7 +1895,7 @@ mod tests {
 
         native.lock().unwrap().saves_as = None;
         let writes = native.lock().unwrap().writes;
-        let large = vec![b'x'; NATIVE_LIMIT + 1];
+        let large = vec![b'x'; NATIVE_LIMIT.unwrap() + 1];
         store.write(&key, &large).unwrap();
         assert_eq!(native.lock().unwrap().writes, writes, "never sent natively");
         assert_eq!(store.read(&key).unwrap(), Some(large));
@@ -1883,6 +1928,8 @@ mod tests {
         );
     }
 
+    // The protected fallback file is DPAPI, so Windows only.
+    #[cfg(windows)]
     #[tokio::test]
     async fn a_locked_native_store_still_remembers_the_grant_across_restart() {
         let f = Fixture::new();

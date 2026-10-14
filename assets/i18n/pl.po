@@ -3232,6 +3232,20 @@ msgstr "Uruchom w zasobniku systemowym"
 msgid "Couldn't change Start with Windows: {error}"
 msgstr "Nie udało się zmienić ustawienia „Uruchamiaj z systemem Windows”: {error}"
 
+#: src/ui/settings.rs
+msgid "Open at login"
+msgstr "Otwieraj po zalogowaniu"
+
+#: src/ui/settings.rs
+msgid "Open LWSpot when you log in to your Mac. Nothing plays until you ask."
+msgstr "Otwiera LWSpot po zalogowaniu do Maca. Nic nie jest odtwarzane, dopóki o to nie poprosisz."
+
+#. Translators: {error} is an error message.
+#: src/app.rs
+#, rust-format
+msgid "Couldn't change Open at login: {error}"
+msgstr "Nie udało się zmienić ustawienia „Otwieraj po zalogowaniu”: {error}"
+
 #: src/jumplist.rs:31
 msgid "Play / Pause"
 msgstr "Odtwórz / Wstrzymaj"

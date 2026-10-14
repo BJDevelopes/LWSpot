@@ -932,7 +932,7 @@ fn milkdrop_hover(app: &App) -> String {
     if app.milkdrop_addon.fetching() {
         gettext(app.locale, "Downloading the MilkDrop add-on").into_owned()
     } else {
-        super::keys::MILKDROP_SHORTCUT.to_owned()
+        crate::i18n::platform_keys(super::keys::MILKDROP_SHORTCUT.into()).into_owned()
     }
 }
 
