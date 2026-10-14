@@ -3394,3 +3394,55 @@ msgstr ""
 #: src/ui/personal_app.rs
 msgid "Waiting for your browser…"
 msgstr ""
+
+#: src/app.rs
+msgid "Jam ended"
+msgstr ""
+
+#: src/app.rs
+msgid "You left the Jam"
+msgstr ""
+
+#: src/app.rs
+msgid "Couldn't end the Jam"
+msgstr ""
+
+#: src/app.rs
+msgid "Couldn't leave the Jam"
+msgstr ""
+
+#: src/ui/jam.rs
+msgid "Your Jam"
+msgstr ""
+
+#. Translators: {name} is the person hosting the Spotify Jam.
+#: src/ui/jam.rs
+#, rust-format
+msgid "Jam with {name}"
+msgstr ""
+
+#: src/ui/jam.rs
+msgid "Jam"
+msgstr ""
+
+#: src/ui/jam.rs
+msgid "End Jam"
+msgstr ""
+
+#: src/ui/jam.rs
+msgid "Leave Jam"
+msgstr ""
+
+#. Translators: {name} is the listener's own name in the Jam's member list.
+#: src/ui/jam.rs
+#, rust-format
+msgid "{name} (you)"
+msgstr ""
+
+#: src/ui/jam.rs
+msgid "Listening along on Discord"
+msgstr ""
+
+#: src/ui/jam.rs
+msgid "Discord is playing your friend's music here. To stop, end it in Discord or play something else."
+msgstr ""

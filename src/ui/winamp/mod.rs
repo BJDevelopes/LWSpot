@@ -683,6 +683,16 @@ fn options_menu(app: &mut App, ui: &mut Ui, unit: f32) {
     let font = menu_font(unit);
     ui.set_min_width(font * 11.0);
     let scale = WinampState::scale(&app.settings, ui.ctx().pixels_per_point());
+    if let Some(jam) = &app.jam {
+        ui.label(crate::ui::jam::title(locale, jam));
+        if ui
+            .button(crate::ui::jam::leave_label(locale, jam))
+            .clicked()
+        {
+            app.actions.push(Action::LeaveJam);
+        }
+        ui.separator();
+    }
     ui.horizontal(|ui| {
         ui.label(gettext(locale, "Size").as_ref());
         for candidate in 1..=MAX_SCALE {
@@ -1185,7 +1195,7 @@ pub fn marquee_text(
 
 fn marquee(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
     let notice = app.toasts.last().map(|toast| toast.message.clone());
-    let text = marquee_text(
+    let mut text = marquee_text(
         app.locale,
         now,
         app.seek_preview,
@@ -1193,6 +1203,19 @@ fn marquee(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         app.winamp.balance_preview,
         notice.as_deref(),
     );
+    // While in a Spotify Jam, the song line says whose Jam it is.
+    let showing_song = now.is_some()
+        && notice.is_none()
+        && app.seek_preview.is_none()
+        && app.volume_preview.is_none()
+        && app.winamp.balance_preview.is_none();
+    if showing_song && let Some(jam) = &app.jam {
+        text.push_str(" - ");
+        text.push_str(&crate::ui::jam::title(app.locale, jam));
+    } else if showing_song && app.listening_along {
+        text.push_str(" - ");
+        text.push_str(&gettext(app.locale, "Listening along on Discord"));
+    }
     let (shown, offset) = app.winamp.marquee(&text, Instant::now());
     if text.chars().all(font::covered) {
         view.text(&shown, layout::MARQUEE);

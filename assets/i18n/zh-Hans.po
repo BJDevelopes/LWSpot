@@ -3416,3 +3416,55 @@ msgstr "正在等待浏览器…"
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "减少歌词动画"
+
+#: src/app.rs
+msgid "Jam ended"
+msgstr "Jam 已结束"
+
+#: src/app.rs
+msgid "You left the Jam"
+msgstr "你已退出 Jam"
+
+#: src/app.rs
+msgid "Couldn't end the Jam"
+msgstr "无法结束 Jam"
+
+#: src/app.rs
+msgid "Couldn't leave the Jam"
+msgstr "无法退出 Jam"
+
+#: src/ui/jam.rs
+msgid "Your Jam"
+msgstr "你的 Jam"
+
+#. Translators: {name} is the person hosting the Spotify Jam.
+#: src/ui/jam.rs
+#, rust-format
+msgid "Jam with {name}"
+msgstr "与 {name} 的 Jam"
+
+#: src/ui/jam.rs
+msgid "Jam"
+msgstr "Jam"
+
+#: src/ui/jam.rs
+msgid "End Jam"
+msgstr "结束 Jam"
+
+#: src/ui/jam.rs
+msgid "Leave Jam"
+msgstr "退出 Jam"
+
+#. Translators: {name} is the listener's own name in the Jam's member list.
+#: src/ui/jam.rs
+#, rust-format
+msgid "{name} (you)"
+msgstr "{name}（你）"
+
+#: src/ui/jam.rs
+msgid "Listening along on Discord"
+msgstr "正在 Discord 上一起听"
+
+#: src/ui/jam.rs
+msgid "Discord is playing your friend's music here. To stop, end it in Discord or play something else."
+msgstr "Discord 正在这里播放你朋友的音乐。要停止，请在 Discord 中结束，或播放其他内容。"

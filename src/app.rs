@@ -34,6 +34,15 @@ const REMOTE_POLL_ACTIVE: Duration = Duration::from_secs(4);
 const REMOTE_POLL_IDLE: Duration = Duration::from_secs(20);
 /// With nobody able to see the window and nothing playing anywhere.
 const REMOTE_POLL_UNSEEN: Duration = Duration::from_secs(30);
+/// How often to ask whether the listener is in a Spotify Jam, and how often
+/// while nobody can see the window.
+const JAM_POLL: Duration = Duration::from_secs(30);
+const JAM_POLL_UNSEEN: Duration = Duration::from_secs(120);
+/// Who sends Discord's Listen Along play commands: Discord's Spotify app,
+/// through the Web API.
+const DISCORD_LISTEN_ALONG: &str = "webapi-0f78f47360a748f09a66bbfb400cafa0";
+/// How long before a song starts Discord's play command for it may arrive.
+const LISTEN_ALONG_COMMAND_LEAD: Duration = Duration::from_secs(10);
 const REMOTE_FRESH: Duration = Duration::from_secs(45);
 const DEVICES_FRESH: Duration = Duration::from_secs(12);
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(280);
@@ -405,6 +414,15 @@ pub struct App {
     remote_poll_pending: bool,
     /// Serial of the newest playback poll sent; older answers are stale.
     remote_poll_seq: u64,
+    /// The Spotify Jam the listener is in, if any.
+    pub jam: Option<crate::session_reads::Jam>,
+    /// When the Jam was last asked for; `None` asks on the next frame.
+    jam_checked_at: Option<Instant>,
+    /// Discord's Listen Along is playing a friend's music here: its last
+    /// play command came from Discord, and nothing has started since.
+    pub listening_along: bool,
+    /// When Discord last told this device to play.
+    listen_along_at: Option<Instant>,
     /// The restorable session (sorts, recents, resume point) changed and
     /// should be written shortly, not only at exit.
     pub session_dirty: bool,
@@ -903,6 +921,10 @@ impl App {
             remote_polled_at: Instant::now() - REMOTE_POLL_UNSEEN,
             remote_poll_pending: false,
             remote_poll_seq: 0,
+            jam: None,
+            jam_checked_at: None,
+            listening_along: false,
+            listen_along_at: None,
             session_dirty: false,
             last_session_save: Instant::now(),
             zoom_applied: false,
@@ -2140,6 +2162,43 @@ impl App {
                 Event::UserName { id, name } => {
                     self.set_user_name(id, name);
                 }
+                Event::RemotePlay { sender } => self.remote_play(&sender),
+                Event::Jam(result) => match result {
+                    Ok(jam) => {
+                        if jam.as_ref().map(|jam| &jam.session_id)
+                            != self.jam.as_ref().map(|jam| &jam.session_id)
+                        {
+                            match &jam {
+                                Some(jam) => log::info!(
+                                    "Jam: in a Jam (host: {}, {} members)",
+                                    jam.is_host,
+                                    jam.members.len()
+                                ),
+                                None => log::info!("Jam: not in a Jam"),
+                            }
+                        }
+                        self.jam = jam;
+                    }
+                    Err(error) => log::warn!("Jam check failed: {error}"),
+                },
+                Event::JamLeft { ended, result } => match result {
+                    Ok(()) => {
+                        self.jam = None;
+                        self.toast(if ended {
+                            gettext(self.locale, "Jam ended")
+                        } else {
+                            gettext(self.locale, "You left the Jam")
+                        });
+                    }
+                    Err(error) => {
+                        log::warn!("Leaving the Jam failed: {error}");
+                        self.toast_error(if ended {
+                            gettext(self.locale, "Couldn't end the Jam")
+                        } else {
+                            gettext(self.locale, "Couldn't leave the Jam")
+                        });
+                    }
+                },
                 Event::AudiobookShows(uris) => {
                     self.audiobook_shows.extend(uris);
                 }
@@ -2258,6 +2317,9 @@ impl App {
                 self.local_device_id = None;
                 self.local_playback = LocalPlayback::Unavailable;
                 self.remote = None;
+                self.jam = None;
+                self.jam_checked_at = None;
+                self.listening_along = false;
                 self.rootlist.clear();
                 self.rootlist_cache = None;
                 self.editable_by_grant.clear();
@@ -2414,6 +2476,18 @@ impl App {
         }
         let track_changed =
             state.track != self.local.track || state.track_sequence != self.local.track_sequence;
+        // Discord sends a play command for each song of a Listen Along, so a
+        // new song without one just before it means Listen Along has ended.
+        if self.listening_along
+            && state.track.as_ref().map(|track| &track.uri)
+                != self.local.track.as_ref().map(|track| &track.uri)
+            && self
+                .listen_along_at
+                .is_none_or(|at| at.elapsed() > LISTEN_ALONG_COMMAND_LEAD)
+        {
+            log::info!("Listen Along: ended");
+            self.listening_along = false;
+        }
         let reconnected = state.connected && !self.local.connected;
         if state.shuffle != self.local.shuffle
             && self
@@ -2976,6 +3050,20 @@ impl App {
             {
                 self.remote_recheck_at = None;
                 self.poll_remote(true);
+            }
+            // Only the streaming session can ask about a Jam.
+            let jam_interval = if self.budget == crate::power::Budget::Background {
+                JAM_POLL_UNSEEN
+            } else {
+                JAM_POLL
+            };
+            if self.local_ready
+                && self
+                    .jam_checked_at
+                    .is_none_or(|at| at.elapsed() >= jam_interval)
+            {
+                self.jam_checked_at = Some(Instant::now());
+                self.backend.send(Command::RefreshJam);
             }
             if self.show_devices
                 && !self.devices_loading
@@ -4861,6 +4949,17 @@ impl App {
         self.ensure_loaded(page);
     }
 
+    /// Another app told this device to play: Discord's Listen Along, or
+    /// anything else, which ends it.
+    fn remote_play(&mut self, sender: &str) {
+        let along = sender == DISCORD_LISTEN_ALONG;
+        if along != self.listening_along {
+            log::info!("Listen Along: {}", if along { "started" } else { "ended" });
+        }
+        self.listening_along = along;
+        self.listen_along_at = along.then(Instant::now);
+    }
+
     fn poll_remote(&mut self, _immediate: bool) {
         if !self.is_connected() {
             return;
@@ -5621,10 +5720,35 @@ impl App {
                             .remote
                             .as_ref()
                             .map(|remote| remote.state.shuffle_state);
+                        let previous_context = self
+                            .remote
+                            .as_ref()
+                            .and_then(|remote| remote.state.context.as_ref())
+                            .map(|context| context.uri.clone());
                         self.remote = state.map(|state| RemoteSnapshot {
                             state,
                             received_at: Instant::now(),
                         });
+                        // Joining or leaving a Jam changes what is playing,
+                        // so ask about the Jam again straight away.
+                        let context = self
+                            .remote
+                            .as_ref()
+                            .and_then(|remote| remote.state.context.as_ref())
+                            .map(|context| context.uri.clone());
+                        if previous_context != context {
+                            self.jam_checked_at = None;
+                            // Listen Along plays lone songs; a playlist or
+                            // album starting means the listener took over.
+                            if context
+                                .as_deref()
+                                .is_some_and(|uri| !uri.starts_with("spotify:web-api"))
+                                && self.listening_along
+                            {
+                                log::info!("Listen Along: ended");
+                                self.listening_along = false;
+                            }
+                        }
                         if let (Some(previous), Some(current)) = (
                             previous_shuffle,
                             self.remote
@@ -9769,6 +9893,11 @@ impl App {
             }
             Action::PauseLyricsFollow => self.lyrics_following = false,
             Action::RetryLyrics => self.request_lyrics(),
+            Action::LeaveJam => {
+                if let Some(jam) = self.jam.clone() {
+                    self.backend.send(Command::LeaveJam(jam));
+                }
+            }
             Action::ToggleDevicesPopup => {
                 self.show_devices = !self.show_devices;
                 if self.show_devices {
@@ -19552,6 +19681,44 @@ mod tests {
             .connected_repaint_interval()
             .saturating_sub(app.remote_polled_at.elapsed());
         assert!(due_in <= Duration::from_millis(700), "due in {due_in:?}");
+    }
+
+    fn local_song(app: &App, uri: &str) -> LocalState {
+        let mut state = app.local.clone();
+        state.track = Some(crate::player::LocalTrack {
+            uri: uri.into(),
+            ..Default::default()
+        });
+        state.track_sequence += 1;
+        state
+    }
+
+    /// Discord's play commands start Listen Along and keep it through each
+    /// song they start; another app's command ends it.
+    #[test]
+    fn listen_along_follows_discords_commands() {
+        let mut app = headless_app();
+        app.remote_play("webapi-someone-else");
+        assert!(!app.listening_along);
+        app.remote_play(DISCORD_LISTEN_ALONG);
+        assert!(app.listening_along);
+        app.handle_local(local_song(&app, "spotify:track:friends"));
+        assert!(app.listening_along, "Discord started this song");
+        app.remote_play("webapi-someone-else");
+        assert!(!app.listening_along);
+        app.backend.shutdown();
+    }
+
+    /// A song that starts with no play command from Discord before it
+    /// means Listen Along has ended.
+    #[test]
+    fn listen_along_ends_when_a_song_starts_without_discord() {
+        let mut app = headless_app();
+        app.remote_play(DISCORD_LISTEN_ALONG);
+        app.listen_along_at = Some(Instant::now() - LISTEN_ALONG_COMMAND_LEAD * 2);
+        app.handle_local(local_song(&app, "spotify:track:autoplay"));
+        assert!(!app.listening_along);
+        app.backend.shutdown();
     }
 
     #[test]

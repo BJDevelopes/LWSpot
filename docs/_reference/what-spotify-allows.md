@@ -97,8 +97,9 @@ The Web API and librespot do not provide these features:
   support its protocol. LWSpot's pins are local and are stored in
   `settings.json`. See upstream [crmne/spotifast#31](https://github.com/crmne/spotifast/issues/31).
 - **Editing playlist folders.** librespot can only read them.
-- **Smart Shuffle, Jam, Blend, and similar Spotify features.** Spotify
-  generates these for its own clients. LWSpot only has plain shuffle.
+- **Smart Shuffle, starting a Jam, Blend, and similar Spotify features.**
+  Spotify generates these for its own clients. LWSpot only has plain shuffle.
+  It shows a Jam you joined elsewhere and can leave or end it.
   A Blend that a Spotify app already made opens like any playlist, with
   who added each song, but LWSpot cannot start or manage one.
 - **Lossless audio.** librespot does not receive lossless streams. This may be reconsidered if librespot gains lawful support, but LWSpot will not bypass Spotify's DRM.

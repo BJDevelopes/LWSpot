@@ -621,6 +621,173 @@ fn iso8601(timestamp_ms: i64) -> Option<String> {
         .map(|time| time.to_string())
 }
 
+/// The Spotify Jam (shared listening session) the listener is in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Jam {
+    pub session_id: String,
+    /// Whether the listener started this Jam; the host ends it for everyone.
+    pub is_host: bool,
+    /// The host's display name, when Spotify gives one.
+    pub host_name: Option<String>,
+    pub members: Vec<JamMember>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JamMember {
+    pub name: String,
+    pub is_you: bool,
+}
+
+/// The listener's current Jam, `None` when they are not in one (Spotify
+/// answers 404, or a session that is no longer active).
+pub async fn current_jam(session: &Session) -> Result<Option<Jam>, String> {
+    match session
+        .spclient()
+        .request_as_json(
+            &::http::Method::GET,
+            "/social-connect/v2/sessions/current",
+            None,
+            None,
+        )
+        .await
+    {
+        Ok(bytes) => {
+            let jam = parse_jam(&bytes);
+            if jam.is_none() && !bytes.is_empty() {
+                // An answer that names no Jam; its shape shows in the log
+                // once a run, in case Spotify changed it.
+                static LOGGED: std::sync::atomic::AtomicBool =
+                    std::sync::atomic::AtomicBool::new(false);
+                if !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    let text = String::from_utf8_lossy(&bytes);
+                    let shown: String = text.chars().take(400).collect();
+                    log::info!("Jam: no session in Spotify's answer: {shown}");
+                }
+            }
+            Ok(jam)
+        }
+        Err(error) if error.kind == ErrorKind::NotFound => {
+            static LOGGED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                log::info!("Jam: Spotify reports no Jam ({error})");
+            }
+            Ok(None)
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// Leaves the Jam, or ends it for everyone when the listener is its host.
+/// Spotify has moved these endpoints between versions, so a participant
+/// tries each known form until one is accepted.
+pub async fn leave_jam(session: &Session, jam: &Jam) -> Result<(), String> {
+    let id = &jam.session_id;
+    let attempts: Vec<(::http::Method, String)> = if jam.is_host {
+        vec![
+            (
+                ::http::Method::DELETE,
+                format!("/social-connect/v3/sessions/{id}"),
+            ),
+            (
+                ::http::Method::POST,
+                format!("/social-connect/v3/sessions/{id}/leave"),
+            ),
+        ]
+    } else {
+        let user = session.username();
+        vec![
+            (
+                ::http::Method::DELETE,
+                format!("/social-connect/v3/sessions/{id}/members/{user}"),
+            ),
+            (
+                ::http::Method::DELETE,
+                format!("/social-connect/v2/sessions/{id}/members/{user}"),
+            ),
+            (
+                ::http::Method::POST,
+                format!("/social-connect/v3/sessions/{id}/leave"),
+            ),
+            (
+                ::http::Method::POST,
+                format!("/social-connect/v2/sessions/{id}/leave"),
+            ),
+        ]
+    };
+    let mut last = None;
+    for (method, endpoint) in attempts {
+        match session
+            .spclient()
+            .request_as_json(&method, &endpoint, None, None)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(error) => {
+                log::debug!("Jam: {method} {endpoint} failed: {error}");
+                last = Some(error);
+            }
+        }
+    }
+    Err(last.map(|error| error.to_string()).unwrap_or_default())
+}
+
+/// Reads a social-connect session answer; `None` for an empty or inactive
+/// session.
+fn parse_jam(bytes: &[u8]) -> Option<Jam> {
+    let json: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let session_id = json.get("session_id")?.as_str()?.to_string();
+    if session_id.is_empty() || json.get("active").and_then(|v| v.as_bool()) == Some(false) {
+        return None;
+    }
+    let owner_id = json.get("session_owner_id").and_then(|v| v.as_str());
+    let raw_members = json
+        .get("session_members")
+        .and_then(|v| v.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let name_of = |member: &serde_json::Value| {
+        ["display_name", "username"]
+            .iter()
+            .find_map(|key| {
+                member
+                    .get(*key)
+                    .and_then(|v| v.as_str())
+                    .filter(|name| !name.is_empty())
+            })
+            .map(str::to_string)
+    };
+    let host_name = raw_members
+        .iter()
+        .find(|member| {
+            owner_id.is_some()
+                && (member.get("id").and_then(|v| v.as_str()) == owner_id
+                    || member.get("username").and_then(|v| v.as_str()) == owner_id)
+        })
+        .and_then(name_of);
+    let members = raw_members
+        .iter()
+        .filter_map(|member| {
+            Some(JamMember {
+                name: name_of(member)?,
+                is_you: member
+                    .get("is_current_user")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+            })
+        })
+        .collect();
+    Some(Jam {
+        session_id,
+        is_host: json
+            .get("is_session_owner")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        host_name,
+        members,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use librespot_metadata::Metadata as _;
@@ -1325,5 +1492,43 @@ mod tests {
                 "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
             ]
         );
+    }
+
+    #[test]
+    fn reads_a_jam_as_a_participant() {
+        let body = br#"{
+            "session_id": "abc123",
+            "session_owner_id": "host-user",
+            "is_session_owner": false,
+            "active": true,
+            "session_members": [
+                {"id": "host-user", "username": "host-user", "display_name": "Alex", "is_current_user": false},
+                {"id": "me", "username": "me", "display_name": "", "is_current_user": true}
+            ]
+        }"#;
+        let jam = parse_jam(body).unwrap();
+        assert_eq!(jam.session_id, "abc123");
+        assert!(!jam.is_host);
+        assert_eq!(jam.host_name.as_deref(), Some("Alex"));
+        assert_eq!(
+            jam.members,
+            vec![
+                JamMember {
+                    name: "Alex".into(),
+                    is_you: false
+                },
+                JamMember {
+                    name: "me".into(),
+                    is_you: true
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn no_jam_without_an_active_session() {
+        assert_eq!(parse_jam(b""), None);
+        assert_eq!(parse_jam(b"{}"), None);
+        assert_eq!(parse_jam(br#"{"session_id": "x", "active": false}"#), None);
     }
 }

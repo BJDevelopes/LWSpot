@@ -3510,3 +3510,55 @@ msgstr "Aguardando o navegador…"
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Reduzir movimento da letra"
+
+#: src/app.rs
+msgid "Jam ended"
+msgstr "Jam encerrada"
+
+#: src/app.rs
+msgid "You left the Jam"
+msgstr "Você saiu da Jam"
+
+#: src/app.rs
+msgid "Couldn't end the Jam"
+msgstr "Não foi possível encerrar a Jam"
+
+#: src/app.rs
+msgid "Couldn't leave the Jam"
+msgstr "Não foi possível sair da Jam"
+
+#: src/ui/jam.rs
+msgid "Your Jam"
+msgstr "Sua Jam"
+
+#. Translators: {name} is the person hosting the Spotify Jam.
+#: src/ui/jam.rs
+#, rust-format
+msgid "Jam with {name}"
+msgstr "Jam com {name}"
+
+#: src/ui/jam.rs
+msgid "Jam"
+msgstr "Jam"
+
+#: src/ui/jam.rs
+msgid "End Jam"
+msgstr "Encerrar Jam"
+
+#: src/ui/jam.rs
+msgid "Leave Jam"
+msgstr "Sair da Jam"
+
+#. Translators: {name} is the listener's own name in the Jam's member list.
+#: src/ui/jam.rs
+#, rust-format
+msgid "{name} (you)"
+msgstr "{name} (você)"
+
+#: src/ui/jam.rs
+msgid "Listening along on Discord"
+msgstr "Ouvindo junto no Discord"
+
+#: src/ui/jam.rs
+msgid "Discord is playing your friend's music here. To stop, end it in Discord or play something else."
+msgstr "O Discord está tocando aqui a música do seu amigo. Para parar, encerre no Discord ou toque outra coisa."

@@ -55,6 +55,21 @@ const PLAYLIST_SEARCH_DELAY: Duration = Duration::from_millis(420);
 /// How often the debug log reports Web API traffic per app.
 const TRAFFIC_WINDOW: Duration = Duration::from_secs(60);
 
+/// Passes on who sends each play command to this device, so the app can
+/// tell when Discord's Listen Along is driving playback.
+async fn forward_remote_plays(events: std::sync::mpsc::Sender<Event>, waker: Waker) {
+    let mut senders = librespot_connect::remote_play::subscribe();
+    while senders.changed().await.is_ok() {
+        let sender = senders.borrow_and_update().clone();
+        if let Some(sender) = sender {
+            if events.send(Event::RemotePlay { sender }).is_err() {
+                return;
+            }
+            waker.wake();
+        }
+    }
+}
+
 /// Logs each minute's Web API requests and rate limits per app, at debug
 /// level (`lwspot -v`), when there were any.
 async fn log_traffic(activity: Arc<NetActivity>) {
@@ -750,6 +765,10 @@ pub enum Command {
     },
     /// Resolve user ids to display names through the streaming session.
     UserNames(Vec<String>),
+    /// Ask whether the listener is in a Spotify Jam.
+    RefreshJam,
+    /// Leave the Jam, or end it for everyone when the listener hosts it.
+    LeaveJam(session_reads::Jam),
     LoadLikedSongsCache {
         generation: u64,
     },
@@ -879,6 +898,19 @@ pub enum Event {
     UserName {
         id: String,
         name: Option<String>,
+    },
+    /// Another app (`sender`, such as `webapi-<client id>`) told this
+    /// device to play.
+    RemotePlay {
+        sender: String,
+    },
+    /// The Jam the listener is in, `None` when not in one; an error when
+    /// Spotify could not be asked.
+    Jam(Result<Option<session_reads::Jam>, String>),
+    /// Leaving or ending a Jam finished.
+    JamLeft {
+        ended: bool,
+        result: Result<(), String>,
     },
     /// Saved shows that Spotify's metadata marks as audiobooks. librespot
     /// cannot play them, so the Podcasts shelf leaves them out.
@@ -1647,6 +1679,10 @@ impl Worker {
             self.waker.clone(),
         ));
         let traffic_log = tokio::spawn(log_traffic(Arc::clone(&self.activity)));
+        let remote_plays = tokio::spawn(forward_remote_plays(
+            self.events.clone(),
+            self.waker.clone(),
+        ));
         while let Some(command) = commands.recv().await {
             if self.restoring_proxy
                 && !matches!(
@@ -2034,6 +2070,8 @@ impl Worker {
                     }
                 }
                 Command::UserNames(ids) => self.fetch_user_names(ids),
+                Command::RefreshJam => self.refresh_jam(),
+                Command::LeaveJam(jam) => self.leave_jam(jam),
                 Command::LoadLikedSongsCache { generation } => {
                     if let Some(account) = self.api.account() {
                         let account_id = account.as_str().to_string();
@@ -2129,6 +2167,7 @@ impl Worker {
             engine.shutdown();
         }
         traffic_log.abort();
+        remote_plays.abort();
         drop(cache_writes);
         let _ = cache_writer.await;
     }
@@ -3362,6 +3401,46 @@ impl Worker {
                 let _ = events.send(Event::UserName { id, name });
                 waker.wake();
             }
+        });
+    }
+
+    /// Ask Spotify for the listener's Jam. Only the streaming session can
+    /// ask; without one there is nothing to report.
+    fn refresh_jam(&self) {
+        let Some(engine) = self.engine.clone() else {
+            log::debug!("Jam: no playback session to ask with");
+            return;
+        };
+        let events = self.events.clone();
+        let waker = self.waker.clone();
+        tokio::spawn(async move {
+            let result = session_reads::current_jam(engine.session()).await;
+            let _ = events.send(Event::Jam(result));
+            waker.wake();
+        });
+    }
+
+    fn leave_jam(&self, jam: session_reads::Jam) {
+        let events = self.events.clone();
+        let waker = self.waker.clone();
+        let Some(engine) = self.engine.clone() else {
+            let _ = events.send(Event::JamLeft {
+                ended: jam.is_host,
+                result: Err("not connected to Spotify".into()),
+            });
+            waker.wake();
+            return;
+        };
+        tokio::spawn(async move {
+            let result = session_reads::leave_jam(engine.session(), &jam).await;
+            let _ = events.send(Event::JamLeft {
+                ended: jam.is_host,
+                result,
+            });
+            // Read the session back so the interface shows what Spotify did.
+            let current = session_reads::current_jam(engine.session()).await;
+            let _ = events.send(Event::Jam(current));
+            waker.wake();
         });
     }
 

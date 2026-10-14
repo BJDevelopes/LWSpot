@@ -3540,3 +3540,55 @@ msgstr "Якщо браузер досі показує Spotify, спершу з
 #: src/ui/personal_app.rs
 msgid "Waiting for your browser…"
 msgstr "Очікування браузера…"
+
+#: src/app.rs
+msgid "Jam ended"
+msgstr "Джем завершено"
+
+#: src/app.rs
+msgid "You left the Jam"
+msgstr "Ви покинули джем"
+
+#: src/app.rs
+msgid "Couldn't end the Jam"
+msgstr "Не вдалося завершити джем"
+
+#: src/app.rs
+msgid "Couldn't leave the Jam"
+msgstr "Не вдалося покинути джем"
+
+#: src/ui/jam.rs
+msgid "Your Jam"
+msgstr "Ваш джем"
+
+#. Translators: {name} is the person hosting the Spotify Jam.
+#: src/ui/jam.rs
+#, rust-format
+msgid "Jam with {name}"
+msgstr "Джем з {name}"
+
+#: src/ui/jam.rs
+msgid "Jam"
+msgstr "Джем"
+
+#: src/ui/jam.rs
+msgid "End Jam"
+msgstr "Завершити джем"
+
+#: src/ui/jam.rs
+msgid "Leave Jam"
+msgstr "Покинути джем"
+
+#. Translators: {name} is the listener's own name in the Jam's member list.
+#: src/ui/jam.rs
+#, rust-format
+msgid "{name} (you)"
+msgstr "{name} (ви)"
+
+#: src/ui/jam.rs
+msgid "Listening along on Discord"
+msgstr "Спільне прослуховування в Discord"
+
+#: src/ui/jam.rs
+msgid "Discord is playing your friend's music here. To stop, end it in Discord or play something else."
+msgstr "Discord відтворює тут музику вашого друга. Щоб зупинити, завершіть його в Discord або увімкніть щось інше."

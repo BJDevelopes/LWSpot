@@ -3149,7 +3149,7 @@ mod tests {
         );
         let name = texts
             .iter()
-            .find(|(text, _)| text == "Carmine Paolino")
+            .find(|(text, _)| text == "BJDevelopes")
             .map(|(_, rect)| rect.center())
             .expect("the author's name");
         app.actions.clear();

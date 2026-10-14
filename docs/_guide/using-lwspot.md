@@ -418,6 +418,22 @@ with Premium can then use Discord's **Listen Along**, and when you click
 as LWSpot is your active Spotify device. LWSpot needs no setting of its own for
 this.
 
+While Listen Along plays here, a people button in the player bar (and the
+mini player's scrolling title) says **Listening along on Discord**. Discord
+runs Listen Along, so stop it in Discord, or play something else in LWSpot.
+
+## Spotify Jam
+
+When you join a friend's Jam from Spotify on your phone, or start one
+yourself, LWSpot notices within about 30 seconds (straight away when the music
+changes). A people button appears next to the device button in the player bar,
+showing whose Jam it is and who is listening. Choose **Leave Jam** in its menu
+to leave, or **End Jam** to end a Jam you host for everyone. In the mini
+player, the scrolling title adds "Jam with" and the host's name, and the
+options menu (right-click the title bar) has the same Leave or End entry.
+LWSpot checks for a Jam only while playback on this computer is set up.
+LWSpot cannot start a Jam or join one itself; use a Spotify app for that.
+
 ## Starting with Windows
 
 **Start with Windows** under **Settings > Playback on this computer** has

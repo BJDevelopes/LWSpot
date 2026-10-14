@@ -817,6 +817,22 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
 fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
     let palette = app.palette;
     ui.spacing_mut().item_spacing.x = 6.0;
+    // The mini player at the bar's end, where Spotify keeps its own, when
+    // the window is wide enough to spare the room.
+    if ui.available_width() >= 280.0
+        && theme::icon_button(
+            ui,
+            Icon::Shrink,
+            18.0,
+            palette.secondary,
+            palette.text,
+            &gettext(app.locale, "Winamp mini player (Ctrl+M)"),
+        )
+        .clicked()
+    {
+        app.actions.push(Action::ToggleWinampWindow);
+    }
+    ui.add_space(4.0);
     let volume = now
         .map(|now| now.volume_percent)
         .unwrap_or_else(|| crate::app::volume_to_percent(app.local.volume));
@@ -888,6 +904,8 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
         ));
     }
     ui.add_space(4.0);
+    super::jam::player_bar_button(app, ui);
+    super::jam::listen_along_button(app, ui);
     let remote = now.is_some_and(|now| !now.local);
     let devices = theme::icon_button(
         ui,

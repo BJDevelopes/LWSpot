@@ -35,3 +35,4 @@ src/util.rs
 src/window.rs
 src/ui/themes.rs
 src/ui/personal_app.rs
+src/ui/jam.rs

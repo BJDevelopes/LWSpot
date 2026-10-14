@@ -7,6 +7,24 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-13
+
+### Added
+
+- Spotify Jam: when you're in a Jam, a button in the player bar shows whose
+  Jam it is and who is listening, with **Leave Jam** (or **End Jam** for a Jam
+  you host). The mini player shows the Jam in its scrolling title and has the
+  same entry in its options menu.
+- Discord Listen Along: while a friend's Listen Along plays in LWSpot, the
+  player bar and the mini player say so. To stop it, end it in Discord or
+  play something else.
+- A mini player button at the right end of the player bar, beside the
+  volume, as well as the one in the top bar and Ctrl+M.
+
+### Changed
+
+- Settings > About credits BJDevelopes, linking to the GitHub profile.
+
 ## [0.1.1] - 2026-10-12
 
 ### Changed
@@ -109,6 +127,7 @@ being the lightest and most reliable Spotify client on Windows.
 - macOS and Linux support, and their packages. Use
   [Spotifast](https://github.com/crmne/spotifast) on those systems.
 
-[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/BJDevelopes/lwspot/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/BJDevelopes/lwspot/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/BJDevelopes/lwspot/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/BJDevelopes/lwspot/releases/tag/v0.1.0

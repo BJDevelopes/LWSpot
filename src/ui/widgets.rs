@@ -2920,10 +2920,10 @@ pub fn switch(ui: &mut Ui, palette: &Palette, label: &str, on: &mut bool) -> egu
     response
 }
 
-/// The author's website, linked from the credit line.
-pub const AUTHOR_URL: &str = "https://paolino.me";
+/// The author's GitHub profile, linked from the credit line.
+pub const AUTHOR_URL: &str = "https://github.com/BJDevelopes";
 
-/// "Built with love by Carmine Paolino", with the name linking to
+/// "Built with love by BJDevelopes", with the name linking to
 /// [`AUTHOR_URL`]. Returns whether the name was clicked.
 pub fn credit(ui: &mut Ui, palette: &Palette, locale: Locale) -> bool {
     // Translators: {name} is replaced by the author's name, shown as a link.
@@ -2934,7 +2934,7 @@ pub fn credit(ui: &mut Ui, palette: &Palette, locale: Locale) -> bool {
         ui.spacing_mut().item_spacing.x = 0.0;
         theme::text(ui, "\u{2665}  ", theme::regular(13.0), palette.danger);
         theme::text(ui, before, theme::regular(13.0), palette.secondary);
-        clicked = theme::link(ui, "Carmine Paolino", theme::medium(13.0), palette.text)
+        clicked = theme::link(ui, "BJDevelopes", theme::medium(13.0), palette.text)
             .on_hover_text(AUTHOR_URL)
             .clicked();
         if !after.is_empty() {

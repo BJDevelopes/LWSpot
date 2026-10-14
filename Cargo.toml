@@ -1,7 +1,7 @@
 [package]
 name = "lwspot"
 default-run = "lwspot"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT"
@@ -288,12 +288,13 @@ hyper-proxy2 = { git = "https://github.com/crmne/hyper-proxy2", rev = "efca48113
 # LWSpot adds faster seeks and track starts in librespot-audio and
 # librespot-playback, vendored in vendor/ (seek probes use small
 # random-access requests in their own download slot, audio is usable as it
-# arrives, and a seek waits for 1 s of audio instead of the full read-ahead).
+# arrives, and a seek waits for 1 s of audio instead of the full read-ahead),
+# and in librespot-connect, which reports who sent each play command.
 # The other crates come from the fork's revision, and the second patch table
 # below points the fork's own references to the two vendored crates at the
 # same copies, so one of each exists. Drop patches as upstream takes them.
 librespot-audio = { path = "vendor/librespot-audio" }
-librespot-connect = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
+librespot-connect = { path = "vendor/librespot-connect" }
 librespot-core = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
 librespot-metadata = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }
 librespot-oauth = { git = "https://github.com/crmne/librespot", rev = "23fc42cff37848e51f0d8eaefad1a93941b71e59" }

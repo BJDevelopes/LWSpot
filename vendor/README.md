@@ -11,6 +11,7 @@ revisions pinned in `Cargo.toml`.
 | `fastframe-update` | the same | The Windows installer is one file for every processor, `<slug>-v<version>-setup.exe`, so the updater downloads it instead of `<slug>-v<version>-<target>-setup.exe`. Portable archives keep their per-target names. |
 | `librespot-audio` | [crmne/librespot](https://github.com/crmne/librespot) at `23fc42c` (a fork of [librespot-org/librespot](https://github.com/librespot-org/librespot)) | Response bodies are usable as they arrive; random-access reads (seek probes) get their own download slot and ask only for what they read. |
 | `librespot-playback` | the same | A seek switches to random-access mode while it probes, and waits for `read_ahead_before_playback` instead of the full read-ahead. |
+| `librespot-connect` | the same | `remote_play::subscribe()` reports who sent each play command (`webapi-<client id>` for the Web API), so LWSpot can show when Discord's Listen Along is driving playback. |
 
 Workspace-inherited manifest values are written out. Paths to sibling crates
 that are not vendored were replaced by their version, which

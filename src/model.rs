@@ -1129,6 +1129,8 @@ pub enum Action {
     PauseLyricsFollow,
     RetryLyrics,
     ToggleDevicesPopup,
+    /// Leave the Spotify Jam, or end it when the listener hosts it.
+    LeaveJam,
     /// Ask GitHub for the latest release and report the result to the user.
     CheckForUpdates,
     ShowUpdate,
