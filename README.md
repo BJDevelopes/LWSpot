@@ -17,6 +17,7 @@
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/Built_with-Rust-6D5BF0" alt="Built with Rust"></a>
   <a href="https://github.com/BJDevelopes/lwspot/releases"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-24292f" alt="Windows and macOS"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6D5BF0" alt="MIT license"></a>
+  <a href="https://buymeacoffee.com/bjdevelopes"><img src="https://img.shields.io/badge/Buy_me_a_coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
 </p>
 
 LWSpot is a Spotify client for Windows and macOS, written in Rust with
@@ -157,6 +158,13 @@ and [How it connects](docs/_reference/how-it-connects.md) for the details.
 | Check Spotify and librespot limitations | [What Spotify allows](docs/_reference/what-spotify-allows.md) |
 | Understand account risk | [Will my account get banned?](docs/_guide/what-is-lwspot.md#will-my-spotify-account-get-banned) |
 | Report a bug or propose a feature | Read [Contributing](CONTRIBUTING.md), then open an [issue](https://github.com/BJDevelopes/lwspot/issues/new/choose). |
+
+## Support LWSpot
+
+LWSpot is free and open source, with no ads and no tracking. If it has
+earned a place on your desktop, you can
+[buy me a coffee](https://buymeacoffee.com/bjdevelopes) to support its
+development.
 
 ## Contributing
 

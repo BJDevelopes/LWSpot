@@ -6,11 +6,11 @@ nav_order: 0
 
 ## Why LWSpot
 
-LWSpot is a lightweight native Spotify app for Windows. It runs as one
+LWSpot is a lightweight native Spotify app for Windows and Mac. It runs as one
 process with no browser engine, and uses a fraction of the memory of
 Spotify's desktop app ([measurements below](#how-light-is-it)).
 
-LWSpot is a Windows-only fork of
+LWSpot is a fork of
 [Spotifast](https://github.com/crmne/spotifast) by Carmine Paolino.
 
 Your Spotify playlists stay on your account.
@@ -119,7 +119,8 @@ LWSpot has a limited scope:
 - No video podcasts or social features.
 - LWSpot is an **unofficial** app. Changes at Spotify can temporarily
   break features until LWSpot is updated.
-- LWSpot runs on Windows only.
+- LWSpot runs on Windows 10 and 11, and on macOS 11 and later. There is no
+  Linux version; [Spotifast](https://github.com/crmne/spotifast) runs there.
 
 Bug reports should include `lwspot.log`, `panic.log` after a crash, and
 steps to reproduce the problem. Both are in `%LOCALAPPDATA%\LWSpot\data`,

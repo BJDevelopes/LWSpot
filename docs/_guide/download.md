@@ -1,10 +1,10 @@
 ---
 title: Download
-description: Download LWSpot for Windows and install it.
+description: Download LWSpot for Windows or Mac and install it.
 nav_order: 1
 ---
 
-LWSpot runs on Windows. Every release is on the
+LWSpot runs on Windows and on Macs. Every release is on the
 [releases page](https://github.com/BJDevelopes/lwspot/releases). Each release
 lists `checksums.txt`, with a SHA-256 checksum for every download, so you can
 check that a file has not been damaged or changed.
@@ -56,6 +56,27 @@ or copy the whole folder and take them along. Updates replace only
 
 [Settings and files](../_reference/settings-and-files.md#where-things-live)
 lists what goes where.
+
+## Mac
+
+Download `lwspot-vX.Y.Z-macos-universal.dmg`. It runs on macOS 11 and
+later, on Apple silicon and Intel Macs, and needs nothing else installed.
+
+1. Open the disk image and drag **LWSpot** onto the **Applications** folder.
+2. Open LWSpot from Applications, Launchpad or Spotlight.
+
+LWSpot is not yet notarized by Apple, so the first time you open it macOS
+stops it. You only do this once:
+
+- **macOS 15 Sequoia or later:** click **Done**, open **System Settings →
+  Privacy & Security**, scroll to **Security**, and next to "LWSpot was
+  blocked to protect your Mac" click **Open Anyway**. Enter your Mac
+  password, then click **Open Anyway** again.
+- **macOS 14 Sonoma or earlier:** in Applications, Control-click (or
+  right-click) LWSpot, choose **Open**, then **Open**.
+
+LWSpot keeps your sign-in in the login Keychain and updates itself from then
+on. To uninstall it, drag it from Applications to the Trash.
 
 ## Check a download
 

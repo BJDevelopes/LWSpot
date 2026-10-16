@@ -1,1 +1,191 @@
 <!-- Extra tags for the end of <head>. LWSpot's docs load no analytics. -->
+<style>
+  /* LWSpot's violet, from the app icon, in place of the theme's blue. */
+  :root {
+    --vp-c-brand-1: #5b48e6;
+    --vp-c-brand-2: #6d5bf0;
+    --vp-c-brand-3: #6d5bf0;
+    --vp-c-brand-soft: rgba(109, 91, 240, 0.14);
+    --vp-button-brand-bg: #6d5bf0;
+    --vp-button-brand-hover-bg: #5b48e6;
+    --vp-button-brand-active-bg: #4c3bd4;
+    --vp-home-hero-name-color: transparent;
+    --vp-home-hero-name-background: linear-gradient(120deg, #6d5bf0 15%, #c26bff 85%);
+    --vp-home-hero-image-background-image: linear-gradient(-45deg, #6d5bf0 50%, #c26bff 50%);
+    --vp-home-hero-image-filter: blur(72px);
+    --lw-card: rgba(109, 91, 240, 0.06);
+    --lw-card-border: rgba(109, 91, 240, 0.22);
+  }
+  .dark {
+    --vp-c-brand-1: #a79cff;
+    --vp-c-brand-2: #8b7bff;
+    --vp-c-brand-3: #6d5bf0;
+    --vp-c-brand-soft: rgba(139, 123, 255, 0.16);
+    --vp-home-hero-name-background: linear-gradient(120deg, #a79cff 15%, #d98bff 85%);
+    --lw-card: rgba(139, 123, 255, 0.07);
+    --lw-card-border: rgba(139, 123, 255, 0.24);
+  }
+
+  /* The home page's hero: the words centred, and the screenshot large under
+     them. The theme's hero image slot is sized for a square logo. */
+  .VPHero.has-image .container {
+    flex-direction: column !important;
+    align-items: center;
+    text-align: center;
+  }
+  .VPHero.has-image .main {
+    order: 1 !important;
+    max-width: 760px !important;
+    margin: 0 auto;
+  }
+  .VPHero.has-image .heading {
+    align-items: center;
+  }
+  .VPHero .tagline {
+    max-width: 620px;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  .VPHero .actions {
+    justify-content: center;
+  }
+  .VPHero .image {
+    order: 2 !important;
+    width: 100%;
+    max-width: 1040px;
+    min-height: 0 !important;
+    margin: 56px auto 0 !important;
+  }
+  .VPHero .image-container {
+    width: 100% !important;
+    height: auto !important;
+    transform: none !important;
+  }
+  .VPHero .image-bg {
+    width: 70% !important;
+    height: 70% !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+  }
+  .VPHero .image-src {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+    border-radius: 14px;
+    border: 1px solid var(--lw-card-border);
+    box-shadow: 0 24px 80px rgba(109, 91, 240, 0.3);
+  }
+
+  /* The numbers band on the home page. */
+  .lw-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin: 8px 0 12px;
+  }
+  .lw-stat {
+    padding: 22px 16px;
+    border-radius: 14px;
+    text-align: center;
+    background: var(--lw-card);
+    border: 1px solid var(--lw-card-border);
+  }
+  .lw-stat strong {
+    display: block;
+    font-size: 40px;
+    line-height: 1.1;
+    font-weight: 800;
+    background: var(--vp-home-hero-name-background);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .lw-stat span {
+    display: block;
+    margin-top: 8px;
+    font-size: 14px;
+    color: var(--vp-c-text-2);
+  }
+  .lw-note {
+    font-size: 13px;
+    color: var(--vp-c-text-3);
+  }
+  @media (max-width: 720px) {
+    .lw-stats {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* Showcases on the home page: the mini player and MilkDrop. */
+  .winamp-showcase {
+    text-align: center;
+  }
+  .winamp-showcase img,
+  .milkdrop-showcase {
+    max-width: 100%;
+    height: auto;
+    border-radius: 14px;
+    border: 1px solid var(--lw-card-border);
+    box-shadow: 0 16px 56px rgba(109, 91, 240, 0.22);
+  }
+  .milkdrop-showcase {
+    display: block;
+    width: 100%;
+  }
+
+  /* The support box, on the home page and in the guide. */
+  .lw-support {
+    margin: 16px 0;
+    padding: 28px;
+    border-radius: 16px;
+    text-align: center;
+    background: var(--lw-card);
+    border: 1px solid var(--lw-card-border);
+  }
+  .lw-support p {
+    margin: 0 auto 18px;
+    max-width: 560px;
+  }
+
+  /* Feature cards: a soft violet tint and a lift on hover. */
+  .VPFeature {
+    background: var(--lw-card) !important;
+    border: 1px solid var(--lw-card-border) !important;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .VPFeature.link:hover,
+  a.VPFeature:hover {
+    transform: translateY(-3px);
+    border-color: var(--vp-c-brand-2) !important;
+    box-shadow: 0 10px 30px rgba(109, 91, 240, 0.18);
+  }
+  .VPFeature .icon {
+    background: var(--vp-c-brand-soft) !important;
+  }
+
+  /* The "Buy me a coffee" button, used on the home page and in the guide. */
+  .lw-coffee {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 22px;
+    border-radius: 999px;
+    background: #ffdd00;
+    color: #1b1b1f !important;
+    font-weight: 600;
+    text-decoration: none !important;
+    box-shadow: 0 6px 20px rgba(255, 221, 0, 0.25);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .lw-coffee:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(255, 221, 0, 0.35);
+  }
+</style>

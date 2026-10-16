@@ -1,11 +1,11 @@
 ---
 layout: home
 title: LWSpot
-description: A lightweight native Spotify client for Windows.
+description: A lightweight native Spotify client for Windows and Mac.
 permalink: /
 hero:
   name: LWSpot
-  text: A lightweight Spotify client for Windows
+  text: A lightweight Spotify client for Windows and Mac
   tagline: Listen on your computer, browse your music, and control your other devices. Native, with no browser engine.
   actions:
     - theme: brand
@@ -49,14 +49,26 @@ features:
     link: /milkdrop/
     link_text: Open the guide
   - icon: ⌨️
-    title: Made for Windows
-    details: Media keys, the Windows media overlay, taskbar buttons, and a jump list. Keep the music playing from the tray, start with Windows, or press F11 for full screen.
+    title: At home on your desktop
+    details: Media keys, the Windows media overlay, taskbar buttons and a jump list, or Now Playing, the Dock menu and the menu bar on a Mac. Keep the music playing with the window closed, and start with your computer.
   - icon: 🔓
     title: Open source
     details: Free to use, study, and improve. A fork of Spotifast by Carmine Paolino, under the MIT License.
     link: https://github.com/BJDevelopes/lwspot
     link_text: Read the source
 ---
+
+## How light is it?
+
+<div class="lw-stats">
+  <div class="lw-stat"><strong>4x</strong><span>less CPU than Spotify's app</span></div>
+  <div class="lw-stat"><strong>10x</strong><span>less memory than Spotify's app</span></div>
+  <div class="lw-stat"><strong>1</strong><span>process, no browser engine</span></div>
+  <div class="lw-stat"><strong>0.13 s</strong><span>from launch to window</span></div>
+</div>
+
+<p class="lw-note">While playing with the window open, measured on one Windows laptop.
+Your numbers will vary. <a href="what-is-lwspot/#how-light-is-it">See the measurements</a>.</p>
 
 ## It turns into Winamp
 
@@ -82,51 +94,17 @@ react to music playing on your computer, in a resizable window or full screen.
   <source src="assets/images/milkdrop.mp4" type="video/mp4">
 </video>
 
+## Support LWSpot
+
+<div class="lw-support">
+  <p>LWSpot is free and open source, with no ads and no tracking. If it has
+  earned a place on your desktop, you can support its development.</p>
+  <a class="lw-coffee" href="https://buymeacoffee.com/bjdevelopes" target="_blank" rel="noreferrer">☕ Buy me a coffee</a>
+</div>
+
 ## Credits
 
-LWSpot is a Windows-only fork of
+LWSpot is a fork of
 [Spotifast](https://github.com/crmne/spotifast) by Carmine Paolino. It is an
 independent project, not affiliated with or endorsed by Spotify AB. Spotify
 is a trademark of Spotify AB.
-
-<style>
-  /* The hero image slot is sized for a square logo; the screenshot needs the
-     room. Page-scoped overrides, so the theme stays untouched. */
-  .VPHero .image-container {
-    width: 100% !important;
-    height: auto !important;
-    transform: none !important;
-  }
-  .VPHero .image-src {
-    position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    transform: none !important;
-    width: 100% !important;
-    height: auto !important;
-    max-width: 100% !important;
-    max-height: none !important;
-    padding: 0 !important;
-    border-radius: 12px;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
-  }
-  .winamp-showcase {
-    text-align: center;
-  }
-  .winamp-showcase img,
-  .milkdrop-showcase {
-    max-width: 100%;
-    height: auto;
-    border-radius: 12px;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
-  }
-  .milkdrop-showcase {
-    display: block;
-    width: 100%;
-  }
-  @media (max-width: 959px) {
-    .VPHero .image {
-      margin: 0 0 24px !important;
-    }
-  }
-</style>

@@ -1,6 +1,6 @@
 title: LWSpot
-lwspot_version: "0.1.0"
-description: A lightweight native Spotify client for Windows.
+lwspot_version: "0.1.4"
+description: A lightweight native Spotify client for Windows and Mac.
 lang: en-US
 url: https://bjdevelopes.github.io
 # GitHub Pages serves the site under the repository name, which is case
@@ -62,7 +62,7 @@ jekyll_vitepress:
     title: LWSpot
     description: >-
       Documentation for LWSpot, a lightweight native Spotify client for
-      Windows. It covers local playback, library access, and Spotify
+      Windows and macOS. It covers local playback, library access, and Spotify
       Connect.
     full: true
     details: >-
@@ -82,7 +82,8 @@ jekyll_vitepress:
     enabled: true
     show_on_docs: false
     message: >-
-      LWSpot is a fork of <a href="https://github.com/crmne/spotifast" target="_blank" rel="noreferrer">Spotifast</a> by Carmine Paolino.
+      Free and open source. <a href="https://buymeacoffee.com/bjdevelopes" target="_blank" rel="noreferrer">☕ Support LWSpot</a> ·
+      A fork of <a href="https://github.com/crmne/spotifast" target="_blank" rel="noreferrer">Spotifast</a> by Carmine Paolino.
     copyright: >-
       <span class="footer-built-with">Docs built with <a href="https://jekyll-vitepress.dev" target="_blank" rel="noreferrer">Jekyll VitePress</a>. LWSpot is an independent project, not affiliated with or endorsed by Spotify AB. Spotify is a trademark of Spotify AB.</span>
   doc_footer:
