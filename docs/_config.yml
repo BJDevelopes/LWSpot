@@ -1,13 +1,15 @@
 title: LWSpot
 lwspot_version: "0.1.4"
-description: A lightweight native Spotify client for Windows and Mac.
+description: >-
+  LWSpot is a free, open-source Spotify client for Windows and Mac: a native
+  app with no browser engine, themes, a Winamp mini player and MilkDrop.
 lang: en-US
 url: https://bjdevelopes.github.io
 # GitHub Pages serves the site under the repository name, which is case
 # sensitive: https://bjdevelopes.github.io/LWSpot/
 baseurl: "/LWSpot"
 logo: /assets/images/logo.svg
-image: /screenshot.png
+image: /assets/images/social-card.png
 
 markdown: kramdown
 kramdown:
@@ -29,7 +31,7 @@ defaults:
       path: ""
     values:
       layout: default
-      image: /screenshot.png
+      image: /assets/images/social-card.png
       topics:
         - Spotify client
         - Rust
@@ -50,8 +52,8 @@ jekyll_vitepress:
   seo:
     page_type: TechArticle
     image:
-      path: /screenshot.png
-      alt: LWSpot showing Home with the queue open and a track playing
+      path: /assets/images/social-card.png
+      alt: LWSpot, a lightweight Spotify client for Windows and Mac, showing its Home page
     publisher:
       type: Organization
       name: LWSpot contributors

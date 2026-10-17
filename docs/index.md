@@ -1,7 +1,9 @@
 ---
 layout: home
-title: LWSpot
-description: A lightweight native Spotify client for Windows and Mac.
+title: Lightweight Spotify Client for Windows & Mac
+description: >-
+  Free, open-source Spotify client for Windows and Mac. About 4x less CPU and
+  10x less memory than the official app, with themes, Winamp skins and MilkDrop.
 permalink: /
 hero:
   name: LWSpot
@@ -101,6 +103,37 @@ react to music playing on your computer, in a resizable window or full screen.
   earned a place on your desktop, you can support its development.</p>
   <a class="lw-coffee" href="https://buymeacoffee.com/bjdevelopes" target="_blank" rel="noreferrer">☕ Buy me a coffee</a>
 </div>
+
+## Questions
+
+### Is LWSpot free?
+
+Yes. LWSpot is free and open source under the MIT License, with no ads and no
+tracking. Playing music needs Spotify Premium; a free account can browse and
+search.
+
+### Does it work on Mac?
+
+Yes. LWSpot runs on macOS 11 and later, on Apple silicon and Intel Macs, and on
+Windows 10 and 11, on Intel, AMD and ARM PCs. [See the downloads](_guide/download.md).
+
+### Why is it lighter than Spotify's own app?
+
+Spotify's desktop app runs a web browser engine inside it. LWSpot is a native
+app written in Rust: one process, with no browser engine, so it needs far less
+memory and CPU. [See the measurements](_guide/what-is-lwspot.md#how-light-is-it).
+
+### Is it safe to use with my Spotify account?
+
+You sign in on Spotify's own website, so LWSpot never sees your password, and
+it plays music only with your own Premium subscription. We're not aware of any
+confirmed bans from normal listening through LWSpot or other players built on
+librespot. [Read more](_guide/what-is-lwspot.md#will-my-spotify-account-get-banned).
+
+### Can it control Spotify on my phone or speaker?
+
+Yes. LWSpot is a Spotify Connect device and remote: play music on your
+computer, or control playback on your phone, speakers or TV.
 
 ## Credits
 

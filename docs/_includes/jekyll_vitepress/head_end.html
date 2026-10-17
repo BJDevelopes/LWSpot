@@ -1,4 +1,29 @@
 <!-- Extra tags for the end of <head>. LWSpot's docs load no analytics. -->
+{% if page.url == "/" %}
+{%- assign home = site.url | append: site.baseurl | append: "/" -%}
+<!-- What search engines show for the app itself: free, and on which systems. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "LWSpot",
+  "description": "A free, open-source Spotify client for Windows and Mac: a native app with no browser engine, themes, a Winamp mini player and MilkDrop.",
+  "url": "{{ home }}",
+  "applicationCategory": "MultimediaApplication",
+  "applicationSubCategory": "Music player",
+  "operatingSystem": "Windows 10, Windows 11, macOS 11 or later",
+  "softwareVersion": "{{ site.lwspot_version }}",
+  "downloadUrl": "https://github.com/BJDevelopes/LWSpot/releases/latest",
+  "image": "{{ home }}assets/images/social-card.png",
+  "screenshot": "{{ home }}screenshot.png",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "BJDevelopes", "url": "https://github.com/BJDevelopes" },
+  "sameAs": ["https://github.com/BJDevelopes/LWSpot"]
+}
+</script>
+{% endif %}
 <style>
   /* LWSpot's violet, from the app icon, in place of the theme's blue. */
   :root {
