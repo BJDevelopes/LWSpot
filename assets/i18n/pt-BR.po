@@ -3596,3 +3596,15 @@ msgstr "Iniciar na barra de menus"
 #: src/app.rs
 msgid "Move LWSpot to Applications first, then turn this on."
 msgstr "Mova o LWSpot para Aplicativos primeiro e depois ative esta opção."
+
+#: src/ui/mod.rs
+msgid "You're offline"
+msgstr "Você está offline"
+
+#: src/ui/mod.rs
+msgid "LWSpot will reconnect by itself when your internet connection is back."
+msgstr "O LWSpot vai se reconectar sozinho quando sua conexão com a internet voltar."
+
+#: src/app.rs
+msgid "You're back online"
+msgstr "Você está online de novo"

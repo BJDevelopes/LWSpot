@@ -3588,3 +3588,15 @@ msgstr "Starta i menyraden"
 #: src/app.rs
 msgid "Move LWSpot to Applications first, then turn this on."
 msgstr "Flytta först LWSpot till Program och slå sedan på det här."
+
+#: src/ui/mod.rs
+msgid "You're offline"
+msgstr "Du är offline"
+
+#: src/ui/mod.rs
+msgid "LWSpot will reconnect by itself when your internet connection is back."
+msgstr "LWSpot ansluter igen av sig självt när internetanslutningen är tillbaka."
+
+#: src/app.rs
+msgid "You're back online"
+msgstr "Du är online igen"

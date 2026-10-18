@@ -65,6 +65,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         );
     }
     player_bar::show(app, ui);
+    offline_bar(app, ui);
     if app.lyrics_fullscreen.is_some() {
         lyrics::fullscreen(app, ui);
     } else {
@@ -88,6 +89,48 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     window_controls(ui, &app.palette, app.locale);
     window_resize(ui);
 }
+
+/// A strip above the player bar while Spotify cannot be reached, as
+/// Spotify's own app shows: what happened, and that nothing needs doing.
+fn offline_bar(app: &App, ui: &mut egui::Ui) {
+    if !app.network_offline {
+        return;
+    }
+    let palette = app.palette;
+    egui::Panel::bottom("offline-bar")
+        .exact_size(OFFLINE_BAR_HEIGHT)
+        .resizable(false)
+        .show_separator_line(false)
+        .frame(
+            Frame::new()
+                .fill(blend(palette.panel, palette.warning, 0.18))
+                .inner_margin(egui::Margin::symmetric(16, 0)),
+        )
+        .show(ui, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                theme::icon(ui, Icon::CircleAlert, 16.0, palette.warning);
+                theme::text(
+                    ui,
+                    crate::i18n::gettext(app.locale, "You're offline"),
+                    theme::medium(13.0),
+                    palette.text,
+                );
+                theme::text(
+                    ui,
+                    crate::i18n::gettext(
+                        app.locale,
+                        "LWSpot will reconnect by itself when your internet connection is back.",
+                    ),
+                    theme::regular(13.0),
+                    palette.secondary,
+                );
+            });
+        });
+}
+
+/// The offline strip's height.
+const OFFLINE_BAR_HEIGHT: f32 = 34.0;
 
 /// The main window's narrowest width with these panels open: their least
 /// widths and the page's, but never wider than the monitor, which a

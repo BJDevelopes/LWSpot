@@ -7,6 +7,18 @@ version's section below as its release notes, so write it for listeners.
 
 ## [Unreleased]
 
+### Added
+
+- A "You're offline" notice above the player bar when the internet
+  connection drops, and "You're back online" when it returns. The mini
+  player says so in its scrolling title.
+
+### Fixed
+
+- Losing the internet connection no longer asks you to set up playback on
+  this computer again. LWSpot keeps trying to reconnect, and playback
+  comes back by itself as soon as the connection does.
+
 ## [0.1.4] - 2026-10-14
 
 ### Fixed

@@ -372,6 +372,9 @@ pub struct App {
     control_devices_stale: bool,
     /// Sample data is loaded; Spotify requests are disabled.
     pub offline: bool,
+    /// Spotify cannot be reached: the computer has no working connection.
+    /// The interface says so until a request gets through again.
+    pub network_offline: bool,
     pub palette: Palette,
     /// The language the interface is drawn in: [`Settings::language`]
     /// resolved against the operating system's preferred languages.
@@ -912,6 +915,7 @@ impl App {
             control_devices: None,
             control_devices_stale: true,
             offline: false,
+            network_offline: false,
             palette,
             locale,
             #[cfg(any(test, feature = "demo"))]
@@ -3073,6 +3077,21 @@ impl App {
                 .is_none_or(|at| at.elapsed() >= crate::updates::CHECK_INTERVAL)
         {
             self.check_for_updates(false);
+        }
+
+        // Spotify's own answers say whether the connection works; the requests
+        // the app keeps making notice when it comes back.
+        let unreachable = self.is_connected() && self.backend.activity().offline();
+        if unreachable != self.network_offline {
+            self.network_offline = unreachable;
+            if unreachable {
+                log::info!("network: Spotify cannot be reached; showing the offline notice");
+            } else if self.is_connected() {
+                log::info!("network: Spotify answers again");
+                self.toast(gettext(self.locale, "You're back online"));
+                // Playback that could not reconnect meanwhile tries again now.
+                self.backend.send(Command::ConnectionRestored);
+            }
         }
 
         if self.is_connected() && !self.offline {

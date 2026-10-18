@@ -1284,7 +1284,10 @@ fn marquee(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         && app.seek_preview.is_none()
         && app.volume_preview.is_none()
         && app.winamp.balance_preview.is_none();
-    if showing_song && let Some(jam) = &app.jam {
+    if showing_song && app.network_offline {
+        text.push_str(" - ");
+        text.push_str(&gettext(app.locale, "You're offline"));
+    } else if showing_song && let Some(jam) = &app.jam {
         text.push_str(" - ");
         text.push_str(&crate::ui::jam::title(app.locale, jam));
     } else if showing_song && app.listening_along {

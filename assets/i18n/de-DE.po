@@ -3624,3 +3624,15 @@ msgstr "In der Menüleiste starten"
 #: src/app.rs
 msgid "Move LWSpot to Applications first, then turn this on."
 msgstr "Verschiebe LWSpot zuerst in den Ordner „Programme“ und schalte dies dann ein."
+
+#: src/ui/mod.rs
+msgid "You're offline"
+msgstr "Du bist offline"
+
+#: src/ui/mod.rs
+msgid "LWSpot will reconnect by itself when your internet connection is back."
+msgstr "LWSpot verbindet sich von selbst wieder, sobald deine Internetverbindung zurück ist."
+
+#: src/app.rs
+msgid "You're back online"
+msgstr "Du bist wieder online"

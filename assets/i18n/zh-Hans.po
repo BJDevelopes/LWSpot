@@ -3502,3 +3502,15 @@ msgstr "在菜单栏中启动"
 #: src/app.rs
 msgid "Move LWSpot to Applications first, then turn this on."
 msgstr "请先将 LWSpot 移到“应用程序”文件夹，然后再开启此选项。"
+
+#: src/ui/mod.rs
+msgid "You're offline"
+msgstr "你已离线"
+
+#: src/ui/mod.rs
+msgid "LWSpot will reconnect by itself when your internet connection is back."
+msgstr "网络连接恢复后，LWSpot 会自动重新连接。"
+
+#: src/app.rs
+msgid "You're back online"
+msgstr "你已恢复在线"

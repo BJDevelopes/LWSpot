@@ -3626,3 +3626,15 @@ msgstr "Запускати в рядку меню"
 #: src/app.rs
 msgid "Move LWSpot to Applications first, then turn this on."
 msgstr "Спочатку перемістіть LWSpot у папку «Програми», потім увімкніть цей параметр."
+
+#: src/ui/mod.rs
+msgid "You're offline"
+msgstr "Ви не в мережі"
+
+#: src/ui/mod.rs
+msgid "LWSpot will reconnect by itself when your internet connection is back."
+msgstr "LWSpot сам перепідключиться, коли інтернет-з'єднання відновиться."
+
+#: src/app.rs
+msgid "You're back online"
+msgstr "Ви знову в мережі"

@@ -3608,3 +3608,15 @@ msgstr "Starten in de menubalk"
 #: src/app.rs
 msgid "Move LWSpot to Applications first, then turn this on."
 msgstr "Zet LWSpot eerst in Apps en schakel dit daarna in."
+
+#: src/ui/mod.rs
+msgid "You're offline"
+msgstr "Je bent offline"
+
+#: src/ui/mod.rs
+msgid "LWSpot will reconnect by itself when your internet connection is back."
+msgstr "LWSpot maakt vanzelf weer verbinding zodra je internetverbinding terug is."
+
+#: src/app.rs
+msgid "You're back online"
+msgstr "Je bent weer online"

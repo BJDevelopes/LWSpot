@@ -717,6 +717,14 @@ pub enum Command {
     },
     /// Internal: librespot's session ended on its own.
     Reconnect,
+    /// Internal: try playback's connection again after Spotify could not be
+    /// reached. Only the newest scheduled try (`generation`) runs.
+    RetryPlaybackConnection {
+        generation: u64,
+    },
+    /// The connection is back: retry playback now instead of at its next
+    /// scheduled try.
+    ConnectionRestored,
     /// Look for Spotify Connect receivers on the local network.
     DiscoverReceivers,
     /// Send the account to a receiver so it joins Spotify Connect.
@@ -1462,6 +1470,10 @@ struct Worker {
     authorizing_source: Option<ApiSource>,
     pending_authorization: Option<ApiSource>,
     reconnects: Vec<Instant>,
+    /// Tries in a row that could not reach Spotify to connect playback, and
+    /// the generation of the one scheduled next.
+    playback_retries: u32,
+    playback_retry_generation: u64,
     /// What the engine was playing when it went down, to load again once
     /// the next one is up.
     resume: Option<PlaybackResume>,
@@ -1529,6 +1541,8 @@ impl Worker {
             authorizing_source: None,
             pending_authorization: None,
             reconnects: Vec::new(),
+            playback_retries: 0,
+            playback_retry_generation: 0,
             resume: None,
             resume_verify: None,
         }
@@ -1932,6 +1946,18 @@ impl Worker {
                     self.finish_playback_authorization(attempt);
                     if lease.current() {
                         self.on_playback_authorized(access_token);
+                    }
+                }
+                Command::RetryPlaybackConnection { generation } => {
+                    if generation == self.playback_retry_generation {
+                        self.resume_engine();
+                    }
+                }
+                Command::ConnectionRestored => {
+                    if self.playback_retries > 0 {
+                        // Any try still scheduled is now stale.
+                        self.playback_retry_generation += 1;
+                        self.resume_engine();
                     }
                 }
                 Command::EngineConnected {
@@ -2960,7 +2986,7 @@ impl Worker {
                     lease: lease.clone(),
                     session_generation,
                     engine: Box::new(None),
-                    error: Some("Connecting to Spotify timed out".into()),
+                    error: Some(CONNECT_TIMED_OUT.into()),
                 },
             };
             let _ = commands.send(outcome);
@@ -3022,14 +3048,26 @@ impl Worker {
                 self.engine = Some(engine);
                 self.start_rootlist();
                 self.reconnects.clear();
+                self.playback_retries = 0;
                 self.emit(Event::Playback(LocalPlayback::Ready { device_id }));
                 self.start_album_type_lookup();
                 self.start_audiobook_lookup();
                 self.start_radio();
             }
             None => {
-                self.resume = None;
                 let message = error.unwrap_or_else(|| "Local playback is unavailable".into());
+                // No internet is not a refused approval: keep the approval and
+                // what was playing, say playback is connecting, and try again.
+                if connection_failed(&message) && self.playback_grant.is_some() {
+                    let delay = playback_retry_delay(self.playback_retries);
+                    self.playback_retries += 1;
+                    log::info!("local playback: Spotify unreachable; trying again in {delay:?}");
+                    self.emit(Event::Playback(LocalPlayback::Connecting));
+                    self.schedule_playback_retry(delay);
+                    return;
+                }
+                self.playback_retries = 0;
+                self.resume = None;
                 self.emit(Event::Playback(LocalPlayback::Failed(message)));
             }
         }
@@ -3162,6 +3200,18 @@ impl Worker {
         }
         self.resume_verify = Some((spec, attempts + 1));
         self.schedule_resume_check(4_000);
+    }
+
+    /// Tries playback's connection again after `delay`, unless a newer try
+    /// replaces this one first.
+    fn schedule_playback_retry(&mut self, delay: Duration) {
+        self.playback_retry_generation += 1;
+        let generation = self.playback_retry_generation;
+        let commands = self.commands.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            let _ = commands.send(Command::RetryPlaybackConnection { generation });
+        });
     }
 
     fn schedule_resume_check(&self, delay_ms: u64) {
@@ -3645,6 +3695,27 @@ impl Worker {
     }
 }
 
+/// How a playback connection that never reached Spotify is reported.
+const UNREACHABLE: &str = "Couldn't reach Spotify";
+const CONNECT_TIMED_OUT: &str = "Connecting to Spotify timed out";
+
+/// Whether playback failed to connect because Spotify could not be
+/// reached, rather than because it refused.
+fn connection_failed(message: &str) -> bool {
+    message.starts_with(UNREACHABLE) || message == CONNECT_TIMED_OUT
+}
+
+/// How long to wait before the next try to connect playback: soon at
+/// first, then every half minute.
+fn playback_retry_delay(tries: u32) -> Duration {
+    Duration::from_secs(match tries {
+        0 => 5,
+        1 => 10,
+        2 => 20,
+        _ => 30,
+    })
+}
+
 fn friendly_connect_error(error: &anyhow::Error) -> String {
     let text = format!("{error:#}");
     let lower = text.to_lowercase();
@@ -3653,7 +3724,7 @@ fn friendly_connect_error(error: &anyhow::Error) -> String {
     } else if lower.contains("premium") {
         PREMIUM_NEEDED.to_string()
     } else if lower.contains("dns") || lower.contains("connect") || lower.contains("resolve") {
-        format!("Couldn't reach Spotify: {text}")
+        format!("{UNREACHABLE}: {text}")
     } else {
         text
     }
@@ -6147,6 +6218,67 @@ mod authorization_tests {
                 .try_iter()
                 .any(|event| matches!(event, Event::Playback(LocalPlayback::Failed(_))))
         );
+    }
+
+    /// Playback that cannot reach Spotify keeps its approval and says it
+    /// is connecting while it tries again; only a refusal asks for setup.
+    #[test]
+    fn unreachable_spotify_keeps_playback_set_up_and_retries() {
+        let (runtime, mut worker, events) = worker("playback-offline-retry");
+        let _entered = runtime.enter();
+        verify(&mut worker, ApiSource::Shared, "bob");
+        worker.playback_grant = Some(Credentials::with_password("bob", "dummy-reusable-grant"));
+        let generation = worker.album_type_lookup.session_generation;
+        worker.on_engine_connected(
+            generation,
+            None,
+            Some(format!("{UNREACHABLE}: tcp connect error")),
+        );
+        assert!(worker.playback_grant.is_some());
+        assert_eq!(worker.playback_retries, 1);
+        let seen: Vec<Event> = events.try_iter().collect();
+        assert!(
+            seen.iter()
+                .any(|event| matches!(event, Event::Playback(LocalPlayback::Connecting)))
+        );
+        assert!(
+            !seen
+                .iter()
+                .any(|event| matches!(event, Event::Playback(LocalPlayback::Failed(_))))
+        );
+        worker.on_engine_connected(
+            generation,
+            None,
+            Some(friendly_connect_error(&anyhow::anyhow!("BadCredentials"))),
+        );
+        assert_eq!(worker.playback_retries, 0);
+        assert!(
+            events
+                .try_iter()
+                .any(|event| matches!(event, Event::Playback(LocalPlayback::Failed(_))))
+        );
+        let _ = std::fs::remove_dir_all(worker.dirs.state.parent().unwrap());
+    }
+
+    /// No connection and a timeout are worth retrying; a refused credential
+    /// or a Free account are not. Retries slow to every half minute.
+    #[test]
+    fn only_an_unreachable_spotify_is_retried() {
+        let unreachable = friendly_connect_error(&anyhow::anyhow!(
+            "Service unavailable {{ client error (Connect) }}: tcp connect error"
+        ));
+        assert!(connection_failed(&unreachable));
+        assert!(connection_failed(CONNECT_TIMED_OUT));
+        assert!(!connection_failed(&friendly_connect_error(
+            &anyhow::anyhow!("BadCredentials")
+        )));
+        assert!(!connection_failed(&friendly_connect_error(
+            &anyhow::anyhow!("Premium account required")
+        )));
+        let delays: Vec<u64> = (0..5)
+            .map(|tries| playback_retry_delay(tries).as_secs())
+            .collect();
+        assert_eq!(delays, [5, 10, 20, 30, 30]);
     }
 
     #[test]

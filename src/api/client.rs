@@ -392,7 +392,14 @@ pub struct NetActivity {
     /// When each request that is only waiting out a Retry-After cooldown
     /// wakes, in milliseconds since `started_at`.
     parked: std::sync::Mutex<Vec<u64>>,
+    /// Requests in a row that never reached Spotify: no connection, no
+    /// name lookup, or no answer in time. Any answer, even an error, ends it.
+    unreachable: AtomicU64,
 }
+
+/// How many requests in a row must fail to reach Spotify before the app
+/// counts itself offline: one can be a blip on a working connection.
+const OFFLINE_AFTER: u64 = 2;
 
 impl Default for NetActivity {
     fn default() -> Self {
@@ -403,6 +410,7 @@ impl Default for NetActivity {
             sent: Default::default(),
             limited: Default::default(),
             parked: std::sync::Mutex::default(),
+            unreachable: AtomicU64::new(0),
         }
     }
 }
@@ -438,6 +446,22 @@ impl NetActivity {
         if rate_limited {
             self.limited[slot].fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    /// Spotify answered, so the connection works.
+    fn reached(&self) {
+        self.unreachable.store(0, Ordering::Relaxed);
+    }
+
+    /// A request never reached Spotify.
+    fn missed(&self) {
+        self.unreachable.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Whether the last requests could not reach Spotify at all: the
+    /// computer is offline, or its network cannot reach the internet.
+    pub fn offline(&self) -> bool {
+        self.unreachable.load(Ordering::Relaxed) >= OFFLINE_AFTER
     }
 
     /// Traffic since the last call, per app, as (shared, personal).
@@ -709,7 +733,18 @@ impl ApiClient {
             } else if matches!(method, Method::PUT | Method::POST | Method::DELETE) {
                 request = request.header(reqwest::header::CONTENT_LENGTH, "0");
             }
-            let response = request.send().await?;
+            let response = match request.send().await {
+                Ok(response) => {
+                    self.activity.reached();
+                    response
+                }
+                Err(error) => {
+                    if error.is_connect() || error.is_timeout() {
+                        self.activity.missed();
+                    }
+                    return Err(error.into());
+                }
+            };
             let status = response.status();
             let rate_limited = status == StatusCode::TOO_MANY_REQUESTS;
             self.activity.record(self.source, rate_limited);
@@ -1431,6 +1466,73 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One request that fails to reach Spotify can be a blip; two in a row
+    /// mean the connection is down, and any answer means it is back.
+    #[test]
+    fn two_unreachable_requests_in_a_row_mean_offline() {
+        let activity = NetActivity::default();
+        assert!(!activity.offline());
+        activity.missed();
+        assert!(!activity.offline(), "one miss is a blip");
+        activity.missed();
+        assert!(activity.offline());
+        activity.reached();
+        assert!(!activity.offline());
+    }
+
+    /// Requests the network refuses mark the client offline; the next
+    /// answer from Spotify, even an error, marks it online again.
+    #[tokio::test]
+    async fn refused_requests_mark_offline_and_an_answer_clears_it() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let closed = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap();
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let open = server.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = server.accept().await {
+                let mut buffer = [0u8; 4096];
+                let _ = socket.read(&mut buffer).await;
+                let _ = socket
+                    .write_all(
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    )
+                    .await;
+            }
+        });
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let activity = Arc::new(NetActivity::default());
+        let mut client = ApiClient::new(http.clone(), activity.clone(), 20, 50, ApiSource::Shared);
+        client.set_token_provider(Some(TokenProvider::Web(WebTokens::new(
+            http,
+            crate::auth::StoredToken {
+                access_token: "test-only".into(),
+                expires_at: u64::MAX,
+                ..Default::default()
+            },
+            crate::credentials::Store::in_memory(crate::paths::AppDirs {
+                config: std::env::temp_dir().join("unused-offline-token/config"),
+                state: std::env::temp_dir().join("unused-offline-token/state"),
+                cache: std::env::temp_dir().join("unused-offline-token/cache"),
+            })
+            .lease(crate::credentials::Slot::Shared),
+            ApiSource::Shared,
+            Arc::new(|_| {}),
+        ))));
+        // That listener is already gone, so nothing answers there: the
+        // connection is refused at once.
+        client.base_url = Some(format!("http://{closed}"));
+        for _ in 0..2 {
+            assert!(client.send(Method::GET, "/me", &[], None).await.is_err());
+        }
+        assert!(activity.offline());
+        client.base_url = Some(format!("http://{open}"));
+        assert!(client.send(Method::GET, "/me", &[], None).await.is_err());
+        assert!(!activity.offline(), "a 404 is still an answer");
+    }
 
     #[tokio::test]
     async fn revoked_provider_cannot_return_or_persist_its_token() {
