@@ -421,8 +421,8 @@ mod tests {
 
     impl Folder {
         fn new(name: &str) -> Self {
-            let path =
-                std::env::temp_dir().join(format!("lwspot-portable-{name}-{}", std::process::id()));
+            let path = crate::test_support::temp_dir()
+                .join(format!("lwspot-portable-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&path);
             std::fs::create_dir_all(&path).unwrap();
             Self(path)

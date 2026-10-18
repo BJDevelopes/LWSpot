@@ -326,6 +326,31 @@ fn without_process_serial_number(
     arguments
 }
 
+/// Removes the folders earlier demo runs left in the temporary folder. A
+/// run cannot remove its own: its log stays open in it until the process
+/// ends. One more than an hour old belongs to a run that is over.
+#[cfg(feature = "demo")]
+fn remove_old_demo_data() {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let demo = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with("lwspot-demo-"));
+        let old = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > std::time::Duration::from_secs(60 * 60));
+        if demo && old {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 pub(crate) fn run() -> eframe::Result<()> {
     // First of all: `--apply-update <job>` makes this process the update
     // helper, which installs and exits; otherwise the receipt and error an
@@ -340,6 +365,7 @@ pub(crate) fn run() -> eframe::Result<()> {
     // they would pass for the user's history.
     #[cfg(feature = "demo")]
     let cli = if (cli.demo || cli.demo_shot.is_some()) && cli.demo_data.is_none() {
+        remove_old_demo_data();
         Cli {
             demo_data: Some(
                 std::env::temp_dir().join(format!("lwspot-demo-{}", std::process::id())),

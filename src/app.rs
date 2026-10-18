@@ -16403,7 +16403,8 @@ mod tests {
     }
 
     fn test_app(name: &str) -> App {
-        let root = std::env::temp_dir().join(format!("lwspot-{name}-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-{name}-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let mut app = App::new(
             &Waker::default(),
@@ -17512,8 +17513,8 @@ mod tests {
     /// Closing and reopening restores queue rows and their manual split.
     #[test]
     fn the_queue_comes_back_after_a_restart() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-queue-restart-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-queue-restart-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let dirs = AppDirs {
             config: root.join("config"),
@@ -18130,7 +18131,8 @@ mod tests {
     /// An app whose MilkDrop folder already has a preset, so opening the
     /// window fetches no packs.
     fn milkdrop_app(name: &str) -> (App, std::path::PathBuf) {
-        let root = std::env::temp_dir().join(format!("lwspot-{name}-{}", std::process::id()));
+        let root =
+            crate::test_support::temp_dir().join(format!("lwspot-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let dirs = AppDirs {
             config: root.join("config"),
@@ -19078,7 +19080,8 @@ mod tests {
     }
 
     fn headless_app() -> App {
-        let root = std::env::temp_dir().join(format!("lwspot-volume-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-volume-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -23257,8 +23260,8 @@ mod tests {
         app.remote = None;
         app.selected_device = None;
         app.plays = crate::history::History::default();
-        let state_dir =
-            std::env::temp_dir().join(format!("lwspot-repeat-history-{}", std::process::id()));
+        let state_dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-repeat-history-{}", std::process::id()));
         app.dirs.state = state_dir.clone();
         for sequence in [1, 2] {
             app.handle_local(LocalState {
@@ -24629,7 +24632,7 @@ mod tests {
     /// supplied it; edit grants wait for a fresh session answer.
     #[test]
     fn the_last_playlist_tree_stays_visible_for_its_account() {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::test_support::temp_dir().join(format!(
             "lwspot-rootlist-restart-test-{}",
             std::process::id()
         ));

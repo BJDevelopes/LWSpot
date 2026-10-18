@@ -717,7 +717,7 @@ mod tests {
         "Couldn't load your profile: Spotify is rate limiting requests; try again in a moment";
 
     fn signed_in_app(name: &str) -> App {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::test_support::temp_dir().join(format!(
             "lwspot-personal-setup-{name}-{}",
             std::process::id()
         ));

@@ -38,6 +38,8 @@ pub mod single_instance;
 pub mod sink;
 pub mod skin;
 pub mod system_fonts;
+#[cfg(test)]
+mod test_support;
 pub mod theme;
 pub mod theme_files;
 pub mod thumbbar;

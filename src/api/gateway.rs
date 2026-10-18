@@ -530,7 +530,7 @@ mod tests {
     }
 
     fn provider(name: &str, source: ApiSource) -> TokenProvider {
-        let path = std::env::temp_dir().join(format!("lwspot-{name}-unused-token"));
+        let path = crate::test_support::temp_dir().join(format!("lwspot-{name}-unused-token"));
         let store = crate::credentials::Store::in_memory(crate::paths::AppDirs {
             config: path.join("config"),
             state: path.join("state"),

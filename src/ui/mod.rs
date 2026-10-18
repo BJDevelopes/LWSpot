@@ -875,8 +875,8 @@ mod tests {
     /// and so does a window that left full screen with none.
     #[test]
     fn the_minimum_is_sent_again_for_a_new_scale_and_after_full_screen() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-min-width-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-min-width-test-{}", std::process::id()));
         let mut app = App::new(
             &crate::backend::Waker::default(),
             crate::paths::AppDirs {

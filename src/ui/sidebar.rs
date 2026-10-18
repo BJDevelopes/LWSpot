@@ -2088,7 +2088,8 @@ mod ordering_tests {
     use crate::settings::Settings;
 
     fn app(name: &str) -> App {
-        let root = std::env::temp_dir().join(format!("lwspot-order-{name}-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-order-{name}-{}", std::process::id()));
         let mut app = App::new(
             &crate::backend::Waker::default(),
             crate::paths::AppDirs {

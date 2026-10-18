@@ -449,8 +449,8 @@ mod tests {
     /// A slot of its own in a throwaway directory, so a LWSpot already
     /// running on this machine is left alone.
     fn test_slot(name: &str) -> (fastframe_instance::Slot, std::path::PathBuf) {
-        let dir =
-            std::env::temp_dir().join(format!("lwspot-instance-{name}-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-instance-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         (fastframe_instance::Slot::at(&dir, NAME), dir)
     }

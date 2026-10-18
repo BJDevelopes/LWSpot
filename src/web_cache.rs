@@ -731,8 +731,8 @@ mod tests {
     }
 
     fn dirs(name: &str) -> AppDirs {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-web-cache-{name}-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-web-cache-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         AppDirs {
             config: root.join("config"),

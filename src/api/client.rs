@@ -1514,9 +1514,9 @@ mod tests {
                 ..Default::default()
             },
             crate::credentials::Store::in_memory(crate::paths::AppDirs {
-                config: std::env::temp_dir().join("unused-offline-token/config"),
-                state: std::env::temp_dir().join("unused-offline-token/state"),
-                cache: std::env::temp_dir().join("unused-offline-token/cache"),
+                config: crate::test_support::temp_dir().join("unused-offline-token/config"),
+                state: crate::test_support::temp_dir().join("unused-offline-token/state"),
+                cache: crate::test_support::temp_dir().join("unused-offline-token/cache"),
             })
             .lease(crate::credentials::Slot::Shared),
             ApiSource::Shared,
@@ -1536,8 +1536,8 @@ mod tests {
 
     #[tokio::test]
     async fn revoked_provider_cannot_return_or_persist_its_token() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-revoked-provider-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-revoked-provider-{}", std::process::id()));
         let store = crate::credentials::Store::in_memory(crate::paths::AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -1622,9 +1622,9 @@ mod tests {
                 scope: String::new(),
             },
             crate::credentials::Store::in_memory(crate::paths::AppDirs {
-                config: std::env::temp_dir().join("unused-refresh-token/config"),
-                state: std::env::temp_dir().join("unused-refresh-token/state"),
-                cache: std::env::temp_dir().join("unused-refresh-token/cache"),
+                config: crate::test_support::temp_dir().join("unused-refresh-token/config"),
+                state: crate::test_support::temp_dir().join("unused-refresh-token/state"),
+                cache: crate::test_support::temp_dir().join("unused-refresh-token/cache"),
             })
             .lease(crate::credentials::Slot::Shared),
             ApiSource::Shared,
@@ -1763,9 +1763,9 @@ mod tests {
                     ..Default::default()
                 },
                 crate::credentials::Store::in_memory(crate::paths::AppDirs {
-                    config: std::env::temp_dir().join("unused-queue-token/config"),
-                    state: std::env::temp_dir().join("unused-queue-token/state"),
-                    cache: std::env::temp_dir().join("unused-queue-token/cache"),
+                    config: crate::test_support::temp_dir().join("unused-queue-token/config"),
+                    state: crate::test_support::temp_dir().join("unused-queue-token/state"),
+                    cache: crate::test_support::temp_dir().join("unused-queue-token/cache"),
                 })
                 .lease(crate::credentials::Slot::Shared),
                 ApiSource::Shared,
@@ -1870,9 +1870,9 @@ mod tests {
                     ..Default::default()
                 },
                 crate::credentials::Store::in_memory(crate::paths::AppDirs {
-                    config: std::env::temp_dir().join("unused-cover-token/config"),
-                    state: std::env::temp_dir().join("unused-cover-token/state"),
-                    cache: std::env::temp_dir().join("unused-cover-token/cache"),
+                    config: crate::test_support::temp_dir().join("unused-cover-token/config"),
+                    state: crate::test_support::temp_dir().join("unused-cover-token/state"),
+                    cache: crate::test_support::temp_dir().join("unused-cover-token/cache"),
                 })
                 .lease(crate::credentials::Slot::Shared),
                 ApiSource::Shared,

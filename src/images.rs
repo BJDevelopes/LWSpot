@@ -939,7 +939,8 @@ mod tests {
 
     #[test]
     fn downloaded_artwork_survives_caller_drop_and_reloads_without_network() {
-        let dir = std::env::temp_dir().join(format!("lwspot-art-roundtrip-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-art-roundtrip-{}", std::process::id()));
         let runtime = artwork_test_runtime();
         let loader = artwork_test_loader(&runtime, dir.clone());
         let expected: Vec<u8> = (0..256 * 1024).map(|index| (index % 251) as u8).collect();
@@ -971,8 +972,8 @@ mod tests {
 
     #[test]
     fn artwork_cache_write_failure_keeps_download_usable() {
-        let dir =
-            std::env::temp_dir().join(format!("lwspot-art-write-failure-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-art-write-failure-{}", std::process::id()));
         let runtime = artwork_test_runtime();
         let loader = artwork_test_loader(&runtime, dir.clone());
         let (bytes, path) = runtime.block_on(async {
@@ -1000,7 +1001,8 @@ mod tests {
 
     #[test]
     fn rejected_artwork_responses_do_not_create_cache_files() {
-        let dir = std::env::temp_dir().join(format!("lwspot-art-rejected-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-art-rejected-{}", std::process::id()));
         let runtime = artwork_test_runtime();
         let loader = artwork_test_loader(&runtime, dir.clone());
         runtime.block_on(async {
@@ -1058,7 +1060,8 @@ mod tests {
     #[test]
     fn lyrics_backdrop_appears_while_a_cover_releases_the_same_artwork() {
         let runtime = artwork_test_runtime();
-        let dir = std::env::temp_dir().join(format!("lwspot-backdrop-{}", std::process::id()));
+        let dir =
+            crate::test_support::temp_dir().join(format!("lwspot-backdrop-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let loader = artwork_test_loader(&runtime, dir.clone());
         let ctx = egui::Context::default();
@@ -1090,8 +1093,8 @@ mod tests {
     #[test]
     fn lyrics_backdrop_holds_the_previous_song_and_retries_failures() {
         let runtime = artwork_test_runtime();
-        let dir =
-            std::env::temp_dir().join(format!("lwspot-backdrop-retry-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-backdrop-retry-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let loader = artwork_test_loader(&runtime, dir.clone());
         let ctx = egui::Context::default();
@@ -1166,8 +1169,8 @@ mod tests {
     #[test]
     fn softened_cover_reads_the_thumbnail_after_its_bytes_are_released() {
         let runtime = artwork_test_runtime();
-        let dir =
-            std::env::temp_dir().join(format!("lwspot-softened-cached-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-softened-cached-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let loader = artwork_test_loader(&runtime, dir.clone());
         let ctx = egui::Context::default();
@@ -1217,8 +1220,8 @@ mod tests {
     #[test]
     fn softened_cover_waits_for_its_thumbnail() {
         let runtime = artwork_test_runtime();
-        let dir =
-            std::env::temp_dir().join(format!("lwspot-softened-waits-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-softened-waits-{}", std::process::id()));
         let loader = artwork_test_loader(&runtime, dir.clone());
         let ctx = egui::Context::default();
         let mut covers = SoftenedCovers::default();
@@ -1274,7 +1277,8 @@ mod tests {
     #[test]
     fn decoded_pixels_go_once_the_texture_exists() {
         let runtime = artwork_test_runtime();
-        let dir = std::env::temp_dir().join(format!("lwspot-art-decoder-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-art-decoder-{}", std::process::id()));
         let loader = artwork_test_loader(&runtime, dir.clone());
         let ctx = egui::Context::default();
         egui_extras::install_image_loaders(&ctx);
@@ -1325,8 +1329,8 @@ mod tests {
     #[test]
     fn softened_cover_pending_requests_are_deduplicated() {
         let runtime = artwork_test_runtime();
-        let dir =
-            std::env::temp_dir().join(format!("lwspot-softened-pending-{}", std::process::id()));
+        let dir = crate::test_support::temp_dir()
+            .join(format!("lwspot-softened-pending-{}", std::process::id()));
         let loader = artwork_test_loader(&runtime, dir.clone());
         let ctx = egui::Context::default();
         let mut covers = SoftenedCovers::default();
@@ -1418,7 +1422,8 @@ mod tests {
     /// told "not yet" rather than handed a path to nothing.
     #[test]
     fn a_cached_file_is_named_only_once_it_is_really_there() {
-        let dir = std::env::temp_dir().join(format!("lwspot-art-{}", std::process::id()));
+        let dir =
+            crate::test_support::temp_dir().join(format!("lwspot-art-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
@@ -1446,7 +1451,8 @@ mod tests {
 
     #[test]
     fn prefetching_starts_one_download_and_not_another() {
-        let dir = std::env::temp_dir().join(format!("lwspot-prefetch-{}", std::process::id()));
+        let dir =
+            crate::test_support::temp_dir().join(format!("lwspot-prefetch-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
@@ -1576,7 +1582,7 @@ mod tests {
         let one = texture_bytes(640, 640);
         assert_eq!(one, 640 * 640 * 4);
         let jpeg = 50_000usize;
-        let dir = std::env::temp_dir().join(format!(
+        let dir = crate::test_support::temp_dir().join(format!(
             "lwspot-art-budget-{}-{}",
             std::process::id(),
             Instant::now().elapsed().as_nanos()
@@ -1650,7 +1656,7 @@ mod tests {
         use egui::load::BytesLoader;
         use std::time::Duration as StdDuration;
 
-        let dir = std::env::temp_dir().join(format!(
+        let dir = crate::test_support::temp_dir().join(format!(
             "lwspot-art-reload-{}-{}",
             std::process::id(),
             Instant::now().elapsed().as_nanos()

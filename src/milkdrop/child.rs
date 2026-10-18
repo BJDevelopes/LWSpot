@@ -938,7 +938,7 @@ mod tests {
 
     /// A child with no window, for the parts that need none.
     fn headless_child() -> Child {
-        let dir = std::env::temp_dir().join(format!(
+        let dir = crate::test_support::temp_dir().join(format!(
             "lwspot-milkdrop-child-{}-{}",
             std::process::id(),
             NEXT_RING.fetch_add(1, Ordering::Relaxed)

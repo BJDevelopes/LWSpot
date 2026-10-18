@@ -292,8 +292,8 @@ mod tests {
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
         theme::install(&ctx);
-        let root =
-            std::env::temp_dir().join(format!("lwspot-proxy-short-login-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-proxy-short-login-{}", std::process::id()));
         let mut app = App::new(
             &Waker::default(),
             AppDirs {

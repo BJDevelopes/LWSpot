@@ -3450,7 +3450,7 @@ mod tests {
     }
 
     fn test_app() -> App {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::test_support::temp_dir().join(format!(
             "lwspot-virtual-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()

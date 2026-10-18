@@ -1303,7 +1303,8 @@ mod tests {
     use std::sync::Arc;
 
     fn accessible_app(name: &str) -> (egui::Context, App) {
-        let root = std::env::temp_dir().join(format!("lwspot-a11y-{name}-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-a11y-{name}-{}", std::process::id()));
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
         let waker = crate::backend::Waker::default();
@@ -5758,7 +5759,8 @@ mod tests {
     /// A toast is wide enough to avoid wrapping every word.
     #[test]
     fn a_toast_is_wide_enough_to_read() {
-        let root = std::env::temp_dir().join(format!("lwspot-toast-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-toast-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -5831,8 +5833,8 @@ mod tests {
     /// Done button somewhere past the edge of the screen.
     #[test]
     fn the_shortcuts_dialog_fits_a_small_window() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-shortcuts-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-shortcuts-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -5884,8 +5886,8 @@ mod tests {
     /// used to reverse the two buttons.
     #[test]
     fn interface_zoom_puts_minus_on_the_left() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-zoom-order-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-zoom-order-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -5964,8 +5966,8 @@ mod tests {
     /// lands on the next of them rather than somewhere in between.
     #[test]
     fn the_frame_rate_dial_steps_between_its_stops() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-fps-dial-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-fps-dial-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -6045,7 +6047,8 @@ mod tests {
     /// Appearance offers the player bar visualizer's three frame rates.
     #[test]
     fn appearance_offers_the_visualizer_frame_rates() {
-        let root = std::env::temp_dir().join(format!("lwspot-vis-fps-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-vis-fps-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -6105,8 +6108,8 @@ mod tests {
     /// Rule: side-panel headers stay on one line at their narrowest width.
     #[test]
     fn the_narrowest_panels_keep_their_headers_on_one_row() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-queue-header-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-queue-header-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -6199,8 +6202,8 @@ mod tests {
     /// With nothing reported, the row is not drawn.
     #[test]
     fn the_queue_names_where_the_song_plays_from() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-playing-from-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-playing-from-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -6449,8 +6452,8 @@ mod tests {
 
     #[test]
     fn fullscreen_lyrics_highlight_preserves_line_layout() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-lyrics-layout-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-lyrics-layout-{}", std::process::id()));
         let ctx = egui::Context::default();
         let waker = crate::backend::Waker::default();
         waker.attach(&ctx);
@@ -6519,7 +6522,8 @@ mod tests {
     /// Every page, panel, and dialog lays out without panicking.
     #[test]
     fn every_surface_renders_headless() {
-        let root = std::env::temp_dir().join(format!("lwspot-render-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-render-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -6636,7 +6640,8 @@ mod tests {
     /// library still asks for the next page when the end is near.
     #[test]
     fn a_long_virtual_queue_and_library_still_draw() {
-        let root = std::env::temp_dir().join(format!("lwspot-virtual-long-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-virtual-long-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -6701,8 +6706,8 @@ mod tests {
     }
 
     fn drop_songs_on_sidebar(count: usize) {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-drag-test-{}-{count}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-drag-test-{}-{count}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -7112,7 +7117,7 @@ mod tests {
     /// receives when a table song is dragged.
     #[test]
     fn dragging_the_now_playing_song_supplies_a_playlist_row() {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::test_support::temp_dir().join(format!(
             "lwspot-now-playing-drag-test-{}",
             std::process::id()
         ));
@@ -8044,7 +8049,8 @@ mod tests {
     /// its automatic order.
     #[test]
     fn dragging_within_the_pinned_block_reorders_it() {
-        let root = std::env::temp_dir().join(format!("lwspot-reorder-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-reorder-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -8121,8 +8127,8 @@ mod tests {
     /// Reordering unpinned playlists creates a custom sidebar order.
     #[test]
     fn dropping_between_unpinned_playlists_creates_the_custom_order() {
-        let root =
-            std::env::temp_dir().join(format!("lwspot-unpinned-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-unpinned-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -8914,7 +8920,8 @@ mod tests {
     /// before asking the server.
     #[test]
     fn dragging_a_row_within_a_playlist_reorders_it() {
-        let root = std::env::temp_dir().join(format!("lwspot-move-test-{}", std::process::id()));
+        let root = crate::test_support::temp_dir()
+            .join(format!("lwspot-move-test-{}", std::process::id()));
         let dirs = AppDirs {
             config: root.join("config"),
             state: root.join("state"),
@@ -9202,7 +9209,7 @@ mod tests {
     /// the sidebar search field.
     #[test]
     fn clicking_search_in_library_shelf_focuses_search_field() {
-        let root = std::env::temp_dir().join(format!(
+        let root = crate::test_support::temp_dir().join(format!(
             "lwspot-sidebar-search-focus-test-{}",
             std::process::id()
         ));

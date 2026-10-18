@@ -227,8 +227,8 @@ mod tests {
     use super::*;
 
     fn folder(name: &str) -> PathBuf {
-        let directory =
-            std::env::temp_dir().join(format!("lwspot-theme-files-{name}-{}", std::process::id()));
+        let directory = crate::test_support::temp_dir()
+            .join(format!("lwspot-theme-files-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         directory
     }
