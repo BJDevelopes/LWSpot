@@ -1,8 +1,8 @@
-current: v0.1.4
+current: v0.1.5
 items:
-  - id: v0.1.4
-    title: v0.1.4
-    url: https://github.com/BJDevelopes/LWSpot/releases/tag/v0.1.4
+  - id: v0.1.5
+    title: v0.1.5
+    url: https://github.com/BJDevelopes/LWSpot/releases/tag/v0.1.5
     external: true
   - title: Changelog
     url: https://github.com/BJDevelopes/lwspot/blob/main/CHANGELOG.md

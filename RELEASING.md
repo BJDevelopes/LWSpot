@@ -22,7 +22,9 @@ release workflow builds and how winget and code signing are set up.
 ## Each release
 
 1. [ ] On `main`, set `version` in `Cargo.toml` to the new version and run
-       `cargo check` so `Cargo.lock` follows.
+       `cargo check` so `Cargo.lock` follows. Set the docs site's version
+       too: `lwspot_version` in `docs/_config.yml`, and `current` and the
+       first item (id, title and release link) in `docs/_data/versions.yml`.
 2. [ ] In `CHANGELOG.md`, move the entries under `[Unreleased]` into a new
        `## [X.Y.Z] - YYYY-MM-DD` section with today's date, written for
        listeners (what changed for them, not how). Add the comparison link at
